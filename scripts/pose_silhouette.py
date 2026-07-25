@@ -1,12 +1,24 @@
 """
-Render a swing clip window as privacy-safe silhouette frames: the player's real
-body cut out via MediaPipe person segmentation, flattened to one flat blue (no
-face/jersey/identifying detail), with a WinReality-style colored skeleton overlay
-and synthesized bat baked in. Output PNGs get base64-embedded into the 3D swing
-model page, replacing the schematic stick figure for the "current swing" panel.
+Render a swing clip window as two privacy-safe silhouette sequences for the 3D
+swing model page: "current" (her real body/mechanics, temporally smoothed to
+remove per-frame pose-detection jitter) and "target" (the same real body, with
+the coached hip-lead adjustment and a deeper contact point applied as a 2D
+shear/shift on top of the real silhouette and skeleton — not a different
+person, not motion capture, just an illustrated adjustment to her own swing).
 
-Two passes over the window: pass 1 collects 2D landmarks to compute one fixed
-crop box (stable framing); pass 2 renders the silhouette frames inside that crop.
+The player's real body is cut out via MediaPipe person segmentation, flattened
+to one flat blue (no face/jersey/identifying detail), with a WinReality-style
+colored skeleton overlay and synthesized bat baked in.
+
+Three passes over the window:
+  1. Collect raw landmarks (no masks - cheap) to build one fixed crop box and
+     a temporally-smoothed landmark sequence (stabilizes the overlay skeleton,
+     which otherwise visibly jitters frame to frame from detection noise).
+  2. Re-run with masks; pair each frame's mask with the SAME-INDEX smoothed
+     landmarks from pass 1 (both passes use the same deterministic tracker, so
+     indices line up) and render the "current" frame.
+  3. From the same smoothed landmarks + mask, render the "target" frame with
+     the lower body sheared by a time-varying offset.
 
 Usage: python pose_silhouette.py <video> <start_s> <end_s> <out_dir>
 """
@@ -21,9 +33,12 @@ from mediapipe.tasks.python import vision as mp_vision
 
 MODEL_PATH = pathlib.Path(__file__).parent / "models" / "pose_landmarker_full.task"
 
-L_SH, R_SH, L_EL, R_EL, L_WR, R_WR = 11, 12, 13, 14, 15, 16
-L_HIP, R_HIP, L_KN, R_KN, L_AN, R_AN, L_FT, R_FT = 23, 24, 25, 26, 27, 28, 31, 32
-ALL = [0, L_SH, R_SH, L_EL, R_EL, L_WR, R_WR, L_HIP, R_HIP, L_KN, R_KN, L_AN, R_AN, L_FT, R_FT]
+JOINTS = {
+    "nose": 0, "l_shoulder": 11, "r_shoulder": 12, "l_elbow": 13, "r_elbow": 14,
+    "l_wrist": 15, "r_wrist": 16, "l_hip": 23, "r_hip": 24, "l_knee": 25,
+    "r_knee": 26, "l_ankle": 27, "r_ankle": 28, "l_foot": 31, "r_foot": 32,
+}
+LOWER_BODY = ["l_hip", "r_hip", "l_knee", "r_knee", "l_ankle", "r_ankle", "l_foot", "r_foot"]
 
 # colors are BGR (cv2); silhouette fill is the site's series-1 blue
 SIL_BGR = (229, 135, 57)          # #3987e5
@@ -31,14 +46,40 @@ DARK = (25, 26, 26)               # contrast underlay stroke
 AMBER = (25, 178, 250)            # torso
 WHITE = (255, 255, 255)           # arms
 GREEN = (12, 163, 12)             # legs
+HIP_LEAD_COLOR = (34, 178, 250)   # amber hip line, target frames only
 BAT = (87, 141, 176)              # #b08d57
 BALL = (0, 176, 224)              # #e0b000
 
-TORSO = [(L_SH, R_SH), (L_HIP, R_HIP), (L_SH, L_HIP), (R_SH, R_HIP), (L_SH, R_HIP), (R_SH, L_HIP)]
-ARMS = [(L_SH, L_EL), (L_EL, L_WR), (R_SH, R_EL), (R_EL, R_WR)]
-LEGS = [(L_HIP, L_KN), (L_KN, L_AN), (L_AN, L_FT), (R_HIP, R_KN), (R_KN, R_AN), (R_AN, R_FT)]
+TORSO = [("l_shoulder", "r_shoulder"), ("l_hip", "r_hip"),
+         ("l_shoulder", "l_hip"), ("r_shoulder", "r_hip"),
+         ("l_shoulder", "r_hip"), ("r_shoulder", "l_hip")]
+ARMS = [("l_shoulder", "l_elbow"), ("l_elbow", "l_wrist"), ("r_shoulder", "r_elbow"), ("r_elbow", "r_wrist")]
+LEGS = [("l_hip", "l_knee"), ("l_knee", "l_ankle"), ("l_ankle", "l_foot"),
+        ("r_hip", "r_knee"), ("r_knee", "r_ankle"), ("r_ankle", "r_foot")]
+JOINT_DOTS = ["l_shoulder", "r_shoulder", "l_elbow", "r_elbow", "l_hip", "r_hip", "l_knee", "r_knee", "l_ankle", "r_ankle"]
 
 CONTACT_FRAME = 112  # matches the viewer's data-located contact frame
+
+# Where the batter stands, in normalized frame coords, for this behind-the-plate
+# footage. Seeding selection here matters: largest-bounding-box seeds on the
+# UMPIRE (closest to camera), not the batter - verified against raw frames.
+BATTER_SEED = (0.40, 0.50)
+TRACK_GATE = 0.10  # max normalized hip jump per frame; beyond this = detection lost
+
+# Schematic hip-lead envelope (frame indices, matches the timing used for this
+# swing's phases): ramps in through the late load, peaks at contact, releases
+# on follow-through. This mirrors the JS hipLeadAngle() that used to drive the
+# 3D-projected schematic panel; here it drives a 2D shear on the real body.
+RAMP_IN, PEAK, RELEASE = 80, 110, 128
+MAX_SHIFT_PX = 26  # at 360px-wide output; scaled by crop width at render time
+
+
+def hip_lead_k(frame_idx):
+    if frame_idx < RAMP_IN or frame_idx > RELEASE:
+        return 0.0
+    if frame_idx <= PEAK:
+        return (frame_idx - RAMP_IN) / (PEAK - RAMP_IN)
+    return 1 - (frame_idx - PEAK) / (RELEASE - PEAK)
 
 
 def make_landmarker(with_masks):
@@ -50,16 +91,9 @@ def make_landmarker(with_masks):
     ))
 
 
-# Where the batter stands, in normalized frame coords, for this behind-the-plate
-# footage. Seeding selection here matters: largest-bounding-box seeds on the UMPIRE
-# (closest to camera) — verified against raw frames after the silhouette pass
-# quietly rendered the umpire's raised-arms stance instead of Emily's swing.
-BATTER_SEED = (0.40, 0.50)
-TRACK_GATE = 0.10  # max normalized hip jump per frame; beyond this = detection lost
-
-
-def hip_center(lms):
-    return ((lms[L_HIP].x + lms[R_HIP].x) / 2, (lms[L_HIP].y + lms[R_HIP].y) / 2)
+def hip_center_norm(lms):
+    return ((lms[JOINTS["l_hip"]].x + lms[JOINTS["r_hip"]].x) / 2,
+             (lms[JOINTS["l_hip"]].y + lms[JOINTS["r_hip"]].y) / 2)
 
 
 def make_tracker():
@@ -71,11 +105,11 @@ def make_tracker():
     def pick(result):
         px, py = state["prev"]
         idx = min(range(len(result.pose_landmarks)),
-                  key=lambda i: (hip_center(result.pose_landmarks[i])[0] - px) ** 2 +
-                                (hip_center(result.pose_landmarks[i])[1] - py) ** 2)
-        hx, hy = hip_center(result.pose_landmarks[idx])
+                  key=lambda i: (hip_center_norm(result.pose_landmarks[i])[0] - px) ** 2 +
+                                (hip_center_norm(result.pose_landmarks[i])[1] - py) ** 2)
+        hx, hy = hip_center_norm(result.pose_landmarks[idx])
         if ((hx - px) ** 2 + (hy - py) ** 2) ** 0.5 > TRACK_GATE:
-            return None  # nobody close enough to the tracked batter this frame
+            return None
         state["prev"] = (hx, hy)
         return idx
 
@@ -99,9 +133,6 @@ def iterate(video_path, start_s, end_s, with_masks, on_frame):
             image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             result = lm.detect_for_video(image, int(t * 1000))
             if t >= start_s and result.pose_landmarks:
-                # bi = None means the batter wasn't found this frame; callbacks
-                # reuse their previous data so frame indexes stay aligned with
-                # the source video (and with the 3D export)
                 on_frame(bgr, result, pick(result))
             idx += 1
     cap.release()
@@ -112,119 +143,192 @@ def stroke(img, p1, p2, color, w):
     cv2.line(img, p1, p2, (*color, 255), w, cv2.LINE_AA)
 
 
+def smooth_sequence(raw, window=3):
+    """Centered moving average per joint, filling gaps (None frames) by carrying
+    the last good reading forward first. Stabilizes the overlay skeleton, which
+    otherwise visibly wobbles frame to frame from real pose-detection noise."""
+    filled = []
+    last = None
+    for fr in raw:
+        if fr is not None:
+            last = fr
+        filled.append(last)
+    n = len(filled)
+    out = []
+    half = window // 2
+    for i in range(n):
+        lo, hi = max(0, i - half), min(n, i + half + 1)
+        window_frames = [f for f in filled[lo:hi] if f is not None]
+        avg = {}
+        for name in JOINTS:
+            xs = [f[name][0] for f in window_frames]
+            ys = [f[name][1] for f in window_frames]
+            avg[name] = (sum(xs) / len(xs), sum(ys) / len(ys))
+        out.append(avg)
+    return out
+
+
+def shear_mask(mask, hip_y, shift_px):
+    if abs(shift_px) < 0.5:
+        return mask
+    h, w = mask.shape[:2]
+    map_x, map_y = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
+    below = map_y > hip_y
+    map_x[below] -= shift_px
+    return cv2.remap(mask, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderValue=0)
+
+
+def draw_frame(mask_full, lms, w, h, x0, y0, x1, y1, contact_frame_here, ball_shift):
+    """lms: dict of name -> (x, y) in FULL-FRAME pixel coords. Returns the cropped
+    RGBA silhouette+overlay image (still at crop resolution, not yet resized)."""
+    crop_mask = mask_full[y0:y1, x0:x1]
+    ch, cw = crop_mask.shape[:2]
+    rgba = np.zeros((ch, cw, 4), dtype=np.uint8)
+    soft = cv2.GaussianBlur(np.clip(crop_mask, 0, 1), (5, 5), 0)
+    rgba[..., 0], rgba[..., 1], rgba[..., 2] = SIL_BGR
+    rgba[..., 3] = (soft * 255).astype(np.uint8)
+
+    def px(name):
+        return (int(lms[name][0]) - x0, int(lms[name][1]) - y0)
+
+    for a, b in TORSO:
+        stroke(rgba, px(a), px(b), AMBER, 3)
+    for a, b in LEGS:
+        stroke(rgba, px(a), px(b), GREEN, 4)
+    for a, b in ARMS:
+        stroke(rgba, px(a), px(b), WHITE, 4)
+    for name in JOINT_DOTS:
+        cv2.circle(rgba, px(name), 5, (*DARK, 255), -1, cv2.LINE_AA)
+        cv2.circle(rgba, px(name), 3, (*WHITE, 255), -1, cv2.LINE_AA)
+
+    lw, rw, le, re = px("l_wrist"), px("r_wrist"), px("l_elbow"), px("r_elbow")
+    grip = ((lw[0] + rw[0]) // 2, (lw[1] + rw[1]) // 2)
+    fx = (lw[0] - le[0]) + (rw[0] - re[0])
+    fy = (lw[1] - le[1]) + (rw[1] - re[1])
+    flen = (fx * fx + fy * fy) ** 0.5
+    if flen > 8:
+        fx, fy = fx / flen, fy / flen
+        fore_px = (((lw[0] - le[0]) ** 2 + (lw[1] - le[1]) ** 2) ** 0.5 +
+                   ((rw[0] - re[0]) ** 2 + (rw[1] - re[1]) ** 2) ** 0.5) / 2
+        blen = fore_px * 2.4
+        mid = (int(grip[0] + fx * blen * 0.45), int(grip[1] + fy * blen * 0.45))
+        tip = (int(grip[0] + fx * blen), int(grip[1] + fy * blen))
+        stroke(rgba, grip, mid, BAT, 4)
+        stroke(rgba, mid, tip, BAT, 8)
+        if contact_frame_here:
+            depth = 0.75 + ball_shift
+            bp = (int(grip[0] + fx * blen * depth), int(grip[1] + fy * blen * depth))
+            cv2.circle(rgba, bp, 11, (*BALL, 255), -1, cv2.LINE_AA)
+            cv2.circle(rgba, bp, 16, (*BALL, 255), 2, cv2.LINE_AA)
+
+    return rgba
+
+
+def save_all(frames, out_dir, prefix):
+    total = 0
+    for i, fr in enumerate(frames):
+        p = out_dir / f"{prefix}_{i:03d}.webp"
+        cv2.imwrite(str(p), fr, [cv2.IMWRITE_WEBP_QUALITY, 72])
+        total += p.stat().st_size
+    print(f"{prefix}: {len(frames)} frames, {total/1e6:.2f} MB total, avg {total/len(frames)/1024:.0f} KB")
+
+
 def main():
     video, start_s, end_s = sys.argv[1], float(sys.argv[2]), float(sys.argv[3])
     out_dir = pathlib.Path(sys.argv[4])
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # pass 1: fixed crop box from per-frame batter bounds, using percentiles so a
-    # few jittered detections can't stretch the framing
-    per_frame = []
+    # Pass 1: raw landmarks only (cheap - no segmentation), for crop bounds + smoothing
+    raw = []
 
     def collect(bgr, result, bi):
         if bi is None:
+            raw.append(None)
             return
         h, w = bgr.shape[:2]
         lms = result.pose_landmarks[bi]
-        xs = [lms[i].x * w for i in ALL]
-        ys = [lms[i].y * h for i in ALL]
-        per_frame.append((min(xs), min(ys), max(xs), max(ys)))
+        raw.append({name: (lms[idx].x * w, lms[idx].y * h) for name, idx in JOINTS.items()})
 
     iterate(video, start_s, end_s, False, collect)
-    arr = np.array(per_frame)
-    left, top = np.percentile(arr[:, 0], 5), np.percentile(arr[:, 1], 5)
-    right, bottom = np.percentile(arr[:, 2], 95), np.percentile(arr[:, 3], 95)
+    smoothed = smooth_sequence(raw, window=3)
+
+    left = np.percentile([min(fr[n][0] for n in JOINTS) for fr in smoothed], 5)
+    right = np.percentile([max(fr[n][0] for n in JOINTS) for fr in smoothed], 95)
+    top = np.percentile([min(fr[n][1] for n in JOINTS) for fr in smoothed], 5)
+    bottom = np.percentile([max(fr[n][1] for n in JOINTS) for fr in smoothed], 95)
     bw, bh = right - left, bottom - top
-    # generous top padding: the synthesized bat points up during the load
     x0 = int(max(0, left - bw * 0.20))
     x1 = int(right + bw * 0.20)
     y0 = int(max(0, top - bh * 0.30))
     y1 = int(bottom + bh * 0.08)
     print(f"crop box: x {x0}-{x1}, y {y0}-{y1}")
 
-    # pass 2: silhouette + overlay render
-    frames = []
+    # Pass 2: re-run with masks. Same deterministic tracker + same video means the
+    # None-pattern lines up frame-for-frame with pass 1, so index i here always
+    # corresponds to smoothed[i].
+    current_frames = []
+    target_frames = []
+    idx_counter = [0]
 
     def render(bgr, result, bi):
-        if bi is None:
-            if frames:
-                frames.append(frames[-1].copy())
+        i = idx_counter[0]
+        idx_counter[0] += 1
+        lms = smoothed[i] if i < len(smoothed) else None
+
+        if bi is None or lms is None:
+            if current_frames:
+                current_frames.append(current_frames[-1].copy())
+                target_frames.append(target_frames[-1].copy())
             return
+
         h, w = bgr.shape[:2]
-        lms = result.pose_landmarks[bi]
         mask = result.segmentation_masks[bi].numpy_view()
 
         # limit the mask to a padded box around the tracked batter so segmentation
         # bleed from other people on the field doesn't leave ghost blobs
-        xs = [lms[i].x * w for i in ALL]
-        ys = [lms[i].y * h for i in ALL]
-        pad_x = (max(xs) - min(xs)) * 0.35
-        pad_y = (max(ys) - min(ys)) * 0.25
+        pxs = [lms[n][0] for n in JOINTS]
+        pys = [lms[n][1] for n in JOINTS]
+        pad_x = (max(pxs) - min(pxs)) * 0.35
+        pad_y = (max(pys) - min(pys)) * 0.25
         keep = np.zeros_like(mask)
-        ky0, ky1 = int(max(0, min(ys) - pad_y)), int(min(h, max(ys) + pad_y))
-        kx0, kx1 = int(max(0, min(xs) - pad_x)), int(min(w, max(xs) + pad_x))
+        ky0, ky1 = int(max(0, min(pys) - pad_y)), int(min(h, max(pys) + pad_y))
+        kx0, kx1 = int(max(0, min(pxs) - pad_x)), int(min(w, max(pxs) + pad_x))
         keep[ky0:ky1, kx0:kx1] = 1
         mask = mask * keep
 
-        crop_mask = mask[y0:y1, x0:x1]
-        ch, cw = crop_mask.shape[:2]
-        rgba = np.zeros((ch, cw, 4), dtype=np.uint8)
-        soft = cv2.GaussianBlur(np.clip(crop_mask, 0, 1), (5, 5), 0)
-        rgba[..., 0] = SIL_BGR[0]
-        rgba[..., 1] = SIL_BGR[1]
-        rgba[..., 2] = SIL_BGR[2]
-        rgba[..., 3] = (soft * 255).astype(np.uint8)
+        is_contact = abs(i - CONTACT_FRAME) <= 3
+        current_rgba = draw_frame(mask, lms, w, h, x0, y0, x1, y1, is_contact, ball_shift=0.0)
 
-        def px(i):
-            return (int(lms[i].x * w) - x0, int(lms[i].y * h) - y0)
+        # target: shear the lower body (mask + landmarks) toward the swing direction,
+        # scaled by the hip-lead envelope; deepen the contact point along the bat
+        k = hip_lead_k(i)
+        crop_w = x1 - x0
+        shift_px_full = MAX_SHIFT_PX * (crop_w / 360.0) * k
+        # direction: same horizontal sense as the bat's swing-through extension
+        fx_dir = (lms["l_wrist"][0] - lms["l_elbow"][0]) + (lms["r_wrist"][0] - lms["r_elbow"][0])
+        shift_px_full *= 1 if fx_dir >= 0 else -1
+        hip_y = (lms["l_hip"][1] + lms["r_hip"][1]) / 2
 
-        for a, b in TORSO:
-            stroke(rgba, px(a), px(b), AMBER, 3)
-        for a, b in LEGS:
-            stroke(rgba, px(a), px(b), GREEN, 4)
-        for a, b in ARMS:
-            stroke(rgba, px(a), px(b), WHITE, 4)
-        for i in [L_SH, R_SH, L_EL, R_EL, L_HIP, R_HIP, L_KN, R_KN, L_AN, R_AN]:
-            cv2.circle(rgba, px(i), 5, (*DARK, 255), -1, cv2.LINE_AA)
-            cv2.circle(rgba, px(i), 3, (*WHITE, 255), -1, cv2.LINE_AA)
+        target_mask = shear_mask(mask, hip_y, shift_px_full)
+        target_lms = dict(lms)
+        for name in LOWER_BODY:
+            target_lms[name] = (lms[name][0] + shift_px_full, lms[name][1])
+        target_rgba = draw_frame(target_mask, target_lms, w, h, x0, y0, x1, y1, is_contact, ball_shift=0.12)
+        if k > 0.02:
+            def px(name, d=target_lms):
+                return (int(d[name][0]) - x0, int(d[name][1]) - y0)
+            stroke(target_rgba, px("l_hip"), px("r_hip"), HIP_LEAD_COLOR, 5)
 
-        # synthesized bat: grip at wrist midpoint, along the average forearm direction
-        lw, rw, le, re = px(L_WR), px(R_WR), px(L_EL), px(R_EL)
-        grip = ((lw[0] + rw[0]) // 2, (lw[1] + rw[1]) // 2)
-        fx = (lw[0] - le[0]) + (rw[0] - re[0])
-        fy = (lw[1] - le[1]) + (rw[1] - re[1])
-        flen = (fx * fx + fy * fy) ** 0.5
-        if flen > 8:
-            fx, fy = fx / flen, fy / flen
-            fore_px = (((lw[0] - le[0]) ** 2 + (lw[1] - le[1]) ** 2) ** 0.5 +
-                       ((rw[0] - re[0]) ** 2 + (rw[1] - re[1]) ** 2) ** 0.5) / 2
-            blen = fore_px * 2.4
-            mid = (int(grip[0] + fx * blen * 0.45), int(grip[1] + fy * blen * 0.45))
-            tip = (int(grip[0] + fx * blen), int(grip[1] + fy * blen))
-            stroke(rgba, grip, mid, BAT, 4)
-            stroke(rgba, mid, tip, BAT, 8)
-            if abs(len(frames) - CONTACT_FRAME) <= 3:
-                bp = (int(grip[0] + fx * blen * 0.75), int(grip[1] + fy * blen * 0.75))
-                cv2.circle(rgba, bp, 11, (*BALL, 255), -1, cv2.LINE_AA)
-                cv2.circle(rgba, bp, 16, (*BALL, 255), 2, cv2.LINE_AA)
-
-        # 360px + WebP q72: full frame rate (30fps) at a size that keeps the whole
-        # sequence embeddable on the page (~2.7MB base64 for a 6s window) - PNG at
-        # 460px ran ~10MB raw for the same window, too heavy for a mobile-friendly
-        # page (project convention, see [[softball-scouting-report-format]]).
         target_w = 360
-        scale = target_w / cw
-        rgba = cv2.resize(rgba, (target_w, int(ch * scale)), interpolation=cv2.INTER_AREA)
-        frames.append(rgba)
+        scale = target_w / current_rgba.shape[1]
+        size = (target_w, int(current_rgba.shape[0] * scale))
+        current_frames.append(cv2.resize(current_rgba, size, interpolation=cv2.INTER_AREA))
+        target_frames.append(cv2.resize(target_rgba, size, interpolation=cv2.INTER_AREA))
 
     iterate(video, start_s, end_s, True, render)
 
-    total = 0
-    for i, fr in enumerate(frames):
-        p = out_dir / f"sil_{i:03d}.webp"
-        cv2.imwrite(str(p), fr, [cv2.IMWRITE_WEBP_QUALITY, 72])
-        total += p.stat().st_size
-    print(f"{len(frames)} frames, {total/1e6:.2f} MB total, avg {total/len(frames)/1024:.0f} KB")
+    save_all(current_frames, out_dir, "sil")
+    save_all(target_frames, out_dir, "tgt")
 
 
 if __name__ == "__main__":
