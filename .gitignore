@@ -5,6 +5,12 @@ videos/*
 frames/*
 !frames/.gitkeep
 
+# Pose-estimation output (annotated videos/frames of real players) and the
+# downloaded MediaPipe model file - same policy as videos/frames above, plus
+# the model is a large binary better fetched on demand than committed.
+scripts/pose_out/
+scripts/models/
+
 # OS/editor cruft
 .DS_Store
 Thumbs.db
