@@ -207,6 +207,7 @@
       <span><span class="swatch" style="background:var(--status-good)"></span>Front leg &amp; arms at extension (her strength — identical in both panels)</span>
       <span><span class="swatch" style="background:var(--status-warning)"></span>Hips leading (target panel, schematic)</span>
       <span><span class="swatch" style="background:#e0b000; height:8px; width:8px; border-radius:50%;"></span>Contact point</span>
+      <span><span class="swatch" style="background:#b08d57"></span>Bat (synthesized from forearm direction — pose estimation doesn't track the bat itself)</span>
     </div>
     <p class="hint">If the interactive viewer doesn't load (e.g. JavaScript is disabled), the phase-by-phase breakdown below covers the same conclusions in text form.</p>
   </section>
@@ -343,30 +344,76 @@
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(w * 0.12, groundY + 8); ctx.lineTo(w * 0.88, groundY + 8); ctx.stroke();
 
+    // torso mass: filled quad between shoulders and hips so the figure reads as a
+    // body rather than a wireframe box
+    const q = ["l_shoulder", "r_shoulder", "r_hip", "l_hip"].map(n => project(joints[n], w, h));
+    ctx.fillStyle = base;
+    ctx.globalAlpha = 0.22;
+    ctx.beginPath();
+    ctx.moveTo(q[0][0], q[0][1]);
+    for (let i = 1; i < 4; i++) ctx.lineTo(q[i][0], q[i][1]);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+
     const inExtension = frame >= PHASES[2].start;
     for (const [a, b] of BONES) {
       const pa = project(joints[a], w, h), pb = project(joints[b], w, h);
-      let color = base, width = 3;
-      if (inExtension && STRENGTH_BONES.has(a + ">" + b)) { color = good; width = 4; }
-      if (opts.isTarget && a === "l_hip" && b === "r_hip" && hipLeadAngle(frame) > 0.02) { color = warn; width = 5; }
+      let color = base, width = 4;
+      if (inExtension && STRENGTH_BONES.has(a + ">" + b)) { color = good; width = 5; }
+      if (opts.isTarget && a === "l_hip" && b === "r_hip" && hipLeadAngle(frame) > 0.02) { color = warn; width = 6; }
       ctx.strokeStyle = color;
       ctx.lineWidth = width;
       ctx.lineCap = "round";
       ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.stroke();
     }
 
-    // head
+    // joint dots
+    ctx.fillStyle = base;
+    for (const name of ["l_shoulder", "r_shoulder", "l_elbow", "r_elbow", "l_hip", "r_hip", "l_knee", "r_knee", "l_ankle", "r_ankle"]) {
+      const pt = project(joints[name], w, h);
+      ctx.beginPath(); ctx.arc(pt[0], pt[1], 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // bat: pose estimation doesn't track the bat, so its direction is synthesized —
+    // grip at the wrist midpoint, pointing along the average forearm direction
+    // (elbow→wrist), which tracks a real bat's attitude closely through load, swing
+    // and finish since both hands stay on the handle
+    const j3 = joints;
+    const grip = [ (j3.l_wrist[0] + j3.r_wrist[0]) / 2, (j3.l_wrist[1] + j3.r_wrist[1]) / 2, (j3.l_wrist[2] + j3.r_wrist[2]) / 2 ];
+    let fx = (j3.l_wrist[0] - j3.l_elbow[0]) + (j3.r_wrist[0] - j3.r_elbow[0]);
+    let fy = (j3.l_wrist[1] - j3.l_elbow[1]) + (j3.r_wrist[1] - j3.r_elbow[1]);
+    let fz = (j3.l_wrist[2] - j3.l_elbow[2]) + (j3.r_wrist[2] - j3.r_elbow[2]);
+    const flen = Math.hypot(fx, fy, fz);
+    if (flen > 0.05) {
+      fx /= flen; fy /= flen; fz /= flen;
+      const knob = [grip[0] - fx * 0.05, grip[1] - fy * 0.05, grip[2] - fz * 0.05];
+      const mid  = [grip[0] + fx * 0.3,  grip[1] + fy * 0.3,  grip[2] + fz * 0.3];
+      const tip  = [grip[0] + fx * 0.65, grip[1] + fy * 0.65, grip[2] + fz * 0.65];
+      const pk = project(knob, w, h), pm = project(mid, w, h), pt2 = project(tip, w, h);
+      ctx.strokeStyle = "#b08d57";
+      ctx.lineCap = "round";
+      ctx.lineWidth = 4;                      // handle
+      ctx.beginPath(); ctx.moveTo(pk[0], pk[1]); ctx.lineTo(pm[0], pm[1]); ctx.stroke();
+      ctx.lineWidth = 7;                      // barrel
+      ctx.beginPath(); ctx.moveTo(pm[0], pm[1]); ctx.lineTo(pt2[0], pt2[1]); ctx.stroke();
+    }
+
+    // head: filled circle with a small helmet-brim arc, sitting just above the neck
     const ls = project(joints.l_shoulder, w, h), rs = project(joints.r_shoulder, w, h);
     const nose = project(joints.nose, w, h);
     const neck = [(ls[0] + rs[0]) / 2, (ls[1] + rs[1]) / 2];
-    ctx.strokeStyle = base; ctx.lineWidth = 3;
+    ctx.strokeStyle = base; ctx.lineWidth = 4;
     ctx.beginPath(); ctx.moveTo(neck[0], neck[1]); ctx.lineTo(nose[0], nose[1]); ctx.stroke();
-    ctx.beginPath(); ctx.arc(nose[0], nose[1] - 6, 10, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = base;
+    ctx.beginPath(); ctx.arc(nose[0], nose[1] - 7, 12, 0, Math.PI * 2); ctx.fill();
 
-    // contact-point marker around the contact frame
+    // contact-point marker around the contact frame — placed out at the barrel's
+    // sweet spot along the synthesized bat, not at the hands
     if (Math.abs(frame - CONTACT_FRAME) <= 3) {
       const j = joints;
-      let ball = [(j.l_wrist[0] + j.r_wrist[0]) / 2, (j.l_wrist[1] + j.r_wrist[1]) / 2, (j.l_wrist[2] + j.r_wrist[2]) / 2];
+      let ball = (flen > 0.05)
+        ? [grip[0] + fx * 0.5, grip[1] + fy * 0.5, grip[2] + fz * 0.5]
+        : [(j.l_wrist[0] + j.r_wrist[0]) / 2, (j.l_wrist[1] + j.r_wrist[1]) / 2, (j.l_wrist[2] + j.r_wrist[2]) / 2];
       if (opts.isTarget) {
         // "let it travel": shift the met ball from the front foot back toward the rear foot
         const front = j.l_ankle, back = j.r_ankle;
