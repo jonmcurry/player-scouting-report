@@ -196,8 +196,6 @@
 <button class="theme-toggle" id="themeToggle">🌓 Toggle theme</button>
 <div class="wrap">
 
-  <span class="template-banner">AWAITING VIDEO — no game at-bats filmed yet for this roster. As games get filmed, fill in each player's Game Log + checklist scores in her individual report (linked below) and this page updates automatically.</span>
-
   <header>
     <h1>Team Swing Overview — Latham Lady Bison White 10U</h1>
     <div class="meta">
@@ -234,11 +232,11 @@
         <tbody>
           <tr>
             <td class="player-name">#10 Emily C</td>
-            <td class="wrap-cell">Awaiting video</td>
-            <td class="wrap-cell">Awaiting video</td>
-            <td class="wrap-cell">Awaiting video</td>
-            <td class="wrap-cell">Awaiting video</td>
-            <td><a class="report-link" href="emily_c.html">View report →</a></td>
+            <td class="wrap-cell">Extension &amp; follow-through — full arm extension with a firm front leg on every clean-contact swing seen</td>
+            <td class="wrap-cell">Fouls off pitches she squares up mechanically (likely timing/contact-point, not swing shape)</td>
+            <td class="wrap-cell">Randomized-timing front toss</td>
+            <td class="wrap-cell">Sierra Romero — let the ball travel deeper before releasing the barrel</td>
+            <td><a class="report-link" href="emily_c.html">View report →</a><div class="review-rollup none" title="0 of 11 scored checkpoints are coach-confirmed; the rest are still AI-drafted">0/11 confirmed</div></td>
           </tr>
         </tbody>
       </table>
@@ -273,10 +271,10 @@
           </tr>
         </thead>
         <tbody>
-          <tr><td class="player-name">#10 Emily C</td><td><span class="pill pending" title="Awaiting video">–</span></td><td><span class="pill pending" title="Awaiting video">–</span></td><td><span class="pill pending" title="Awaiting video">–</span></td><td><span class="pill pending" title="Awaiting video">–</span></td><td><span class="pill pending" title="Awaiting video">–</span></td><td><span class="pill pending" title="Awaiting video">–</span></td><td><span class="pill pending" title="Awaiting video">–</span></td><td><span class="pill pending" title="Awaiting video">–</span></td><td><span class="pill pending" title="Awaiting video">–</span></td><td><span class="pill pending" title="Awaiting video">–</span></td><td><span class="pill pending" title="Awaiting video">–</span></td></tr>
+          <tr><td class="player-name">#10 Emily C</td><td><span class="pill" data-score="2" title="Developing">2</span></td><td><span class="pill" data-score="2" title="Developing">2</span></td><td><span class="pill" data-score="2" title="Developing">2</span></td><td><span class="pill" data-score="2" title="Developing">2</span></td><td><span class="pill" data-score="2" title="Developing">2</span></td><td><span class="pill" data-score="2" title="Developing">2</span></td><td><span class="pill" data-score="2" title="Developing">2</span></td><td><span class="pill" data-score="3" title="Solid">3</span></td><td><span class="pill" data-score="2" title="Developing">2</span></td><td><span class="pill" data-score="3" title="Solid">3</span></td><td><span class="pill" data-score="2" title="Developing">2</span></td></tr>
         </tbody>
         <tfoot>
-          <tr class="avg-row"><td>Team avg</td><td><span class="pill pending avg" title="Awaiting video">–</span></td><td><span class="pill pending avg" title="Awaiting video">–</span></td><td><span class="pill pending avg" title="Awaiting video">–</span></td><td><span class="pill pending avg" title="Awaiting video">–</span></td><td><span class="pill pending avg" title="Awaiting video">–</span></td><td><span class="pill pending avg" title="Awaiting video">–</span></td><td><span class="pill pending avg" title="Awaiting video">–</span></td><td><span class="pill pending avg" title="Awaiting video">–</span></td><td><span class="pill pending avg" title="Awaiting video">–</span></td><td><span class="pill pending avg" title="Awaiting video">–</span></td><td><span class="pill pending avg" title="Awaiting video">–</span></td></tr>
+          <tr class="avg-row"><td>Team avg</td><td><span class="pill avg" data-score="2" title="2.0">2.0</span></td><td><span class="pill avg" data-score="2" title="2.0">2.0</span></td><td><span class="pill avg" data-score="2" title="2.0">2.0</span></td><td><span class="pill avg" data-score="2" title="2.0">2.0</span></td><td><span class="pill avg" data-score="2" title="2.0">2.0</span></td><td><span class="pill avg" data-score="2" title="2.0">2.0</span></td><td><span class="pill avg" data-score="2" title="2.0">2.0</span></td><td><span class="pill avg" data-score="3" title="3.0">3.0</span></td><td><span class="pill avg" data-score="2" title="2.0">2.0</span></td><td><span class="pill avg" data-score="3" title="3.0">3.0</span></td><td><span class="pill avg" data-score="2" title="2.0">2.0</span></td></tr>
         </tfoot>
       </table>
     </div>
@@ -286,7 +284,7 @@
     <h2>Team-Wide Patterns</h2>
     <p class="hint" style="margin-top:0;">Auto-detected from the checklist scores of the players currently shown (updates with the search box above) — a checkpoint is flagged when the team average dips below 2.0, since that can't happen without at least one player needing work there.</p>
     <ul class="patterns" id="detectedPatterns">
-      <li>No scores entered yet — once a few players are scored, shared weak points will show up here automatically.</li>
+      <li>No shared weak points detected among the players currently shown — team averages are all at or above 2.0.</li>
     </ul>
     <p class="hint" style="margin-top:14px;"><b>Coach notes</b> (add your own observations the numbers alone won't capture):</p>
     <ul class="patterns" id="patternsList">
@@ -316,7 +314,7 @@
   // report (i.e. coach-confirmed, not just AI-drafted) — copy this over at the same time as
   // her scores so the team view shows how much of her report is still unverified AI output.
   const PLAYERS = [
-    { number: 10, name: "Emily C", strength: "Awaiting video", issue: "Awaiting video", drill: "Awaiting video", comp: "Awaiting video", report: "emily_c.html", scores: [null,null,null,null,null,null,null,null,null,null,null], reviewedCount: 0 },
+    { number: 10, name: "Emily C", strength: "Extension & follow-through — full arm extension with a firm front leg on every clean-contact swing seen", issue: "Fouls off pitches she squares up mechanically (likely timing/contact-point, not swing shape)", drill: "Randomized-timing front toss", comp: "Sierra Romero — let the ball travel deeper before releasing the barrel", report: "emily_c.html", scores: [2,2,2,2,2,2,2,3,2,3,2], reviewedCount: 0 },
   ];
 
   const meaning = { 1: "Needs work", 2: "Developing", 3: "Solid" };
