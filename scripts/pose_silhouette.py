@@ -168,6 +168,45 @@ def smooth_sequence(raw, window=3):
     return out
 
 
+def clean_mask(mask, seed_xy, thresh=0.3):
+    """Isolate the blob that actually contains her body and smooth its boundary.
+
+    Raw segmentation masks carry two visible defects at this crop scale: stray
+    blobs (segmentation bleed from gear, shadows, ground) connected to her real
+    silhouette through a thin, low-confidence bridge, and a blocky/jagged edge
+    from the model's internal mask resolution being upsampled to frame size.
+
+    "Largest connected component" isn't enough when the stray blob is joined to
+    the real body by a thin bridge - both end up in the same component. Instead:
+    erode first (breaks thin bridges apart), pick whichever resulting piece
+    contains `seed_xy` (a landmark pixel known to sit on her real body, e.g. hip
+    center - not "biggest area", which can still be the wrong blob), then dilate
+    that piece back out to restore the extent the erosion ate away, and use it
+    to mask the original (non-eroded) soft alpha so real edges aren't clipped.
+    """
+    orig_shape = mask.shape
+    flat = mask.reshape(mask.shape[0], mask.shape[1])
+    binary = (flat > thresh).astype(np.uint8)
+    kernel = np.ones((9, 9), np.uint8)
+    eroded = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+    n_labels, labels = cv2.connectedComponents(eroded, connectivity=8)[:2]
+    sx, sy = int(seed_xy[0]), int(seed_xy[1])
+    sy = max(0, min(labels.shape[0] - 1, sy))
+    sx = max(0, min(labels.shape[1] - 1, sx))
+    seed_label = labels[sy, sx]
+    if seed_label == 0:
+        # erosion ate the seed point itself (rare) - fall back to nearest labeled
+        # pixel to the seed within a small radius, else give up and keep the mask
+        ys, xs = np.nonzero(labels)
+        if len(ys) == 0:
+            return mask
+        d2 = (ys - sy) ** 2 + (xs - sx) ** 2
+        seed_label = labels[ys[np.argmin(d2)], xs[np.argmin(d2)]]
+    piece = (labels == seed_label).astype(np.uint8)
+    restored = cv2.morphologyEx(piece, cv2.MORPH_DILATE, kernel).astype(np.float32)
+    return (flat * restored).reshape(orig_shape)
+
+
 def shear_mask(mask, hip_y, shift_px):
     if abs(shift_px) < 0.5:
         return mask
@@ -184,7 +223,7 @@ def draw_frame(mask_full, lms, w, h, x0, y0, x1, y1, contact_frame_here, ball_sh
     crop_mask = mask_full[y0:y1, x0:x1]
     ch, cw = crop_mask.shape[:2]
     rgba = np.zeros((ch, cw, 4), dtype=np.uint8)
-    soft = cv2.GaussianBlur(np.clip(crop_mask, 0, 1), (5, 5), 0)
+    soft = cv2.GaussianBlur(np.clip(crop_mask, 0, 1), (9, 9), 0)
     rgba[..., 0], rgba[..., 1], rgba[..., 2] = SIL_BGR
     rgba[..., 3] = (soft * 255).astype(np.uint8)
 
@@ -288,13 +327,18 @@ def main():
         # bleed from other people on the field doesn't leave ghost blobs
         pxs = [lms[n][0] for n in JOINTS]
         pys = [lms[n][1] for n in JOINTS]
-        pad_x = (max(pxs) - min(pxs)) * 0.35
-        pad_y = (max(pys) - min(pys)) * 0.25
+        # Tight on purpose: the catcher often kneels close enough to the batter that
+        # generous padding here pulls her real body into "keep" too (verified against
+        # a raw frame - what looked like a stray mask speck was actually the
+        # catcher). This must exclude other real kids, not just look clean.
+        pad_x = (max(pxs) - min(pxs)) * 0.12
+        pad_y = (max(pys) - min(pys)) * 0.12
         keep = np.zeros_like(mask)
         ky0, ky1 = int(max(0, min(pys) - pad_y)), int(min(h, max(pys) + pad_y))
         kx0, kx1 = int(max(0, min(pxs) - pad_x)), int(min(w, max(pxs) + pad_x))
         keep[ky0:ky1, kx0:kx1] = 1
-        mask = mask * keep
+        hip_seed = ((lms["l_hip"][0] + lms["r_hip"][0]) / 2, (lms["l_hip"][1] + lms["r_hip"][1]) / 2)
+        mask = clean_mask(mask * keep, hip_seed)
 
         is_contact = abs(i - CONTACT_FRAME) <= 3
         current_rgba = draw_frame(mask, lms, w, h, x0, y0, x1, y1, is_contact, ball_shift=0.0)
