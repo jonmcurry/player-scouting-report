@@ -1,7 +1,8 @@
-# 10U Softball Swing Scouting Reports — Bethlehem Boom 10U
+# Softball/Baseball Swing Scouting Reports
 
-Video-based swing analysis for the Bethlehem Boom 10U roster: extract key frames from phone
-video, diagnose mechanical issues against a standard checklist, and produce per-player +
+Video-based swing analysis, built to support multiple teams (currently two, more planned —
+this is being developed as a general tool, not a one-team script). Extract key frames from
+phone video, diagnose mechanical issues against a standard checklist, and produce per-player +
 team-level reports.
 
 **Filming source:** live game at-bats only (no tee/BP/practice reps) — game swings are more
@@ -9,21 +10,22 @@ indicative of a player's real at-bats than a controlled rep, so every player's c
 be built from a running log of her actual at-bats across the season (see each report's Game Log
 section), not a single staged swing.
 
-**Coaches:** Bill Lynch, Doron Bruns, Kathleen Turner, Katie Melnikoff, Kayla Lupi
+## Teams
 
-**Roster:** #1 Maggie M · #2 Ellie T · #3 Clare C · #5 Felicia A · #10 Anya O · #12 Payton M ·
-#16 Lucy L · #23 Harper B · #25 Emily Y · #44 Chloe R · #66 Madison W
+| Team | Coaches | Roster | Live team summary |
+|---|---|---|---|
+| **Bethlehem Boom 10U** | Bill Lynch, Doron Bruns, Kathleen Turner, Katie Melnikoff, Kayla Lupi | #1 Maggie M · #2 Ellie T · #3 Clare C · #5 Felicia A · #10 Anya O · #12 Payton M · #16 Lucy L · #23 Harper B · #25 Emily Y · #44 Chloe R · #66 Madison W | [team_summary.html](https://jonmcurry.github.io/bethlehem-boom-10u-scouting/reports/team_summary.html) |
+| **Latham Lady Bison White 10U** | TBD | #10 Emily C | [team_summary.html](https://jonmcurry.github.io/bethlehem-boom-10u-scouting/reports/latham-lady-bison-white-10u/team_summary.html) |
 
 ## Live site
 
 Reports are hosted on GitHub Pages (public — no video/photos are hosted, only text: names,
 jersey numbers, coach names, and written swing notes):
 
-- **Team summary:** https://jonmcurry.github.io/bethlehem-boom-10u-scouting/reports/team_summary.html
 - **Repo:** https://github.com/jonmcurry/bethlehem-boom-10u-scouting
 
-Share the team summary link with coaches/parents — every player's report is one tap away from
-there. To publish an update after editing a report locally:
+Share a team's summary link with its coaches/parents — every player's report is one tap away
+from there. To publish an update after editing a report locally:
 ```powershell
 git add -A
 git commit -m "describe what changed"
@@ -36,13 +38,14 @@ are gitignored — real footage never leaves your machine.
 
 - `videos/` — drop raw game clips here (`.mp4`/`.mov` from your Pixel), one file per at-bat. Suggested naming: `<player_slug>_<YYYYMMDD>_<opponent>_ab<N>.mp4`, e.g. `videos/maggie_m_20260802_eagles_ab1.mp4` — the date/opponent/AB# should match a row you add to that player's Game Log.
 - `frames/<player_slug>/<clip_name>/` — extracted stills + a contact-sheet thumbnail grid, generated per clip (nested per at-bat so multiple games don't overwrite each other).
-- `reports/` — filled-in scouting reports, one per player, plus a team side-by-side summary. Reports are self-contained, interactive HTML — open them straight in a browser (double-click, no server needed). Each has a light/dark toggle in the top corner.
-  - `team_summary.html` — the real team overview for Bethlehem Boom 10U. Currently shows every player as "awaiting video" — updates automatically once individual reports are filled in.
-  - `<player_slug>.html` (e.g. `maggie_m.html`) — one per roster player, currently placeholders awaiting video. Slugs are first-name_last-initial, matching the roster above. Each has a **Game Log** section (one row per at-bat filmed) above the mechanics checklist.
-  - `_individual_report_template.html` / `_team_comparison_template.html` — blank templates, in case you add a player later or start a new season/team.
-  - `example_maddie.html` / `example_ava.html` / `example_team_summary.html` — filled-in mock examples (fictional players) showing what a fully-scored report looks like. **Maddie has 4 at-bats logged** (past the evidence-discipline threshold — her report shows the "resolved" state, no warning banner). **Ava has only 2 at-bats logged on purpose** — hers is the one place in this project that actually shows the "⚠ early read" warning banner triggered, since every real player currently has zero at-bats (banner correctly absent — nothing to warn about yet) and Maddie's already past the threshold. If you want to *see* what that warning looks like, open Ava's report.
+- `reports/` — filled-in scouting reports. Reports are self-contained, interactive HTML — open them straight in a browser (double-click, no server needed). Each has a light/dark toggle in the top corner.
+  - **Bethlehem Boom 10U's files live at the `reports/` root** (`team_summary.html`, `maggie_m.html`, etc.) — this predates the multi-team structure and its URL is already shared with coaches, so it stays put rather than moving and breaking that link.
+  - **Every other team gets its own subfolder**, named after the team (e.g. `reports/latham-lady-bison-white-10u/`), containing that team's own `team_summary.html` + player pages. This is the pattern going forward for any new team.
+  - `_individual_report_template.html` / `_team_comparison_template.html` — the shared blank templates, at the `reports/` root, used by every team regardless of which folder its generated files land in.
+  - `example_maddie.html` / `example_ava.html` / `example_team_summary.html` — filled-in mock examples (fictional players, fictional "Thunder 10U" team), also shared/at the root since they're not real-team-specific. **Maddie has 4 at-bats logged** (past the evidence-discipline threshold — her report shows the "resolved" state, no warning banner). **Ava has only 2 at-bats logged on purpose** — hers is the one place in this project that actually shows the "⚠ early read" warning banner triggered, since every real player currently has zero at-bats (banner correctly absent — nothing to warn about yet) and Maddie's already past the threshold. If you want to *see* what that warning looks like, open Ava's report.
 - `scripts/extract_frames.ps1` — pulls frames + a contact sheet out of a video.
-- `scripts/generate_roster_reports.ps1` — one-time generator that created the 11 placeholder player pages + wired up `team_summary.html`. Re-run it if you add a new player to the `$Players` list inside; it won't touch existing players' files.
+- `scripts/generate_team_reports.ps1` — the shared generator engine: takes `-TeamName`, `-Coaches`, `-Players`, `-OutDir` and produces a placeholder ("awaiting video") page per player + a wired-up `team_summary.html` from the two templates above. Not meant to be run directly — see below.
+  - `scripts/teams/*.ps1` — one thin config script per team (roster + coaches + output folder), each just calling `generate_team_reports.ps1` with that team's data. **To add a new team:** copy `scripts/teams/latham_lady_bison_white_10u.ps1`, change the team name/coaches/roster/`-OutDir` (use the team's own subfolder — see Folder layout above), and run it. **To add a player to an existing team**, add them to that team's config script and re-run it — it only writes files for players still listed, so it won't touch anyone already filled in with real data.
 
 ## Filming at games
 
@@ -53,6 +56,9 @@ are gitignored — real footage never leaves your machine.
 - Heads up: filming from behind a public backstop will incidentally catch other teams' players in frame — worth keeping in mind if clips ever get shared beyond your own coaching use.
 
 ## Workflow
+
+Shown below using Bethlehem Boom's Maggie M as the example — the steps are identical for any
+team/player, just working out of that team's own subfolder (e.g. `reports/latham-lady-bison-white-10u/emily_c.html` instead of `reports/maggie_m.html`, and that team's `team_summary.html` in step 7).
 
 1. Film an at-bat (see filming tips above).
 2. Copy the clip into `videos/`, e.g. `videos/maggie_m_20260802_eagles_ab1.mp4`.

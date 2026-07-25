@@ -184,6 +184,10 @@
   ul.patterns li { margin-bottom: 8px; color: var(--text-secondary); }
   ul.patterns b { color: var(--text-primary); }
 
+  .roster-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px 16px; }
+  .roster-list li { font-size: 13.5px; color: var(--text-secondary); }
+  .roster-list b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
   .links-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
   .links-list li { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
 </style>
@@ -197,16 +201,24 @@
   <header>
     <h1>Team Swing Overview — {{TEAM_NAME}}</h1>
     <div class="meta">
-      <span><b>Date:</b> {{DATE}}</span>
+      <span><b>Coaches:</b> {{coach names, comma separated}}</span>
       <span><b>Purpose:</b> Quick side-by-side for coaches/parents. Full detail lives in each player's individual report.</span>
     </div>
   </header>
 
   <section>
+    <h2>Roster</h2>
+    <ul class="roster-list" id="rosterList">
+      <li><b>#{{N}}</b> {{Player 1 name}}</li>
+      <li><b>#{{N}}</b> {{Player 2 name}}</li>
+    </ul>
+  </section>
+
+  <section>
     <h2>Side-by-Side Summary</h2>
     <div class="toolbar">
       <input class="search" id="search" type="text" placeholder="Filter by player name…">
-      <span class="hint">Click a column header to sort. Click a player row to jump to their full report.</span>
+      <span class="hint">Click a column header to sort. Click "View report" to jump to a player's full page.</span>
     </div>
     <div class="table-scroll">
       <table id="summaryTable">
@@ -222,7 +234,7 @@
         </thead>
         <tbody>
           <tr>
-            <td class="player-name">{{Player 1 name}}</td>
+            <td class="player-name">#{{N}} {{Player 1 name}}</td>
             <td class="wrap-cell">{{biggest strength}}</td>
             <td class="wrap-cell">{{primary issue}}</td>
             <td class="wrap-cell">{{fix focus / drill}}</td>
@@ -230,7 +242,7 @@
             <td><span class="report-link disabled">No report yet</span><div class="review-rollup none" title="0 of 11 scored checkpoints are coach-confirmed; the rest are still AI-drafted">0/11 confirmed</div></td>
           </tr>
           <tr>
-            <td class="player-name">{{Player 2 name}}</td>
+            <td class="player-name">#{{N}} {{Player 2 name}}</td>
             <td class="wrap-cell">{{biggest strength}}</td>
             <td class="wrap-cell">{{primary issue}}</td>
             <td class="wrap-cell">{{fix focus / drill}}</td>
@@ -248,7 +260,8 @@
       <span><span class="dot" style="background:var(--status-critical)"></span>1 — Needs work</span>
       <span><span class="dot" style="background:var(--status-warning)"></span>2 — Developing</span>
       <span><span class="dot" style="background:var(--status-good)"></span>3 — Solid</span>
-      <span>Bottom row: live team average for the players currently shown</span>
+      <span><span class="dot" style="background:var(--gridline)"></span>– Awaiting video</span>
+      <span>Bottom row: live team average for the players currently shown (scored players only)</span>
     </div>
     <div class="table-scroll">
       <table id="heatTable">
@@ -295,8 +308,8 @@
   <section>
     <h2>Individual Report Links</h2>
     <ul class="links-list" id="linksList">
-          <li>{{Player 1 name}} <span class="hint">(no individual report file yet)</span></li>
-          <li>{{Player 2 name}} <span class="hint">(no individual report file yet)</span></li>
+          <li>#{{N}} {{Player 1 name}} <span class="hint">(no individual report file yet)</span></li>
+          <li>#{{N}} {{Player 2 name}} <span class="hint">(no individual report file yet)</span></li>
     </ul>
   </section>
 
@@ -308,10 +321,15 @@
     "Bat Path", "Contact Pt.", "Extension", "Head/Eyes", "Follow-Through", "Swing Dec."
   ];
 
-  // Edit this array: one object per player. scores must be in the same order as CHECKPOINTS above.
-  // Set report to the filename of that player's individual report (e.g. "emma.html"), or null if not written yet.
+  // scores: null = awaiting video. Once a player's individual report (linked via `report`)
+  // is filled in from real film, copy her CHECKLIST scores here in the same order as CHECKPOINTS,
+  // and fill in strength/issue/drill/comp with real findings.
+  // reviewedCount: how many of her SCORED checkpoints have reviewedBy set in her individual
+  // report (i.e. coach-confirmed, not just AI-drafted) — copy this over at the same time as
+  // her scores so the team view shows how much of her report is still unverified AI output.
   const PLAYERS = [
     {
+      number: "{{N}}",
       name: "{{Player 1 name}}",
       strength: "{{biggest strength}}",
       issue: "{{primary issue}}",
@@ -322,6 +340,7 @@
       reviewedCount: 0,
     },
     {
+      number: "{{N}}",
       name: "{{Player 2 name}}",
       strength: "{{biggest strength}}",
       issue: "{{primary issue}}",
@@ -352,6 +371,16 @@
     return `<div class="review-rollup ${cls}" title="${reviewed} of ${scoredCount} scored checkpoints are coach-confirmed; the rest are still AI-drafted">${reviewed}/${scoredCount} confirmed</div>`;
   }
 
+  function renderRoster() {
+    const ul = document.getElementById("rosterList");
+    ul.innerHTML = "";
+    [...PLAYERS].sort((a, b) => a.number - b.number).forEach(p => {
+      const li = document.createElement("li");
+      li.innerHTML = `<b>#${p.number}</b> ${p.name}`;
+      ul.appendChild(li);
+    });
+  }
+
   function renderSummary(list) {
     const tbody = document.querySelector("#summaryTable tbody");
     tbody.innerHTML = "";
@@ -361,7 +390,7 @@
         ? `<a class="report-link" href="${p.report}">View report →</a>`
         : `<span class="report-link disabled">No report yet</span>`;
       tr.innerHTML = `
-        <td class="player-name">${p.name}</td>
+        <td class="player-name">#${p.number} ${p.name}</td>
         <td class="wrap-cell">${p.strength}</td>
         <td class="wrap-cell">${p.issue}</td>
         <td class="wrap-cell">${p.drill}</td>
@@ -388,7 +417,7 @@
     tbody.innerHTML = "";
     list.forEach(p => {
       const tr = document.createElement("tr");
-      let cells = `<td class="player-name">${p.name}</td>`;
+      let cells = `<td class="player-name">#${p.number} ${p.name}</td>`;
       p.scores.forEach(s => cells += `<td>${pill(s)}</td>`);
       tr.innerHTML = cells;
       tbody.appendChild(tr);
@@ -415,15 +444,15 @@
     list.forEach(p => {
       const li = document.createElement("li");
       li.innerHTML = p.report
-        ? `<a class="report-link" href="${p.report}">${p.name}</a>`
-        : `${p.name} <span class="hint">(no individual report file yet)</span>`;
+        ? `<a class="report-link" href="${p.report}">#${p.number} ${p.name}</a>`
+        : `#${p.number} ${p.name} <span class="hint">(no individual report file yet)</span>`;
       ul.appendChild(li);
     });
   }
 
   function currentFiltered() {
     const q = document.getElementById("search").value.trim().toLowerCase();
-    return PLAYERS.filter(p => p.name.toLowerCase().includes(q));
+    return PLAYERS.filter(p => p.name.toLowerCase().includes(q) || String(p.number).includes(q));
   }
 
   // A checkpoint is flagged when the team average (of players currently shown who have a score
@@ -463,6 +492,9 @@
       list = [...list].sort((a, b) => {
         const va = sortState.key === "name" ? a.name : a.scores[sortState.keyIndex];
         const vb = sortState.key === "name" ? b.name : b.scores[sortState.keyIndex];
+        if (va === null && vb === null) return 0;
+        if (va === null) return 1;
+        if (vb === null) return -1;
         if (va < vb) return -1 * sortState.dir;
         if (va > vb) return 1 * sortState.dir;
         return 0;
@@ -492,6 +524,7 @@
     });
   });
 
+  renderRoster();
   renderHeatHeader();
   renderAll();
 
