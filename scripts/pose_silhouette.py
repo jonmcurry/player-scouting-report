@@ -389,51 +389,54 @@ def main():
     out_dir = pathlib.Path(sys.argv[4])
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Single pass: landmarks AND the cleaned mask come from the exact same
-    # detection result, so they can never disagree about who's being shown (see
-    # module docstring - this replaced a two-pass version where they sometimes did).
-    # The mask is cleaned here (reach envelope + seed-based component selection)
-    # using this frame's own raw landmarks; only the OVERLAY drawing uses the
-    # temporally-smoothed landmarks, computed afterward from the same raw sequence.
+    # Single pass: landmarks AND the raw mask come from the exact same detection
+    # result, so they can never disagree about who's being shown (see module
+    # docstring - this replaced a two-pass version where they sometimes did).
+    # The mask itself is stored RAW here, deliberately not shaped/cleaned yet -
+    # see below for why.
     raw = []
-    cleaned_masks = []
+    raw_masks = []
 
     def collect(bgr, result, bi):
         if bi is None:
             raw.append(None)
-            cleaned_masks.append(None)
+            raw_masks.append(None)
             return
         h, w = bgr.shape[:2]
         lms_raw = result.pose_landmarks[bi]
         lms = {name: (lms_raw[idx].x * w, lms_raw[idx].y * h) for name, idx in JOINTS.items()}
         raw.append(lms)
-
         mask_flat = result.segmentation_masks[bi].numpy_view().reshape(h, w).astype(np.float32)
-        reach = build_reach_mask(lms, h, w).astype(np.float32)
-        hip_seed = ((lms["l_hip"][0] + lms["r_hip"][0]) / 2, (lms["l_hip"][1] + lms["r_hip"][1]) / 2)
-        # Identity cleanup runs on the REAL segmentation data only - erosion (inside
-        # clean_mask) can't tell "her own thin arm" from "a stray blob" by geometry
-        # alone, so a synthetic fill applied before this step gets eroded away right
-        # alongside anything it was meant to patch (verified: this happened).
-        cleaned = clean_mask(mask_flat * reach, hip_seed)
-        # The arm-dropout fill (see build_fill_mask) is layered on AFTER cleanup,
-        # skipping erosion entirely, since it's a visual patch for her own already-
-        # identity-confirmed body, not new data that needs re-checking.
-        fill = build_fill_mask(lms, h, w).astype(np.float32)
-        combined = np.maximum(cleaned, fill * 0.9 * reach)
-        # Belt and suspenders: bridge any hairline gap the chest-anchored fill
-        # still leaves (e.g. from the soft/blurred edge of the real mask not
-        # quite reaching the anchor point) with a small morphological close,
-        # then confirm - not assume - that the result is a single connected
-        # piece before ever writing a frame out (see the validation pass in
-        # __main__ for the full-sequence version of this same check).
-        closed = cv2.morphologyEx((combined > 0.5).astype(np.uint8),
-                                   cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
-        combined = np.maximum(combined, closed.astype(np.float32) * combined.max())
-        cleaned_masks.append((combined * 255).astype(np.uint8))
+        raw_masks.append((mask_flat * 255).astype(np.uint8))
 
     iterate(video, start_s, end_s, True, collect)
     smoothed = smooth_sequence(raw, window=3)
+
+    def shape_mask(mask_flat, lms):
+        """Reach envelope + seed-based identity cleanup + arm-dropout fill, all
+        built from the SAME landmark set the caller passes in.
+
+        This used to run inside collect(), built from that frame's raw,
+        single-frame landmarks - while the skeleton drawn on top of the result
+        used the temporally-smoothed landmarks instead. During fast motion (a
+        real bat swing, arm mid-motion) those two disagree: the mask envelope
+        followed the instantaneous position, the skeleton followed a 3-frame
+        average, and the two visibly parted ways exactly during the fastest
+        motion - reported by the user as "not aligned," and correctly so. Both
+        the mask shaping and the skeleton must be driven by the identical
+        landmark data, whichever version (raw or smoothed) that is - so this
+        now runs in the second pass, called with the smoothed landmarks, same
+        as the skeleton drawing.
+        """
+        h, w = mask_flat.shape[:2]
+        reach = build_reach_mask(lms, h, w).astype(np.float32)
+        hip_seed = ((lms["l_hip"][0] + lms["r_hip"][0]) / 2, (lms["l_hip"][1] + lms["r_hip"][1]) / 2)
+        cleaned = clean_mask(mask_flat * reach, hip_seed)
+        fill = build_fill_mask(lms, h, w).astype(np.float32)
+        combined = np.maximum(cleaned, fill * 0.9 * reach)
+        closed = cv2.morphologyEx((combined > 0.5).astype(np.uint8),
+                                   cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
+        return np.maximum(combined, closed.astype(np.float32) * combined.max())
 
     # Full min/max, not a percentile: the temporal-smoothing pass above already
     # damps single-frame jitter, so there's no noisy outlier left to reject here -
@@ -462,17 +465,20 @@ def main():
     target_frames = []
 
     for i in range(len(smoothed)):
-        mask = cleaned_masks[i]
+        raw_mask = raw_masks[i]
         lms = smoothed[i]
 
-        if mask is None:
+        if raw_mask is None:
             if current_frames:
                 current_frames.append(current_frames[-1].copy())
                 target_frames.append(target_frames[-1].copy())
             continue
 
-        h, w = mask.shape[:2]
-        mask_f = mask.astype(np.float32) / 255.0
+        h, w = raw_mask.shape[:2]
+        # Shaped here, not in collect() above, using the SAME smoothed landmarks
+        # the skeleton below is drawn from - see shape_mask()'s docstring for why
+        # that consistency is what this whole restructure was for.
+        mask_f = shape_mask(raw_mask.astype(np.float32) / 255.0, lms)
 
         is_contact = abs(i - CONTACT_FRAME) <= 3
         current_rgba = draw_frame(mask_f, lms, w, h, x0, y0, x1, y1, is_contact, ball_shift=0.0)
