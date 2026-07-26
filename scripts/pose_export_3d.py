@@ -13,6 +13,7 @@ import sys
 import json
 import pathlib
 
+import numpy as np
 import cv2
 import mediapipe as mp
 from mediapipe.tasks import python as mp_python
@@ -106,14 +107,40 @@ def main():
 
     cap.release()
 
-    # 3-frame moving average to damp per-frame detection jitter before display
+    # Savitzky-Golay filter per joint per axis, not a plain moving-average: a
+    # flat 3-frame average left real, visible jitter in - measured directly
+    # against the exported data, frame-to-frame joint movement during frames
+    # she's just standing in the load (not really moving) was 3-25cm, similar
+    # in size to her real wrist movement DURING the swing itself. That's noise
+    # in MediaPipe's monocular 3D depth estimate, not real motion, and it's
+    # what read as "jerky, doesn't flow like a real swing" once rendered as
+    # solid capsules instead of a soft blurred silhouette (which had been
+    # hiding it). A Savitzky-Golay fit (locally fits a polynomial per window,
+    # here quadratic) removes noise like this without the lag/over-blur a
+    # plain box average gets at this window size, so the real swing keeps its
+    # snap while the noise floor drops out.
+    # A plain Savitzky-Golay pass alone barely helped (checked: ~10% delta
+    # reduction) - traced why by dumping the raw per-frame wrist trajectory and
+    # found the noise isn't continuous jitter, it's occasional gross OUTLIER
+    # SPIKES (one frame's wrist position miles from the trend, then snapping
+    # back next frame - a bad single-frame detection, not real motion). A
+    # polynomial fit still gets pulled toward an outlier sitting in its window;
+    # a median filter rejects it outright instead of blending it in. Median
+    # first, then Savitzky-Golay for the final fluid motion.
+    from scipy.signal import savgol_filter, medfilt
+    polyorder = 2
+    window = min(9, len(frames))
+    if window % 2 == 0:
+        window -= 1  # savgol_filter requires an odd window length
+    med_kernel = min(7, window if window % 2 == 1 else window - 1)
+    joint_names = list(JOINTS.keys())
+    arr = np.array([[fr["joints"][name] for name in joint_names] for fr in frames])  # (T, J, 3)
+    median_arr = medfilt(arr, kernel_size=(med_kernel, 1, 1))
+    smoothed_arr = savgol_filter(median_arr, window_length=window, polyorder=polyorder, axis=0, mode="nearest")
     smoothed = []
     for i, fr in enumerate(frames):
-        window = frames[max(0, i - 1):i + 2]
-        joints = {}
-        for name in JOINTS:
-            joints[name] = [round(sum(w["joints"][name][k] for w in window) / len(window), 3)
-                            for k in range(3)]
+        joints = {name: [round(float(v), 3) for v in smoothed_arr[i, j]]
+                  for j, name in enumerate(joint_names)}
         smoothed.append({"t": fr["t"], "joints": joints})
 
     with open(out_json, "w") as f:
