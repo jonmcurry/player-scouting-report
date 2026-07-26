@@ -10,15 +10,20 @@ The player's real body is cut out via MediaPipe person segmentation, flattened
 to one flat blue (no face/jersey/identifying detail), with a WinReality-style
 colored skeleton overlay and synthesized bat baked in.
 
-Three passes over the window:
-  1. Collect raw landmarks (no masks - cheap) to build one fixed crop box and
-     a temporally-smoothed landmark sequence (stabilizes the overlay skeleton,
-     which otherwise visibly jitters frame to frame from detection noise).
-  2. Re-run with masks; pair each frame's mask with the SAME-INDEX smoothed
-     landmarks from pass 1 (both passes use the same deterministic tracker, so
-     indices line up) and render the "current" frame.
-  3. From the same smoothed landmarks + mask, render the "target" frame with
-     the lower body sheared by a time-varying offset.
+One model-inference pass over the window (landmarks + segmentation mask
+together, per frame), then a second pure post-processing pass (no re-running
+the model) that smooths the landmark sequence, works out one fixed crop box,
+and renders both the "current" and "target" images.
+
+This used to be two separate iterate() calls - one for landmarks, one for
+masks - trusting that the same deterministic tracker would pick the same
+person in both. It didn't: for a multi-frame stretch mid-swing, the two
+passes picked DIFFERENT people (verified against raw frames), so the
+rendered skeleton was Emily's real joint positions drawn on top of a
+different person's body silhouette - a real correctness bug, not a tuning
+issue. Getting both from the same detection result per frame makes that
+impossible: whoever the tracker picks, the skeleton and the mask are
+always the same person, by construction.
 
 Usage: python pose_silhouette.py <video> <start_s> <end_s> <out_dir>
 """
@@ -207,6 +212,83 @@ def clean_mask(mask, seed_xy, thresh=0.3):
     return (flat * restored).reshape(orig_shape)
 
 
+def _limb_tube(lms, h, w, thickness):
+    tube = np.zeros((h, w), dtype=np.uint8)
+    for a, b in TORSO + ARMS + LEGS:
+        pa = (int(lms[a][0]), int(lms[a][1]))
+        pb = (int(lms[b][0]), int(lms[b][1]))
+        cv2.line(tube, pa, pb, 1, thickness, cv2.LINE_8)
+    neck = (int((lms["l_shoulder"][0] + lms["r_shoulder"][0]) / 2),
+            int((lms["l_shoulder"][1] + lms["r_shoulder"][1]) / 2))
+    nose = (int(lms["nose"][0]), int(lms["nose"][1]))
+    cv2.line(tube, neck, nose, 1, thickness, cv2.LINE_8)
+    cv2.circle(tube, nose, int(thickness * 1.3), 1, -1)
+    return tube
+
+
+def build_reach_mask(lms, h, w):
+    """A pose-shaped inclusion envelope: thick lines along her own limb segments
+    (scaled to her own shoulder width, so it stretches to cover a fully-extended
+    swinging arm) plus a circle around the head. This replaces a rectangular
+    "keep" box, which had a real trade-off no single padding percentage could
+    resolve: wide enough to keep her own extended arm/bat swing meant wide enough
+    to also pull in the catcher kneeling nearby (a real privacy bug, see below);
+    tight enough to exclude the catcher clipped her own arm mid-swing instead.
+    Following her actual joint positions scales the inclusion zone with her real
+    pose - generous along her own limbs, narrow everywhere else - so it does both
+    at once without a hand-tuned percentage.
+    """
+    shoulder_w = ((lms["l_shoulder"][0] - lms["r_shoulder"][0]) ** 2 +
+                  (lms["l_shoulder"][1] - lms["r_shoulder"][1]) ** 2) ** 0.5
+    # Generous on purpose: this only needs to stay short of "reaches a separate
+    # person standing a body-width or more away," not hug her silhouette tightly -
+    # a first attempt at ~1x shoulder width clipped her real torso/limbs down to a
+    # narrow tube, cutting far more of her own body than it excluded of anyone
+    # else's. A real body (clothing, roundness, the segmentation model's own
+    # softness at edges) is comfortably wider than the skeleton line itself.
+    thickness = max(60, int(shoulder_w * 3.2))
+    return _limb_tube(lms, h, w, thickness)
+
+
+def build_fill_mask(lms, h, w):
+    """A thin tube along her ARMS ONLY, used as a FLOOR under the real
+    segmentation mask, not just an outer exclusion boundary (see build_reach_mask).
+
+    Real cause found by tracing a specific failure frame-by-frame: during a fast
+    arm/bat movement (e.g. a bat waggle in the load), the segmentation model's
+    coverage of that fast-moving limb genuinely drops out for a few frames - it's
+    not a tracking-identity bug (confirmed: the same person is picked throughout,
+    landmarks stay accurate) and not something a bigger erosion kernel or a
+    different padding number can fix, since there's nothing wrong with WHICH
+    blob gets selected - the real mask is just thin/missing exactly where her arm
+    is. The joint positions are known-good even when segmentation isn't, so
+    filling a thin tube along them keeps the silhouette from visibly lagging
+    behind the skeleton it's supposed to be showing.
+
+    Arms only, and thin: a first version covered torso/legs/head too at a full
+    body-width thickness, which swallowed the real (already-correct) torso/leg
+    silhouette into one oversized blob - only the arm was ever actually dropping
+    out, so only the arm gets a synthetic floor, sized closer to a real arm's
+    width than a full limb envelope.
+    """
+    tube = np.zeros((h, w), dtype=np.uint8)
+    shoulder_w = ((lms["l_shoulder"][0] - lms["r_shoulder"][0]) ** 2 +
+                  (lms["l_shoulder"][1] - lms["r_shoulder"][1]) ** 2) ** 0.5
+    # Checked against actual mask pixel counts across this whole window: they're
+    # stable (~16-19k px) frame to frame, so this was never a dropout - the real
+    # segmentation just doesn't reliably cover her swinging arm at all, in general,
+    # and it only reads as a bug at frames where the arm swings furthest from the
+    # torso (a real bat-waggle motion). An earlier ~14px attempt was sized like the
+    # skeleton's own line width, not like a real arm's visual thickness (compare to
+    # how solid the mask already renders her legs) - needs to be close to that.
+    thickness = max(34, int(shoulder_w * 0.9))
+    for a, b in ARMS:
+        pa = (int(lms[a][0]), int(lms[a][1]))
+        pb = (int(lms[b][0]), int(lms[b][1]))
+        cv2.line(tube, pa, pb, 1, thickness, cv2.LINE_8)
+    return tube
+
+
 def shear_mask(mask, hip_y, shift_px):
     if abs(shift_px) < 0.5:
         return mask
@@ -277,24 +359,52 @@ def main():
     out_dir = pathlib.Path(sys.argv[4])
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Pass 1: raw landmarks only (cheap - no segmentation), for crop bounds + smoothing
+    # Single pass: landmarks AND the cleaned mask come from the exact same
+    # detection result, so they can never disagree about who's being shown (see
+    # module docstring - this replaced a two-pass version where they sometimes did).
+    # The mask is cleaned here (reach envelope + seed-based component selection)
+    # using this frame's own raw landmarks; only the OVERLAY drawing uses the
+    # temporally-smoothed landmarks, computed afterward from the same raw sequence.
     raw = []
+    cleaned_masks = []
 
     def collect(bgr, result, bi):
         if bi is None:
             raw.append(None)
+            cleaned_masks.append(None)
             return
         h, w = bgr.shape[:2]
-        lms = result.pose_landmarks[bi]
-        raw.append({name: (lms[idx].x * w, lms[idx].y * h) for name, idx in JOINTS.items()})
+        lms_raw = result.pose_landmarks[bi]
+        lms = {name: (lms_raw[idx].x * w, lms_raw[idx].y * h) for name, idx in JOINTS.items()}
+        raw.append(lms)
 
-    iterate(video, start_s, end_s, False, collect)
+        mask_flat = result.segmentation_masks[bi].numpy_view().reshape(h, w).astype(np.float32)
+        reach = build_reach_mask(lms, h, w).astype(np.float32)
+        hip_seed = ((lms["l_hip"][0] + lms["r_hip"][0]) / 2, (lms["l_hip"][1] + lms["r_hip"][1]) / 2)
+        # Identity cleanup runs on the REAL segmentation data only - erosion (inside
+        # clean_mask) can't tell "her own thin arm" from "a stray blob" by geometry
+        # alone, so a synthetic fill applied before this step gets eroded away right
+        # alongside anything it was meant to patch (verified: this happened).
+        cleaned = clean_mask(mask_flat * reach, hip_seed)
+        # The arm-dropout fill (see build_fill_mask) is layered on AFTER cleanup,
+        # skipping erosion entirely, since it's a visual patch for her own already-
+        # identity-confirmed body, not new data that needs re-checking.
+        fill = build_fill_mask(lms, h, w).astype(np.float32)
+        combined = np.maximum(cleaned, fill * 0.9 * reach)
+        cleaned_masks.append((combined * 255).astype(np.uint8))
+
+    iterate(video, start_s, end_s, True, collect)
     smoothed = smooth_sequence(raw, window=3)
 
-    left = np.percentile([min(fr[n][0] for n in JOINTS) for fr in smoothed], 5)
-    right = np.percentile([max(fr[n][0] for n in JOINTS) for fr in smoothed], 95)
-    top = np.percentile([min(fr[n][1] for n in JOINTS) for fr in smoothed], 5)
-    bottom = np.percentile([max(fr[n][1] for n in JOINTS) for fr in smoothed], 95)
+    # Full min/max, not a percentile: the temporal-smoothing pass above already
+    # damps single-frame jitter, so there's no noisy outlier left to reject here -
+    # and rejecting the outer 5% each side was clipping real frames during the
+    # swing's peak extension (where the bat/arm reach is genuinely at its widest,
+    # not a detection glitch).
+    left = min(min(fr[n][0] for n in JOINTS) for fr in smoothed)
+    right = max(max(fr[n][0] for n in JOINTS) for fr in smoothed)
+    top = min(min(fr[n][1] for n in JOINTS) for fr in smoothed)
+    bottom = max(max(fr[n][1] for n in JOINTS) for fr in smoothed)
     bw, bh = right - left, bottom - top
     x0 = int(max(0, left - bw * 0.20))
     x1 = int(right + bw * 0.20)
@@ -302,46 +412,26 @@ def main():
     y1 = int(bottom + bh * 0.08)
     print(f"crop box: x {x0}-{x1}, y {y0}-{y1}")
 
-    # Pass 2: re-run with masks. Same deterministic tracker + same video means the
-    # None-pattern lines up frame-for-frame with pass 1, so index i here always
-    # corresponds to smoothed[i].
+    # Second pass: pure post-processing, no model inference - draw both variants
+    # from the stored mask + smoothed landmarks for each frame index.
     current_frames = []
     target_frames = []
-    idx_counter = [0]
 
-    def render(bgr, result, bi):
-        i = idx_counter[0]
-        idx_counter[0] += 1
-        lms = smoothed[i] if i < len(smoothed) else None
+    for i in range(len(smoothed)):
+        mask = cleaned_masks[i]
+        lms = smoothed[i]
 
-        if bi is None or lms is None:
+        if mask is None:
             if current_frames:
                 current_frames.append(current_frames[-1].copy())
                 target_frames.append(target_frames[-1].copy())
-            return
+            continue
 
-        h, w = bgr.shape[:2]
-        mask = result.segmentation_masks[bi].numpy_view()
-
-        # limit the mask to a padded box around the tracked batter so segmentation
-        # bleed from other people on the field doesn't leave ghost blobs
-        pxs = [lms[n][0] for n in JOINTS]
-        pys = [lms[n][1] for n in JOINTS]
-        # Tight on purpose: the catcher often kneels close enough to the batter that
-        # generous padding here pulls her real body into "keep" too (verified against
-        # a raw frame - what looked like a stray mask speck was actually the
-        # catcher). This must exclude other real kids, not just look clean.
-        pad_x = (max(pxs) - min(pxs)) * 0.12
-        pad_y = (max(pys) - min(pys)) * 0.12
-        keep = np.zeros_like(mask)
-        ky0, ky1 = int(max(0, min(pys) - pad_y)), int(min(h, max(pys) + pad_y))
-        kx0, kx1 = int(max(0, min(pxs) - pad_x)), int(min(w, max(pxs) + pad_x))
-        keep[ky0:ky1, kx0:kx1] = 1
-        hip_seed = ((lms["l_hip"][0] + lms["r_hip"][0]) / 2, (lms["l_hip"][1] + lms["r_hip"][1]) / 2)
-        mask = clean_mask(mask * keep, hip_seed)
+        h, w = mask.shape[:2]
+        mask_f = mask.astype(np.float32) / 255.0
 
         is_contact = abs(i - CONTACT_FRAME) <= 3
-        current_rgba = draw_frame(mask, lms, w, h, x0, y0, x1, y1, is_contact, ball_shift=0.0)
+        current_rgba = draw_frame(mask_f, lms, w, h, x0, y0, x1, y1, is_contact, ball_shift=0.0)
 
         # target: shear the lower body (mask + landmarks) toward the swing direction,
         # scaled by the hip-lead envelope; deepen the contact point along the bat
@@ -353,7 +443,7 @@ def main():
         shift_px_full *= 1 if fx_dir >= 0 else -1
         hip_y = (lms["l_hip"][1] + lms["r_hip"][1]) / 2
 
-        target_mask = shear_mask(mask, hip_y, shift_px_full)
+        target_mask = shear_mask(mask_f, hip_y, shift_px_full)
         target_lms = dict(lms)
         for name in LOWER_BODY:
             target_lms[name] = (lms[name][0] + shift_px_full, lms[name][1])
@@ -368,8 +458,6 @@ def main():
         size = (target_w, int(current_rgba.shape[0] * scale))
         current_frames.append(cv2.resize(current_rgba, size, interpolation=cv2.INTER_AREA))
         target_frames.append(cv2.resize(target_rgba, size, interpolation=cv2.INTER_AREA))
-
-    iterate(video, start_s, end_s, True, render)
 
     save_all(current_frames, out_dir, "sil")
     save_all(target_frames, out_dir, "tgt")
