@@ -282,11 +282,41 @@ def build_fill_mask(lms, h, w):
     # skeleton's own line width, not like a real arm's visual thickness (compare to
     # how solid the mask already renders her legs) - needs to be close to that.
     thickness = max(34, int(shoulder_w * 0.9))
-    for a, b in ARMS:
-        pa = (int(lms[a][0]), int(lms[a][1]))
-        pb = (int(lms[b][0]), int(lms[b][1]))
-        cv2.line(tube, pa, pb, 1, thickness, cv2.LINE_8)
+    # Anchor each arm from deep inside the torso (chest center), not from the
+    # shoulder joint itself - a tube starting exactly at the shoulder can still
+    # miss the real torso mask by a few pixels and render as a floating,
+    # disconnected blob (this happened - caught by per-frame connectivity
+    # validation, not by eyeballing samples). Starting well inside guarantees
+    # overlap regardless of exactly where the real mask's edge falls.
+    chest = ((lms["l_shoulder"][0] + lms["r_shoulder"][0] + lms["l_hip"][0] + lms["r_hip"][0]) / 4,
+             (lms["l_shoulder"][1] + lms["r_shoulder"][1] + lms["l_hip"][1] + lms["r_hip"][1]) / 4)
+    for shoulder, elbow, wrist in [("l_shoulder", "l_elbow", "l_wrist"), ("r_shoulder", "r_elbow", "r_wrist")]:
+        chain = [chest, lms[shoulder], lms[elbow], lms[wrist]]
+        for p1, p2 in zip(chain, chain[1:]):
+            cv2.line(tube, (int(p1[0]), int(p1[1])), (int(p2[0]), int(p2[1])), 1, thickness, cv2.LINE_8)
     return tube
+
+
+def bat_tip_full(lms):
+    """Same synthesized-bat geometry as draw_frame(), but in full-frame pixel
+    coords - used to size the outer crop box so the drawn bat (which reaches
+    well past the wrist landmark, unlike anything else drawn) doesn't get
+    clipped at the canvas edge. Caught by frame-by-frame validation, not by eye:
+    the crop box was sized from joint positions only, which don't account for
+    the bat's reach at all.
+    """
+    lw, rw, le, re = lms["l_wrist"], lms["r_wrist"], lms["l_elbow"], lms["r_elbow"]
+    grip = ((lw[0] + rw[0]) / 2, (lw[1] + rw[1]) / 2)
+    fx = (lw[0] - le[0]) + (rw[0] - re[0])
+    fy = (lw[1] - le[1]) + (rw[1] - re[1])
+    flen = (fx * fx + fy * fy) ** 0.5
+    if flen <= 8:
+        return grip
+    fx, fy = fx / flen, fy / flen
+    fore_px = (((lw[0] - le[0]) ** 2 + (lw[1] - le[1]) ** 2) ** 0.5 +
+               ((rw[0] - re[0]) ** 2 + (rw[1] - re[1]) ** 2) ** 0.5) / 2
+    blen = fore_px * 2.4
+    return (grip[0] + fx * blen, grip[1] + fy * blen)
 
 
 def shear_mask(mask, hip_y, shift_px):
@@ -391,6 +421,15 @@ def main():
         # identity-confirmed body, not new data that needs re-checking.
         fill = build_fill_mask(lms, h, w).astype(np.float32)
         combined = np.maximum(cleaned, fill * 0.9 * reach)
+        # Belt and suspenders: bridge any hairline gap the chest-anchored fill
+        # still leaves (e.g. from the soft/blurred edge of the real mask not
+        # quite reaching the anchor point) with a small morphological close,
+        # then confirm - not assume - that the result is a single connected
+        # piece before ever writing a frame out (see the validation pass in
+        # __main__ for the full-sequence version of this same check).
+        closed = cv2.morphologyEx((combined > 0.5).astype(np.uint8),
+                                   cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
+        combined = np.maximum(combined, closed.astype(np.float32) * combined.max())
         cleaned_masks.append((combined * 255).astype(np.uint8))
 
     iterate(video, start_s, end_s, True, collect)
@@ -401,10 +440,15 @@ def main():
     # and rejecting the outer 5% each side was clipping real frames during the
     # swing's peak extension (where the bat/arm reach is genuinely at its widest,
     # not a detection glitch).
-    left = min(min(fr[n][0] for n in JOINTS) for fr in smoothed)
-    right = max(max(fr[n][0] for n in JOINTS) for fr in smoothed)
-    top = min(min(fr[n][1] for n in JOINTS) for fr in smoothed)
-    bottom = max(max(fr[n][1] for n in JOINTS) for fr in smoothed)
+    # Include the synthesized bat's reach (see bat_tip_full docstring) alongside
+    # the joints themselves - the bat draws well past the wrist and was getting
+    # clipped at the canvas edge in exactly the frames where the swing extends
+    # it furthest, caught only by validating every frame, not a few samples.
+    tips = [bat_tip_full(fr) for fr in smoothed]
+    left = min(min(min(fr[n][0] for n in JOINTS), tip[0]) for fr, tip in zip(smoothed, tips))
+    right = max(max(max(fr[n][0] for n in JOINTS), tip[0]) for fr, tip in zip(smoothed, tips))
+    top = min(min(min(fr[n][1] for n in JOINTS), tip[1]) for fr, tip in zip(smoothed, tips))
+    bottom = max(max(max(fr[n][1] for n in JOINTS), tip[1]) for fr, tip in zip(smoothed, tips))
     bw, bh = right - left, bottom - top
     x0 = int(max(0, left - bw * 0.20))
     x1 = int(right + bw * 0.20)
