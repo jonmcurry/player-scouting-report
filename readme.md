@@ -14,7 +14,7 @@ section), not a single staged swing.
 
 | Team | Coaches | Roster | Live team summary |
 |---|---|---|---|
-| **Bethlehem Boom 10U** | Bill Lynch, Doron Bruns, Kathleen Turner, Katie Melnikoff, Kayla Lupi | #1 Maggie M · #2 Ellie T · #3 Clare C · #5 Felicia A · #10 Anya O · #12 Payton M · #16 Lucy L · #23 Harper B · #25 Emily Y · #44 Chloe R · #66 Madison W | [team_summary.html](https://jonmcurry.github.io/player-scouting-report/reports/team_summary.html) |
+| **Bethlehem Boom 10U** | TBD | #2 Ellie T | [team_summary.html](https://jonmcurry.github.io/player-scouting-report/reports/team_summary.html) |
 | **Latham Lady Bison White 10U** | TBD | #10 Emily C | [team_summary.html](https://jonmcurry.github.io/player-scouting-report/reports/latham-lady-bison-white-10u/team_summary.html) |
 
 ## Live site
