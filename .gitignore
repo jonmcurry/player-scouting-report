@@ -11,6 +11,15 @@ frames/*
 scripts/pose_out/
 scripts/models/
 
+# Isolated venv + cloned model repos + checkpoints for the pose3d pipeline -
+# multi-GB, machine-specific, reproducible from scripts/pose3d/README.md.
+# (frames/* below already covers all pipeline output under frames/.)
+.venv_pose3d/
+
+# Python bytecode cache - regenerated locally, never meaningful to commit.
+__pycache__/
+*.pyc
+
 # OS/editor cruft
 .DS_Store
 Thumbs.db
