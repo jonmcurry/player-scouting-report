@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Player View</title>
+<link rel="stylesheet" href="./coach.css?v=5">
+</head>
+<body>
+<div class="wrap">
+  <p class="hint"><a id="backLink" href="./team.html">← Team view</a></p>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+    <div class="jersey-badge lg" id="playerBadge">—</div>
+    <h1 id="playerName" style="margin:0;">Loading…</h1>
+  </div>
+
+  <h2>1. Mechanics Checklist</h2>
+  <div id="checklistDrawers"></div>
+
+  <h2>2–5. Diagnosis, Comps &amp; Plan</h2>
+  <details class="drawer" open>
+    <summary><span>Primary Issue(s) Identified</span></summary>
+    <div class="drawer-body" id="issuesList"></div>
+  </details>
+  <details class="drawer">
+    <summary><span>Reference Comp — What a Fix Looks Like</span></summary>
+    <div class="drawer-body" id="compList"></div>
+  </details>
+  <details class="drawer">
+    <summary><span>Drill Recommendations</span></summary>
+    <div class="drawer-body" id="drillList"></div>
+  </details>
+  <details class="drawer">
+    <summary><span>Follow-up</span></summary>
+    <div class="drawer-body" id="followUp"></div>
+  </details>
+
+  <h2>Log New At-Bat</h2>
+  <div class="card">
+    <p class="hint">Tap a zone for a quick starting phrase - the text field stays fully editable
+      for clip timing, outcome, and narrative context a fixed grid can't capture.</p>
+    <div class="pitch-grid" id="pitchGrid">
+      <button data-loc="Inside, high">In/Hi</button>
+      <button data-loc="Middle, high">Mid/Hi</button>
+      <button data-loc="Outside, high">Out/Hi</button>
+      <button data-loc="Inside">Inside</button>
+      <button data-loc="Middle-middle">Mid-Mid</button>
+      <button data-loc="Outside">Outside</button>
+      <button data-loc="Inside, low">In/Lo</button>
+      <button data-loc="Middle, low">Mid/Lo</button>
+      <button data-loc="Outside, low">Out/Lo</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;">
+      <input type="text" id="newDate" placeholder="Date (YYYY-MM-DD)">
+      <input type="text" id="newOpponent" placeholder="Opponent">
+      <input type="text" id="newAb" placeholder="AB #">
+      <input type="text" id="newPitch" placeholder="Pitch location/context (tap a zone above to start)">
+      <input type="text" id="newResult" placeholder="Result">
+      <label class="hint" for="newVideo">Video (optional) — processing starts automatically after upload</label>
+      <input type="file" id="newVideo" accept="video/*">
+      <button class="primary tap-target" id="addAtBatBtn">Add At-Bat</button>
+      <p class="hint" id="addAtBatStatus"></p>
+    </div>
+  </div>
+  <div id="gameLogList"></div>
+</div>
+
+<script type="module">
+  import { supabase, requireSession, getMyDisplayName, CHECKPOINTS, qs, renderReviewBadge } from "./shared.js";
+  import { renderStepper } from "./components/stepper.js";
+  import { openCompModal } from "./components/compModal.js";
+  import { loadClipSkeletonData, loadExtensionScore, buildExtensionCorrectedFrames, renderSkeletonComparison } from "./components/skeletonComparison.js";
+  import { uploadRawClip } from "./components/videoUpload.js";
+
+  const teamSlug = qs("team");
+  const playerSlug = qs("player");
+  document.getElementById("backLink").href = `./team.html?team=${teamSlug}`;
+
+  let coachDisplayName = "Coach";
+  let playerId = null;
+  // First game-log entry's clip that has real pose3d data, if any - used by
+  // "Compare against Reference Comp" for the Tier-1 live skeleton
+  // comparison and the Tier-2 static skeleton-frame snapshot (see
+  // compModal.js). Set inside loadClipsForEntry(); read lazily on click, so
+  // it's populated by the time a coach can actually tap the button (main()
+  // awaits loadGameLog() fully before the page is usable).
+  let firstClipContext = null;
+
+  async function main() {
+    const session = await requireSession();
+    if (!session) return;
+    coachDisplayName = await getMyDisplayName(session.user.id);
+
+    const { data: player, error } = await supabase
+      .from("players")
+      .select("id, name, jersey_number, refilm_by, what_to_check_next, teams!inner(slug)")
+      .eq("slug", playerSlug)
+      .eq("teams.slug", teamSlug)
+      .single();
+    if (error || !player) {
+      document.getElementById("playerName").textContent = "Player not found (or you don't have access)";
+      return;
+    }
+    playerId = player.id;
+    document.getElementById("playerName").textContent = player.name;
+    document.getElementById("playerBadge").textContent = player.jersey_number;
+
+    await loadChecklist();
+    await loadIssues();
+    await loadCompsAndDrills();
+    renderFollowUp(player.refilm_by, player.what_to_check_next);
+    await loadGameLog();
+    wirePitchGrid();
+    wireAddAtBat();
+    wireGameLogDelegation();
+    startStatusPolling();
+  }
+
+  async function loadChecklist() {
+    const { data: rows, error } = await supabase
+      .from("checklist_scores")
+      .select("id, score, ai_draft, reviewed_by, notes, source, checkpoints!inner(slug, label, sort_order)")
+      .eq("player_id", playerId)
+      .order("sort_order", { referencedTable: "checkpoints" });
+
+    const container = document.getElementById("checklistDrawers");
+    container.innerHTML = "";
+    const bySlug = new Map((rows ?? []).map((r) => [r.checkpoints.slug, r]));
+
+    for (const cp of CHECKPOINTS) {
+      const row = bySlug.get(cp.slug) ?? {
+        id: null,
+        score: null,
+        ai_draft: null,
+        reviewed_by: null,
+        notes: "Awaiting video",
+        checkpoints: cp,
+      };
+      const details = document.createElement("details");
+      details.className = "drawer";
+      details.innerHTML = `
+        <summary>
+          <span>${cp.label}</span>
+          <span class="score-${row.score ?? "pending"}">${row.score ?? "—"}</span>
+        </summary>
+        <div class="drawer-body">
+          <p>${row.notes ?? ""}</p>
+          ${row.id ? renderReviewBadge(row) : `<span class="hint">Not scored yet</span>`}
+          <div class="stepper-mount" style="margin-top:10px;"></div>
+          ${row.id ? `<button class="tap-target" style="margin-top:8px;" data-comp="${cp.slug}" data-label="${cp.label}">Compare against Reference Comp</button>` : ""}
+        </div>
+      `;
+      container.appendChild(details);
+
+      if (row.id) {
+        const mount = details.querySelector(".stepper-mount");
+        const onScoreChange = (updatedRow) => {
+          const summaryScore = details.querySelector("summary span:last-child");
+          summaryScore.textContent = updatedRow.score;
+          summaryScore.className = `score-${updatedRow.score}`;
+          const badgeSlot = details.querySelector(".drawer-body p").nextElementSibling;
+          badgeSlot.outerHTML = renderReviewBadge(updatedRow);
+          // Re-render the stepper itself too - otherwise its data-active
+          // highlight goes stale, still showing the OLD score selected
+          // (caught by actually looking at a screenshot, not just asserting
+          // on text content - the badge/summary updated correctly, but the
+          // button highlight silently didn't).
+          renderStepper(mount, updatedRow, coachDisplayName, onScoreChange);
+        };
+        renderStepper(mount, row, coachDisplayName, onScoreChange);
+        details.querySelector("[data-comp]").addEventListener("click", (e) => {
+          openCompModal(e.target.dataset.comp, e.target.dataset.label, firstClipContext);
+        });
+      }
+    }
+  }
+
+  async function loadIssues() {
+    const { data: issues } = await supabase
+      .from("issues")
+      .select("issue, seen_in_at_bats, likely_cause, effect, reviewed_by")
+      .eq("player_id", playerId);
+    const el = document.getElementById("issuesList");
+    if (!issues || issues.length === 0) {
+      el.innerHTML = `<p class="hint">No issues logged yet.</p>`;
+      return;
+    }
+    el.innerHTML = issues
+      .map(
+        (i) => `
+      <div class="card">
+        <b>${i.issue}</b>
+        <p class="hint">${i.seen_in_at_bats}</p>
+        <p><b>Likely cause:</b> ${i.likely_cause}</p>
+        <p><b>Effect:</b> ${i.effect}</p>
+        ${i.reviewed_by ? `<span class="badge confirmed">✓ Verified by ${i.reviewed_by}</span>` : `<span class="badge ai-draft">🤖 AI Draft</span>`}
+      </div>
+    `,
+      )
+      .join("");
+  }
+
+  async function loadCompsAndDrills() {
+    const [{ data: comps }, { data: notes }, { data: drills }] = await Promise.all([
+      supabase
+        .from("comp_recommendations")
+        .select("comp_name, cue")
+        .eq("player_id", playerId)
+        .order("position"),
+      supabase.from("comp_notes").select("note").eq("player_id", playerId).order("position"),
+      supabase
+        .from("drill_recommendations")
+        .select("title, description")
+        .eq("player_id", playerId)
+        .order("position"),
+    ]);
+
+    const compEl = document.getElementById("compList");
+    if (!comps || comps.length === 0) {
+      compEl.innerHTML = `<p class="hint">Comp cues will be picked once the specific issue is identified from film.</p>`;
+    } else {
+      const rows = comps
+        .map((c) => `<tr><td>${c.comp_name}</td><td>${c.cue}</td></tr>`)
+        .join("");
+      const notesHtml = (notes ?? [])
+        .map((n) => `<p class="comp-note">${n.note}</p>`)
+        .join("");
+      compEl.innerHTML = `<table class="comp-table"><tbody>${rows}</tbody></table>${notesHtml}`;
+    }
+
+    const drillEl = document.getElementById("drillList");
+    if (!drills || drills.length === 0) {
+      drillEl.innerHTML = `<p class="hint">Drills will be recommended once the primary issue(s) are identified from film.</p>`;
+    } else {
+      drillEl.innerHTML = `<ul class="drills">${drills
+        .map((d) => `<li><b>${d.title}</b> — ${d.description}</li>`)
+        .join("")}</ul>`;
+    }
+  }
+
+  function renderFollowUp(refilmBy, whatToCheckNext) {
+    document.getElementById("followUp").innerHTML = `
+      <div class="followup-grid">
+        <div class="followup-field"><b>Re-film by</b>${refilmBy ?? "TBD"}</div>
+        <div class="followup-field"><b>What to check next time</b>${whatToCheckNext ?? "TBD"}</div>
+      </div>
+    `;
+  }
+
+  async function loadGameLog() {
+    const { data: logs } = await supabase
+      .from("game_log_entries")
+      .select("id, date, opponent, ab, pitch, result")
+      .eq("player_id", playerId)
+      .order("position");
+    const el = document.getElementById("gameLogList");
+    el.innerHTML = (logs ?? [])
+      .map(
+        (g) => `
+      <div class="card">
+        <b>${g.date} vs ${g.opponent}, AB ${g.ab}</b>
+        <p class="hint">${g.pitch ?? "—"}</p>
+        <p>${g.result}</p>
+        <div class="scrubber-mount" data-game-log-entry="${g.id}"></div>
+      </div>
+    `,
+      )
+      .join("");
+
+    for (const g of logs ?? []) {
+      await loadClipsForEntry(g.id);
+    }
+  }
+
+  // Tracks whether any card is currently pending/processing, read by
+  // startStatusPolling() to decide whether the next tick needs to refresh.
+  let hasInFlightClips = false;
+
+  /** A game_log_entries row can have >1 physical clip (e.g. 4 separate
+   * pitches filmed as separate files for one at-bat, per this project's own
+   * real data - see emily_c.html's AB1 note) - only the first (by position)
+   * gets a scrubber/status card for now; a multi-clip picker is a known
+   * follow-up, not built this pass. */
+  async function loadClipsForEntry(gameLogEntryId) {
+    const mount = document.querySelector(`.scrubber-mount[data-game-log-entry="${gameLogEntryId}"]`);
+    if (!mount) return;
+
+    const { data: clips } = await supabase
+      .from("video_clips")
+      .select("id, status, error_message")
+      .eq("game_log_entry_id", gameLogEntryId)
+      .order("position")
+      .limit(1);
+    const clip = clips?.[0];
+
+    if (!clip) {
+      mount.innerHTML = `
+        <div class="upload-control" data-game-log-entry="${gameLogEntryId}">
+          <input type="file" accept="video/*" class="tap-target">
+          <button class="tap-target" data-attach-video>Attach Video</button>
+        </div>
+      `;
+      return;
+    }
+
+    if (clip.status === "pending" || clip.status === "processing") {
+      hasInFlightClips = true;
+      mount.innerHTML = `<p class="hint">⏳ Processing video… this can take a minute or more.</p>`;
+      return;
+    }
+
+    if (clip.status === "failed") {
+      // First line only in the visible hint (the full message can be a raw
+      // Python traceback - useful for an admin to diagnose, not something to
+      // dump on a coach by default); full text stays available in a
+      // <details> disclosure for whoever needs it.
+      const fullMessage = clip.error_message ?? "unknown error";
+      const firstLine = fullMessage.split("\n")[0];
+      mount.innerHTML = `
+        <p class="hint">⚠ Video processing failed: ${firstLine}</p>
+        <details class="drawer"><summary><span>Full error details</span></summary>
+          <div class="drawer-body"><pre style="white-space:pre-wrap;font-size:11px;">${fullMessage}</pre></div>
+        </details>
+        <button class="tap-target" style="margin-top:8px;" data-retry-clip="${clip.id}">Retry</button>
+      `;
+      return;
+    }
+
+    if (clip.status !== "ready") return;
+
+    const pose3dData = await loadClipSkeletonData(clip.id);
+    if (!pose3dData || pose3dData.frames.length === 0) {
+      mount.innerHTML = `<p class="hint">⚠ No 3D swing data available for this clip.</p>`;
+      return;
+    }
+
+    const { data: phaseRows } = await supabase
+      .from("swing_phases")
+      .select("frame, time_s, confidence, swing_phase_types!inner(slug, label, sort_order)")
+      .eq("video_clip_id", clip.id)
+      .order("sort_order", { referencedTable: "swing_phase_types" });
+
+    const phases = (phaseRows ?? []).map((r) => ({
+      slug: r.swing_phase_types.slug,
+      label: r.swing_phase_types.label,
+      timeS: r.time_s,
+      confidence: r.confidence,
+    }));
+
+    const extensionScore = await loadExtensionScore(playerId);
+    const correctedFrames = buildExtensionCorrectedFrames(pose3dData.frames, pose3dData.lead_side, extensionScore);
+    const note = !pose3dData.lead_side
+      ? "Front-leg side unknown for this clip - showing her real swing only."
+      : correctedFrames
+        ? null
+        : "Extension is already at target, or unscored - showing her real swing only.";
+    renderSkeletonComparison(mount, { realFrames: pose3dData.frames, correctedFrames, phases, note });
+
+    if (!firstClipContext) {
+      firstClipContext = { realFrames: pose3dData.frames, phases, leadSide: pose3dData.lead_side, extensionScore };
+    }
+  }
+
+  /** One delegated listener on the container, attached once - #gameLogList's
+   * innerHTML is fully replaced on every loadGameLog() call (including the
+   * periodic status-poll refresh below), so per-card listeners would pile
+   * up duplicates across refreshes if attached the naive way. */
+  function wireGameLogDelegation() {
+    document.getElementById("gameLogList").addEventListener("click", async (e) => {
+      const attachBtn = e.target.closest("[data-attach-video]");
+      if (attachBtn) {
+        const control = attachBtn.closest(".upload-control");
+        const gameLogEntryId = control.dataset.gameLogEntry;
+        const fileInput = control.querySelector("input[type=file]");
+        const file = fileInput.files[0];
+        if (!file) {
+          alert("Choose a video file first.");
+          return;
+        }
+        attachBtn.disabled = true;
+        attachBtn.textContent = "Uploading…";
+        try {
+          await uploadRawClip(gameLogEntryId, file);
+          await loadGameLog();
+        } catch (err) {
+          alert(`Couldn't upload video: ${err.message}`);
+          attachBtn.disabled = false;
+          attachBtn.textContent = "Attach Video";
+        }
+        return;
+      }
+
+      const retryBtn = e.target.closest("[data-retry-clip]");
+      if (retryBtn) {
+        retryBtn.disabled = true;
+        const { error } = await supabase
+          .from("video_clips")
+          .update({ status: "pending", error_message: null })
+          .eq("id", retryBtn.dataset.retryClip);
+        if (error) {
+          alert(`Couldn't retry: ${error.message}`);
+          retryBtn.disabled = false;
+          return;
+        }
+        await loadGameLog();
+      }
+    });
+  }
+
+  /** Poll-based refresh (no Supabase Realtime this pass - see the approved
+   * plan's deferred-scope note) - only re-fetches while at least one card
+   * is pending/processing, and stops polling once none remain. */
+  function startStatusPolling() {
+    setInterval(async () => {
+      if (!hasInFlightClips) return;
+      hasInFlightClips = false;
+      await loadGameLog();
+    }, 10000);
+  }
+
+  function wirePitchGrid() {
+    document.getElementById("pitchGrid").querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.getElementById("newPitch").value = btn.dataset.loc;
+      });
+    });
+  }
+
+  function wireAddAtBat() {
+    document.getElementById("addAtBatBtn").addEventListener("click", async () => {
+      const date = document.getElementById("newDate").value.trim();
+      const opponent = document.getElementById("newOpponent").value.trim();
+      const ab = Number(document.getElementById("newAb").value);
+      const pitch = document.getElementById("newPitch").value.trim() || null;
+      const result = document.getElementById("newResult").value.trim();
+
+      if (!date || !opponent || !ab || !result) {
+        alert("Date, opponent, AB #, and result are required.");
+        return;
+      }
+
+      const { count } = await supabase
+        .from("game_log_entries")
+        .select("id", { count: "exact", head: true })
+        .eq("player_id", playerId);
+
+      const { data: newEntry, error } = await supabase
+        .from("game_log_entries")
+        .insert({
+          player_id: playerId,
+          date,
+          opponent,
+          ab,
+          pitch,
+          result,
+          position: count ?? 0,
+        })
+        .select("id")
+        .single();
+      if (error || !newEntry) {
+        alert(`Couldn't save at-bat: ${error?.message}`);
+        return;
+      }
+
+      const videoFile = document.getElementById("newVideo").files[0];
+      const statusEl = document.getElementById("addAtBatStatus");
+      if (videoFile) {
+        statusEl.textContent = "Uploading video…";
+        try {
+          await uploadRawClip(newEntry.id, videoFile);
+          statusEl.textContent = "Video uploaded - processing will start automatically.";
+        } catch (err) {
+          statusEl.textContent = `⚠ At-bat saved, but video upload failed: ${err.message}`;
+        }
+      } else {
+        statusEl.textContent = "";
+      }
+
+      document.getElementById("newDate").value = "";
+      document.getElementById("newOpponent").value = "";
+      document.getElementById("newAb").value = "";
+      document.getElementById("newPitch").value = "";
+      document.getElementById("newResult").value = "";
+      document.getElementById("newVideo").value = "";
+      await loadGameLog();
+    });
+  }
+
+  main();
+</script>
+</body>
+</html>

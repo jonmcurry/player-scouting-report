@@ -1,0 +1,12 @@
+-- The coach app's video PLAYBACK path (get-video-url Edge Function,
+-- coach/components/videoScrubber.js, src/cli/uploadClip.ts's H.264
+-- transcode+upload) is fully removed - replaced by the 3D skeleton
+-- comparison, which renders real pose3d joint data straight out of
+-- video_clip_pose3d (see the approved plan). video_clips.gcs_path was
+-- ONLY ever written by that removed path (raw_gcs_path, written by the
+-- browser upload flow, is unaffected and still in use).
+--
+-- Distinct from and NOT touching game_log_entries.clip_gcs_path - a
+-- separate, older column used by the public scouting-report generator
+-- (src/cli/generate.ts), unrelated to this feature.
+alter table video_clips drop column gcs_path;

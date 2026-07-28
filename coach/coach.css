@@ -1,0 +1,348 @@
+/* Shared stylesheet for the coach app (coach/*.html) only - NOT used by the
+   public reports/ site, which stays fully self-contained per file on
+   purpose. These pages are a connected, login-gated flow rather than
+   independently-shareable documents, so one shared file here is a
+   deliberate, small departure from that convention, not an oversight.
+
+   Design system: "infield dirt" - grounded in the actual subject (youth
+   softball, reviewed on a phone at the field in direct sun), not a generic
+   blue-accent SaaS dashboard. Clay/chalk/grass as the working palette,
+   Oswald (condensed athletic display face - scoreboard/jersey vernacular)
+   for headers and the jersey-number badge, Inter for dense body/notes text,
+   JetBrains Mono used narrowly for score digits only as a "digital
+   scoreboard" accent. The circular jersey-number badge is the one signature
+   element repeated everywhere a player is named (login team list, team
+   view rows, player header) - everything else stays disciplined around it.
+
+   --touch-min is a floor on every tappable control's width/height per the
+   48px minimum-touch-target requirement (unchanged from before this pass). */
+
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@600;700&display=swap');
+
+:root {
+  color-scheme: light;
+  --clay:         #B5502F;
+  --clay-dark:    #8F3D22;
+  --chalk:        #F5F0E6;
+  --infield-dark: #1C140F;
+  --grass:        #3F7D45;
+  --gold:         #D9A621;
+  --foul-red:     #B23A2E;
+
+  --page:           var(--chalk);
+  --surface-1:      #ffffff;
+  --surface-2:      #ECE4D4;
+  --text-primary:   #211812;
+  --text-secondary: #5B4E3F;
+  --text-muted:     #8A7C68;
+  --gridline:       #DDD2BC;
+  --border:         rgba(33,24,18,0.16);
+
+  --status-good:      var(--grass);
+  --status-good-2:    #4f9a56;
+  --status-warning:   var(--gold);
+  --status-warning-2: #e6b83a;
+  --status-critical:  var(--foul-red);
+  --status-critical-2: #c74c3d;
+  --status-draft:     #6B5B95;
+
+  --series-1: var(--clay);
+  --touch-min: 48px;
+
+  --font-display: "Oswald", "Arial Narrow", sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page:           var(--infield-dark);
+    --surface-1:      #241A12;
+    --surface-2:      #2D2117;
+    --text-primary:   #F5EEE2;
+    --text-secondary: #CBB9A0;
+    --text-muted:     #93816B;
+    --gridline:       #3B2C1E;
+    --border:         rgba(245,238,226,0.16);
+    --series-1: #E08A5F;
+    --clay: #D97046;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page:           var(--infield-dark);
+  --surface-1:      #241A12;
+  --surface-2:      #2D2117;
+  --text-primary:   #F5EEE2;
+  --text-secondary: #CBB9A0;
+  --text-muted:     #93816B;
+  --gridline:       #3B2C1E;
+  --border:         rgba(245,238,226,0.16);
+  --series-1: #E08A5F;
+  --clay: #D97046;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  line-height: 1.4;
+  -webkit-tap-highlight-color: transparent;
+}
+.wrap { max-width: 640px; margin: 0 auto; padding: 16px 14px 90px; }
+
+h1 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 26px;
+  letter-spacing: 0.01em;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--clay);
+  margin: 22px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--gridline);
+}
+
+a { color: var(--series-1); font-weight: 600; }
+
+/* Every tappable control gets a floor on both dimensions - the 48px
+   requirement isn't decorative, it's what makes this usable one-handed
+   outdoors. Padding, not a fixed size, so text/icons still fit naturally. */
+button, .tap-target, select, input[type="text"] {
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+  font-size: 15px;
+  font-family: var(--font-body);
+}
+
+button {
+  background: var(--surface-1);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  padding: 10px 16px;
+  cursor: pointer;
+  font-weight: 600;
+}
+button.primary { background: var(--clay); color: #fff; border-color: transparent; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+input[type="text"], input[type="email"], input[type="password"] {
+  background: var(--surface-1);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text-primary);
+}
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--clay);
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+/* Score colors - vibrant/high-contrast per the outdoor-mode brief, digits
+   set in the mono face to read as a scoreboard readout */
+.score-1, .score-2, .score-3 { font-family: var(--font-mono); font-weight: 700; }
+.score-1 { color: var(--status-critical); }
+.score-2 { color: var(--status-warning); }
+.score-3 { color: var(--status-good); }
+.bg-score-1 { background: var(--status-critical); }
+.bg-score-2 { background: var(--status-warning); }
+.bg-score-3 { background: var(--status-good); }
+.bg-score-pending { background: var(--gridline); }
+
+/* Signature element: circular jersey-number badge. Repeated everywhere a
+   player is named - the one consistent, memorable device this design is
+   built around. Deliberately restrained: clay ring + fill, bold condensed
+   numeral, nothing else competes with it. */
+.jersey-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--clay);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 0;
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.35);
+}
+.jersey-badge.lg { width: 60px; height: 60px; font-size: 22px; }
+
+/* Mini heatmap: one block per checkpoint, used on team.html's lineup rows */
+.mini-heatmap { display: flex; gap: 3px; margin-top: 10px; }
+.mini-heatmap .block { flex: 1; height: 10px; border-radius: 2px; }
+
+/* Legend swatch for the mini-heatmap color key (team.html) - the heatmap
+   blocks only had a hover `title` tooltip, which doesn't exist at all on a
+   touchscreen; a coach on their phone at the field had no way to learn what
+   the colors meant. A persistent visible legend replaces relying on hover. */
+.legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  vertical-align: -1px;
+  margin-right: 4px;
+}
+
+/* 3-segment score stepper */
+.stepper { display: flex; gap: 6px; }
+.stepper button {
+  flex: 1;
+  padding: 12px 6px;
+  font-size: 13px;
+  font-weight: 700;
+  border-width: 2px;
+  border-radius: 6px;
+}
+.stepper button[data-active="true"] { color: #fff; border-color: transparent; }
+.stepper button[data-score="1"][data-active="true"] { background: var(--status-critical); }
+.stepper button[data-score="2"][data-active="true"] { background: var(--status-warning); }
+.stepper button[data-score="3"][data-active="true"] { background: var(--status-good); }
+
+/* AI-audit badges - same three states as the public report's .review-badge,
+   punchier colors */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 700; margin-top: 6px; }
+.badge.ai-draft { background: color-mix(in srgb, var(--status-draft) 18%, transparent); color: var(--status-draft); border: 1px dashed var(--status-draft); }
+.badge.edited { background: color-mix(in srgb, var(--status-warning) 20%, transparent); color: var(--status-warning-2); border: 1px dashed var(--status-warning); }
+.badge.confirmed { background: color-mix(in srgb, var(--status-good) 18%, transparent); color: var(--status-good); }
+
+/* Filter chips (team.html) */
+.chip-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 14px; }
+.chip {
+  flex: none;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.chip[data-active="true"] { background: var(--clay); color: #fff; border-color: transparent; }
+
+/* Focus banner (team.html) */
+.focus-banner {
+  background: color-mix(in srgb, var(--status-critical) 10%, var(--surface-1));
+  border: 1px solid var(--status-critical);
+  border-radius: 4px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.focus-banner h2 { color: var(--status-critical); margin-top: 0; border-bottom-color: var(--status-critical); }
+.focus-banner ul { margin: 0; padding-left: 18px; }
+
+/* Lineup card: team.html's player rows. A vertical list of rows, not
+   drop-shadow cards - reads as a lineup card/scorebook page, not a generic
+   dashboard widget list. */
+.lineup-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--surface-1);
+  border: 1px solid var(--gridline);
+  border-radius: 4px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  text-decoration: none;
+  color: inherit;
+}
+.lineup-row .lineup-main { flex: 1; min-width: 0; }
+.lineup-row .lineup-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.lineup-row .lineup-name { font-family: var(--font-display); font-weight: 600; font-size: 17px; text-transform: uppercase; }
+
+/* Collapsible drawer sections (player.html checklist + diagnosis sections) */
+details.drawer { background: var(--surface-1); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 10px; overflow: hidden; }
+details.drawer summary {
+  padding: 14px 16px;
+  min-height: var(--touch-min);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+details.drawer summary::-webkit-details-marker { display: none; }
+details.drawer .drawer-body { padding: 0 16px 16px; }
+
+/* Reference Comp table (player.html diagnosis section) - stacked, not a
+   rigid 2-column table: a comp name + full sourced cue don't fit side by
+   side on a phone-width screen without crushing the cue text, so each row
+   reads as a small label over a full-width paragraph instead. */
+.comp-table, .comp-table tbody, .comp-table tr { display: block; width: 100%; }
+.comp-table tr { padding: 10px 0; border-bottom: 1px solid var(--gridline); }
+.comp-table tr:last-child { border-bottom: none; }
+.comp-table td { display: block; padding: 0; font-size: 14px; }
+.comp-table td:first-child { font-family: var(--font-display); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.02em; color: var(--clay-dark); margin-bottom: 4px; }
+.comp-note { color: var(--text-secondary); font-size: 13px; margin: 8px 0 0; }
+.drills { margin: 8px 0 0; padding-left: 18px; }
+.drills li { margin-bottom: 8px; }
+.followup-grid { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.followup-grid .followup-field b { display: block; font-family: var(--font-display); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 2px; }
+
+/* Browser video upload control (player.html game log cards with no clip yet) */
+.upload-control { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.upload-control input[type="file"] { flex: 1; min-width: 160px; font-size: 13px; }
+
+/* Video frame scrubber (player.html game log) */
+.scrubber { background: var(--surface-1); border: 1px solid var(--border); border-radius: 4px; padding: 12px; margin-bottom: 10px; }
+.scrubber-video { width: 100%; border-radius: 4px; background: #000; display: block; margin-bottom: 8px; }
+.scrubber-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.scrubber-phase-label { font-family: var(--font-display); font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--clay); margin-left: auto; }
+.scrubber-track-wrap { position: relative; padding-top: 14px; }
+.scrubber-track-wrap input[type="range"] { width: 100%; }
+.scrubber-ticks { position: absolute; top: 0; left: 0; right: 0; height: 12px; pointer-events: none; }
+.scrubber-tick { position: absolute; top: 0; transform: translateX(-50%); }
+.scrubber-tick-dot { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--status-good); border: 1.5px solid var(--surface-1); }
+.scrubber-tick-dot.low-conf { background: var(--status-warning); }
+
+/* 3D skeleton comparison (player.html game log - replaces the video
+ * scrubber above; skeletonComparison.js) - real vs FK-corrected panel */
+.skeleton-canvases { display: flex; gap: 10px; margin-bottom: 8px; }
+.skeleton-canvas-col { flex: 1; min-width: 0; text-align: center; }
+.skeleton-canvas-label { font-size: 11.5px; color: var(--text-muted); margin: 0 0 4px; }
+.skeleton-canvas { width: 100%; border-radius: 4px; background: #000; display: block; }
+
+/* Modal (comp overlay) */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(28,20,15,0.65);
+  display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10;
+}
+.modal { background: var(--surface-1); border-radius: 8px; padding: 20px; max-width: 480px; width: 100%; max-height: 85vh; overflow-y: auto; }
+.modal .close-btn { float: right; }
+
+/* Split-screen comp comparison (player's real extracted frame vs. the
+ * generic reference illustration) - player.html's compModal.js */
+.comp-split { display: flex; gap: 10px; margin: 10px 0; }
+.comp-split-col { flex: 1; min-width: 0; }
+.comp-split-col canvas, .comp-split-col img { width: 100%; border-radius: 4px; background: #000; display: block; }
+
+/* 3x3 pitch-location quick-fill grid */
+.pitch-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-width: 260px; }
+.pitch-grid button { aspect-ratio: 1; padding: 4px; font-size: 12px; }
+
+.login-form { display: flex; flex-direction: column; gap: 12px; max-width: 360px; margin: 60px auto; }
+.error-text { color: var(--status-critical); font-size: 13px; }
+.hint { color: var(--text-muted); font-size: 12px; }

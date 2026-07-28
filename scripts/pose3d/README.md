@@ -18,7 +18,11 @@ Writes to `frames/emily_c/Emily_C_AB1 (4)/`:
   (hip-shoulder separation, torso tilt, elbow/knee angles)
 - `metrics.json` - contact-instant detection + summary metrics (max bat speed,
   attack angle, hip-shoulder separation at contact, lead elbow angle at
-  contact, stride)
+  contact, stride) + `phases` (Stance/Load/Stride/Contact/Extension/
+  Follow-through, each `{frame, time_s, method, confidence, detail}` -
+  Contact is the one multi-signal-validated instant; the other five are each
+  honestly capped at "low" confidence or `null` when their signal doesn't
+  support a real timestamp - see metrics.py's module docstring)
 - `overlay.mp4` - annotated video for visual QA (skeleton, bat trail, contact
   frame highlighted)
 

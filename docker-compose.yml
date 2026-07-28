@@ -1,0 +1,30 @@
+# Local dev only. Does NOT include Postgres/Auth/Storage/Studio - `supabase start`
+# (via the Supabase CLI, its own separate Docker Compose under the hood) must
+# already be running before `docker compose up` here; see supabase/ and the
+# README for the two-step local dev flow. This file only contains what the
+# project itself needs on top of that: the Node CLI image, and a zero-cost GCS
+# emulator so dev/test never touches real Google Cloud Storage or incurs cost.
+services:
+  node-cli:
+    build: .
+    env_file:
+      - .env
+    environment:
+      # Docker Desktop's host-gateway lets the container reach the `supabase
+      # start` stack running directly on the host (not in this compose file).
+      SUPABASE_URL: http://host.docker.internal:54321
+      GCS_EMULATOR_HOST: http://gcs-emulator:4443
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./videos:/app/videos
+      - ./frames:/app/frames
+      - ./reports:/app/reports
+    depends_on:
+      - gcs-emulator
+
+  gcs-emulator:
+    image: fsouza/fake-gcs-server:latest
+    command: ["-scheme", "http", "-public-host", "gcs-emulator:4443"]
+    ports:
+      - "4443:4443"

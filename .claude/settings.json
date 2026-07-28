@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export PATH=*)",
+      "Bash(ffprobe *)",
+      "Bash(npx tsc -p tsconfig.json --noEmit)",
+      "Bash(npx supabase status)"
+    ]
+  }
+}

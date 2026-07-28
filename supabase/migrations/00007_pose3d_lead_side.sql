@@ -1,0 +1,13 @@
+-- Adds the real, already-computed "which leg is the front/lead leg" fact
+-- (scripts/pose3d/metrics.py's own lead_side_guess - a 2D-pixel heuristic:
+-- "whichever ankle sits lower in-frame = closer to camera at contact") to
+-- video_clip_pose3d, so the browser's FK correction (coach/components/
+-- fkCorrection.js's correctKneeAngle for the extension checkpoint) knows
+-- which knee is the front knee without re-guessing it from 3D joint angles
+-- alone. Real bug found while building skeletonComparison.js: a "larger
+-- knee angle = front leg" 3D-only heuristic was tried first and DISAGREED
+-- with metrics.py's own real lead_side_guess for a real clip (Emily_C_AB1
+-- (4)'s contact frame: right knee measured MORE extended than the actual
+-- front/left leg) - reusing the pipeline's own already-computed answer
+-- instead of inventing a second, disagreeing one.
+alter table video_clip_pose3d add column lead_side text check (lead_side in ('l', 'r'));

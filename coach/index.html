@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coach Login</title>
+<link rel="stylesheet" href="./coach.css?v=5">
+</head>
+<body>
+<div class="wrap">
+  <div id="loginView" class="login-form">
+    <div class="jersey-badge lg" style="margin:0 auto 4px;">⚾</div>
+    <h1 style="text-align:center;">Coach Sign In</h1>
+    <p class="hint" style="text-align:center;">Access is provisioned by your team's site admin — there's no self-signup here.</p>
+    <input type="email" id="email" placeholder="Email" autocomplete="username">
+    <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+    <button class="primary tap-target" id="signInBtn">Sign In</button>
+    <p class="error-text" id="errorMsg"></p>
+  </div>
+
+  <div id="pickerView" style="display:none;">
+    <h1>My Teams</h1>
+    <div id="teamsList"></div>
+    <button id="signOutBtn" style="margin-top:20px;">Sign out</button>
+  </div>
+</div>
+
+<script type="module">
+  import { supabase } from "./shared.js";
+
+  const loginView = document.getElementById("loginView");
+  const pickerView = document.getElementById("pickerView");
+
+  async function showPickerIfSignedIn() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return false;
+
+    loginView.style.display = "none";
+    pickerView.style.display = "block";
+
+    const { data: access, error } = await supabase
+      .from("coach_team_access")
+      .select("role, teams(slug, name)");
+    if (error) {
+      document.getElementById("teamsList").innerHTML =
+        `<p class="error-text">Couldn't load your teams: ${error.message}</p>`;
+      return true;
+    }
+
+    const teamsList = document.getElementById("teamsList");
+    if (!access || access.length === 0) {
+      teamsList.innerHTML = `<p class="hint">No teams assigned yet — ask your site admin to grant access.</p>`;
+      return true;
+    }
+
+    teamsList.innerHTML = "";
+    for (const a of access) {
+      const div = document.createElement("div");
+      div.className = "card";
+      div.innerHTML = `
+        <div style="font-family:var(--font-display);font-weight:600;font-size:18px;text-transform:uppercase;margin-bottom:10px;">${a.teams.name}</div>
+        <a class="tap-target" style="display:inline-flex;align-items:center;" href="./team.html?team=${a.teams.slug}">Open team view →</a>
+      `;
+      teamsList.appendChild(div);
+    }
+    return true;
+  }
+
+  document.getElementById("signInBtn").addEventListener("click", async () => {
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+    const errorMsg = document.getElementById("errorMsg");
+    errorMsg.textContent = "";
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      errorMsg.textContent = error.message;
+      return;
+    }
+    await showPickerIfSignedIn();
+  });
+
+  document.getElementById("signOutBtn").addEventListener("click", async () => {
+    await supabase.auth.signOut();
+    window.location.reload();
+  });
+
+  showPickerIfSignedIn();
+</script>
+</body>
+</html>

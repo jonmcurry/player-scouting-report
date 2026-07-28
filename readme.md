@@ -115,3 +115,79 @@ baseball swings are mechanically more alike than traditionally taught, and that 
 the rise ball" oversimplifies — the real difference is pitch timing/trajectory, not bat path
 philosophy. This project doesn't take a side on that debate; it just weights softball comps
 heavily for anything timing-specific, which holds either way.
+
+## Cloud layer (optional): Supabase + GCS + Gemini
+
+Everything above (Python + PowerShell + hand-edited static HTML, zero cost, GitHub Pages) still
+works unchanged and remains how the public reports actually get published. This is an *additional*,
+optional layer for coach-side editing: Supabase (private Postgres backend, RLS-scoped per team),
+GCS (media storage), and Gemini (AI-drafted checklist/issue scores) — added in `src/` (Node/
+TypeScript), `supabase/` (schema), `Dockerfile`/`docker-compose.yml`. **The public GitHub Pages
+output never talks to Supabase directly** — a `generate` CLI (server-side, `service_role` key)
+is the only thing that reads Supabase and writes the same kind of flat static HTML into `reports/`;
+a human still reviews the diff and commits/pushes, same as today.
+
+### One-time local setup
+
+```powershell
+npm install
+npx supabase init      # already done in this repo - only needed once per clone
+npx supabase start     # spins up Postgres/Auth/Storage/Studio via Docker; prints local API_URL/keys
+cp .env.example .env   # then paste in the URL/keys `supabase start` just printed
+```
+
+`supabase start` requires Docker Desktop running. If you don't have the Supabase CLI installed
+globally, prefix every `supabase` command with `npx` (as above) - no global install needed.
+
+### Local dev loop
+
+```powershell
+npx supabase db reset                 # (re)applies supabase/migrations/ + supabase/seed.sql
+docker compose up -d gcs-emulator     # zero-cost local GCS emulator (fake-gcs-server)
+npm run extract -- --video "videos/emily_c_ab1.mp4" --player emily_c
+npm run migrate -- --report reports/latham-lady-bison-white-10u/emily_c.html
+npm run build:reports -- --report reports/latham-lady-bison-white-10u/emily_c.html
+```
+
+`migrate` is a one-time-per-report bootstrap (parses an existing hand-filled report's embedded
+GAME_LOG/CHECKLIST/ISSUES into Supabase); after that, Supabase is the source of truth and
+`build:reports` regenerates the HTML from it - full regeneration every run, unlike the old
+PowerShell generator's one-way "never touch a hand-filled report" behavior.
+
+Feeding the two automated-draft sources into Supabase:
+```powershell
+# pose3d pipeline (scripts/pose3d/) output - never touches Supabase itself, just writes JSON
+.venv_pose3d/Scripts/python.exe scripts/pose3d/pose3d_to_checklist.py "frames/emily_c/*" out.json
+npm run ingest -- --team latham-lady-bison-white-10u --player emily_c --pose3dJson out.json
+
+# Gemini vision draft over extracted frames
+npm run analyze -- --team latham-lady-bison-white-10u --player emily_c \
+  --framesDir frames/emily_c/some_clip --pitchContext "Outside, low"
+```
+Both respect the same rule: never silently overwrite a checkpoint a coach has already confirmed
+(`reviewed_by` set) unless you pass `--force`.
+
+### GCP deployment (production)
+
+This is fundamentally batch/CLI work (extract → analyze → regenerate), not a request/response
+service, so it deploys as a **Cloud Run Job** (run-to-completion), not a Cloud Run Service:
+
+```powershell
+gcloud builds submit --tag gcr.io/<PROJECT_ID>/scouting-cli
+gcloud run jobs create scouting-cli `
+  --image gcr.io/<PROJECT_ID>/scouting-cli `
+  --region <REGION> `
+  --task-timeout 1800 `
+  --set-secrets SUPABASE_SERVICE_ROLE_KEY=supabase-service-role:latest,GEMINI_API_KEY=gemini-api-key:latest
+gcloud run jobs execute scouting-cli --args="analyze,--team,...,--player,...,--framesDir,...,--pitchContext,..."
+```
+
+Secrets (`SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, GCS credentials) go through GCP Secret
+Manager, never baked into the image or committed anywhere - `.env` is gitignored and
+`.env.example` only ever holds placeholders. No Cloud Scheduler/Eventarc/Pub-Sub trigger is set up
+for v1 - manual `gcloud run jobs execute` per invocation is the whole story until there's an actual
+recurring need for more automation.
+
+Supabase itself is hosted separately (supabase.com project, not a GCP resource) - point
+`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` at that project's real values for production, the same
+env vars used for local dev against `supabase start`'s local instance.

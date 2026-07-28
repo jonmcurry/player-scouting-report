@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team View</title>
+<link rel="stylesheet" href="./coach.css?v=5">
+</head>
+<body>
+<div class="wrap">
+  <h1 id="teamName">Loading…</h1>
+  <p class="hint"><a href="./index.html">← My teams</a></p>
+
+  <div id="focusBanner"></div>
+
+  <div class="chip-row" id="chipRow">
+    <button class="chip" data-filter="all" data-active="true">All Players</button>
+    <button class="chip" data-filter="needsReview">⚠ Needs Review</button>
+    <button class="chip" data-filter="priorityFlaws">🔴 Priority Flaws</button>
+    <button class="chip" data-filter="earlyRead">⚠ Early Read (&lt;3 ABs)</button>
+  </div>
+
+  <div class="hint" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
+    <span><span class="legend-swatch bg-score-3"></span> On Target</span>
+    <span><span class="legend-swatch bg-score-2"></span> Developing</span>
+    <span><span class="legend-swatch bg-score-1"></span> Needs Work</span>
+    <span><span class="legend-swatch bg-score-pending"></span> Not yet scored</span>
+  </div>
+  <details class="drawer" style="margin-bottom:14px;">
+    <summary><span>Each bar is one of the 11 checkpoints, left to right — tap to see which is which</span></summary>
+    <div class="drawer-body">
+      <ol id="checkpointKey" style="margin:0;padding-left:20px;font-size:13px;color:var(--text-secondary);"></ol>
+    </div>
+  </details>
+
+  <div id="playerCards"></div>
+</div>
+
+<script type="module">
+  import { supabase, requireSession, CHECKPOINTS, qs } from "./shared.js";
+
+  const MIN_ATBATS_FOR_PATTERN = 3;
+  const teamSlug = qs("team");
+
+  async function main() {
+    const session = await requireSession();
+    if (!session) return;
+    if (!teamSlug) {
+      document.getElementById("teamName").textContent = "No team specified";
+      return;
+    }
+
+    const { data: team, error: teamErr } = await supabase
+      .from("teams")
+      .select("id, name")
+      .eq("slug", teamSlug)
+      .single();
+    if (teamErr || !team) {
+      document.getElementById("teamName").textContent = "Team not found (or you don't have access)";
+      return;
+    }
+    document.getElementById("teamName").textContent = team.name;
+    document.getElementById("checkpointKey").innerHTML = CHECKPOINTS.map(
+      (cp) => `<li>${cp.label}</li>`,
+    ).join("");
+
+    await renderFocusBanner(team.id);
+    const players = await loadPlayers(team.id);
+    let currentFilter = "all";
+    renderPlayerCards(players, currentFilter);
+
+    document.querySelectorAll(".chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        document.querySelectorAll(".chip").forEach((c) => c.removeAttribute("data-active"));
+        chip.setAttribute("data-active", "true");
+        currentFilter = chip.dataset.filter;
+        renderPlayerCards(players, currentFilter);
+      });
+    });
+  }
+
+  async function renderFocusBanner(teamId) {
+    const { data, error } = await supabase
+      .from("team_summary_stats")
+      .select("checkpoint_label, avg_score, is_team_weakness")
+      .eq("team_id", teamId)
+      .eq("is_team_weakness", true)
+      .order("avg_score", { ascending: true });
+
+    const el = document.getElementById("focusBanner");
+    if (error || !data || data.length === 0) {
+      el.innerHTML = "";
+      return;
+    }
+    el.innerHTML = `
+      <div class="focus-banner">
+        <h2>Team focus areas (avg &lt; 2.0)</h2>
+        <ul>
+          ${data.map((d) => `<li><b>${d.checkpoint_label}</b> — avg ${Number(d.avg_score).toFixed(1)}</li>`).join("")}
+        </ul>
+      </div>
+    `;
+  }
+
+  async function loadPlayers(teamId) {
+    const { data: players, error } = await supabase
+      .from("players")
+      .select("id, name, jersey_number, slug")
+      .eq("team_id", teamId)
+      .order("name");
+    if (error || !players) return [];
+
+    for (const p of players) {
+      const { data: scores } = await supabase
+        .from("checklist_scores")
+        .select("score, reviewed_by, checkpoints!inner(slug, sort_order)")
+        .eq("player_id", p.id)
+        .order("sort_order", { referencedTable: "checkpoints" });
+      p.scoresBySlug = new Map((scores ?? []).map((s) => [s.checkpoints.slug, s]));
+
+      const { count: abCount } = await supabase
+        .from("game_log_entries")
+        .select("id", { count: "exact", head: true })
+        .eq("player_id", p.id);
+      p.abCount = abCount ?? 0;
+    }
+    return players;
+  }
+
+  function matchesFilter(player, filter) {
+    const rows = [...player.scoresBySlug.values()];
+    if (filter === "all") return true;
+    if (filter === "needsReview") return rows.some((r) => r.score != null && !r.reviewed_by);
+    if (filter === "priorityFlaws") return rows.some((r) => r.score === 1);
+    if (filter === "earlyRead") return player.abCount < MIN_ATBATS_FOR_PATTERN;
+    return true;
+  }
+
+  function renderPlayerCards(players, filter) {
+    const container = document.getElementById("playerCards");
+    const filtered = players.filter((p) => matchesFilter(p, filter));
+    if (filtered.length === 0) {
+      container.innerHTML = `<p class="hint">No players match this filter.</p>`;
+      return;
+    }
+    container.innerHTML = filtered
+      .map((p) => {
+        const blocks = CHECKPOINTS.map((cp) => {
+          const row = p.scoresBySlug.get(cp.slug);
+          const cls = row?.score ? `bg-score-${row.score}` : "bg-score-pending";
+          return `<div class="block ${cls}" title="${cp.label}: ${row?.score ?? "—"}"></div>`;
+        }).join("");
+        const reviewedCount = [...p.scoresBySlug.values()].filter((r) => r.reviewed_by).length;
+        const scoredCount = [...p.scoresBySlug.values()].filter((r) => r.score != null).length;
+        return `
+          <a class="lineup-row tap-target" href="./player.html?team=${teamSlug}&player=${p.slug}">
+            <div class="jersey-badge">${p.jersey_number}</div>
+            <div class="lineup-main">
+              <div class="lineup-head">
+                <span class="lineup-name">${p.name}</span>
+                <span class="hint">${reviewedCount}/${scoredCount} confirmed</span>
+              </div>
+              <div class="mini-heatmap">${blocks}</div>
+              ${p.abCount < MIN_ATBATS_FOR_PATTERN ? `<p class="hint" style="margin:6px 0 0;">⚠ Only ${p.abCount} at-bat(s) logged</p>` : ""}
+            </div>
+          </a>
+        `;
+      })
+      .join("");
+  }
+
+  main();
+</script>
+</body>
+</html>

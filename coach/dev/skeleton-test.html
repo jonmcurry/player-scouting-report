@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dev: H36M skeleton renderer test harness</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #111; color: #eee; margin: 0; padding: 20px; }
+  h1 { font-size: 16px; }
+  .hint { color: #999; font-size: 13px; max-width: 640px; }
+  canvas { background: #1c1c1c; border: 1px solid #333; touch-action: none; cursor: grab; }
+  .controls { display: flex; gap: 10px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
+  .controls input[type="range"] { width: 160px; }
+  .camera-controls { display: grid; grid-template-columns: auto 160px auto; gap: 4px 10px; align-items: center; font-size: 13px; margin-top: 14px; }
+  .readout { font-size: 12px; color: #aaa; }
+  button { cursor: pointer; }
+</style>
+</head>
+<body>
+  <h1>Dev harness: H36M skeleton renderer (Stage 4 - NOT part of the shipped app)</h1>
+  <p class="hint">
+    Renders <code>sample_pose3d.json</code> - real, smoothed pose3d output for
+    "Emily_C_AB1 (4)" (contact-frame-relative window, generated via
+    smoothJoints.ts). Purpose: visually re-tune the camera constants
+    (yaw/pitch/scale/groundFrac) in skeletonRenderer.js's DEFAULT_CAMERA
+    against real H36M-scale data, since the old emily_c_swing_model.html
+    page's scale=230 was hand-tuned for its own authored figure, not this
+    data. Drag the canvas to rotate; use the sliders for precise values, then
+    copy the readout numbers into DEFAULT_CAMERA once it looks right.
+  </p>
+
+  <canvas id="cv" width="480" height="560"></canvas>
+
+  <div class="controls">
+    <button id="playBtn">&#9654; Play</button>
+    <select id="speed">
+      <option value="0.25">0.25x</option>
+      <option value="0.5">0.5x</option>
+      <option value="1" selected>1x</option>
+    </select>
+    <input type="range" id="scrub" min="0" max="0" value="0" step="1">
+    <span class="readout" id="frameReadout">frame 0</span>
+  </div>
+
+  <div class="camera-controls">
+    <label for="yaw">yaw</label><input type="range" id="yaw" min="-3.14" max="3.14" step="0.01"><span class="readout" id="yawVal"></span>
+    <label for="pitch">pitch</label><input type="range" id="pitch" min="-0.6" max="0.6" step="0.01"><span class="readout" id="pitchVal"></span>
+    <label for="scale">scale</label><input type="range" id="scale" min="20" max="400" step="1"><span class="readout" id="scaleVal"></span>
+    <label for="groundFrac">groundFrac</label><input type="range" id="groundFrac" min="0.5" max="0.98" step="0.01"><span class="readout" id="groundFracVal"></span>
+  </div>
+  <p class="readout" id="cameraDump"></p>
+
+  <script type="module">
+    import { drawFigure, DEFAULT_CAMERA } from "../components/skeletonRenderer.js";
+
+    const cv = document.getElementById("cv");
+    const ctx = cv.getContext("2d");
+    const playBtn = document.getElementById("playBtn");
+    const speedSelect = document.getElementById("speed");
+    const scrub = document.getElementById("scrub");
+    const frameReadout = document.getElementById("frameReadout");
+
+    const camera = { ...DEFAULT_CAMERA };
+    const sliders = {
+      yaw: document.getElementById("yaw"),
+      pitch: document.getElementById("pitch"),
+      scale: document.getElementById("scale"),
+      groundFrac: document.getElementById("groundFrac"),
+    };
+    const vals = {
+      yaw: document.getElementById("yawVal"),
+      pitch: document.getElementById("pitchVal"),
+      scale: document.getElementById("scaleVal"),
+      groundFrac: document.getElementById("groundFracVal"),
+    };
+    for (const k of Object.keys(sliders)) {
+      sliders[k].value = camera[k];
+      vals[k].textContent = camera[k];
+      sliders[k].addEventListener("input", () => {
+        camera[k] = Number(sliders[k].value);
+        vals[k].textContent = camera[k];
+        dumpCamera();
+        render();
+      });
+    }
+    function dumpCamera() {
+      document.getElementById("cameraDump").textContent =
+        `{ yaw: ${camera.yaw}, pitch: ${camera.pitch}, scale: ${camera.scale}, groundFrac: ${camera.groundFrac} }`;
+    }
+    dumpCamera();
+
+    let frames = [];
+    let frame = 0;
+    let playing = false;
+    let speed = 1;
+    let lastTick = 0;
+    let acc = 0;
+    let fps = 30;
+
+    function render() {
+      if (!frames.length) return;
+      const f = frames[frame];
+      drawFigure(ctx, f.joints, cv.width, cv.height, camera, { highlightContact: false });
+      scrub.value = String(frame);
+      frameReadout.textContent = `frame ${f.frame} (t=${f.time_s.toFixed(3)}s)`;
+    }
+
+    function tick(ts) {
+      if (playing && frames.length) {
+        if (lastTick) {
+          acc += ((ts - lastTick) / 1000) * fps * speed;
+          while (acc >= 1) { frame = (frame + 1) % frames.length; acc -= 1; }
+        }
+        lastTick = ts;
+        render();
+      }
+      requestAnimationFrame(tick);
+    }
+
+    playBtn.addEventListener("click", () => {
+      playing = !playing;
+      lastTick = 0;
+      playBtn.textContent = playing ? "⏸ Pause" : "▶ Play";
+    });
+    speedSelect.addEventListener("change", () => { speed = Number(speedSelect.value); });
+    scrub.addEventListener("input", () => { frame = Number(scrub.value); render(); });
+
+    let dragging = false, lx = 0, ly = 0;
+    cv.addEventListener("pointerdown", (e) => { dragging = true; lx = e.clientX; ly = e.clientY; cv.setPointerCapture(e.pointerId); });
+    cv.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      camera.yaw += (e.clientX - lx) * 0.01;
+      camera.pitch = Math.max(-0.6, Math.min(0.6, camera.pitch + (e.clientY - ly) * 0.005));
+      lx = e.clientX; ly = e.clientY;
+      sliders.yaw.value = camera.yaw; vals.yaw.textContent = camera.yaw.toFixed(2);
+      sliders.pitch.value = camera.pitch; vals.pitch.textContent = camera.pitch.toFixed(2);
+      dumpCamera();
+      render();
+    });
+    cv.addEventListener("pointerup", () => { dragging = false; });
+
+    async function load() {
+      const res = await fetch("./sample_pose3d.json");
+      const data = await res.json();
+      frames = data.frames;
+      if (frames.length > 1) fps = 1 / (frames[1].time_s - frames[0].time_s);
+      scrub.max = String(frames.length - 1);
+      frame = 0;
+      render();
+    }
+    load();
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>
