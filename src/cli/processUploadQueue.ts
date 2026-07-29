@@ -24,9 +24,21 @@
  * Usage:
  *   npm run process-upload-queue
  *   (Ctrl-C to stop; polls every POLL_INTERVAL_MS, processes one clip at a
- *   time - simple by design, no parallel processing, no retry/backoff job
- *   queue, no crash-recovery lease/heartbeat. See the approved plan's "real
- *   open risks" section for what's deliberately deferred.)
+ *   time within this process - deliberate, not a limitation: pose3d
+ *   inference (YOLO11-pose/VideoPose3D) is GPU/CPU-bound, so running N of
+ *   these concurrently ON ONE MACHINE would just make them compete for the
+ *   same GPU, not finish N times faster.
+ *
+ *   To scale throughput at real volume (hundreds/thousands of queued
+ *   clips), run this SAME command on multiple separate machines/Cloud Run
+ *   Job instances instead - already safe to do without any code change,
+ *   since claimNextPendingClip() (src/services/db/uploadQueue.ts) claims
+ *   work via an atomic conditional UPDATE that Postgres serializes for real,
+ *   not a lock table or in-process coordination that only works within one
+ *   process. It also reclaims a clip stuck in 'processing' past
+ *   UPLOAD_QUEUE_STALE_CLAIM_MINUTES (default 15), so a crashed worker's
+ *   in-flight clip doesn't get stuck forever - the one gap this used to be
+ *   missing.)
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -106,6 +118,25 @@ export async function processOnePendingClip(): Promise<boolean> {
 
     await markClipReady(clip.videoClipId);
     console.log(`[process-upload-queue] Clip "${clip.clipSlug}" ready.`);
+
+    // Only the raw downloaded copy, not outDir - GCS still has the
+    // authoritative raw video (safe to re-download if ever needed), so this
+    // local copy is pure redundant disk usage once processing succeeds.
+    // outDir's outputs stay: overlay.mp4 is what a coach needs to watch to
+    // approve/reject the public skeleton render (see NEXT_STEPS.md), and
+    // pose_3d.json/metrics.json let ingest-phases/ingest-pose3d-frames
+    // re-run later without repeating the expensive pipeline run. Without
+    // this, videos/_uploads/ grows without bound as more clips process -
+    // real disk exhaustion risk at hundreds/thousands of videos.
+    try {
+      fs.unlinkSync(localRawPath);
+    } catch (cleanupErr) {
+      console.error(
+        `[process-upload-queue] Clip "${clip.clipSlug}" ready, but couldn't remove local raw copy ${localRawPath}: ${
+          cleanupErr instanceof Error ? cleanupErr.message : cleanupErr
+        }`,
+      );
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[process-upload-queue] Clip "${clip.clipSlug}" failed: ${message}`);

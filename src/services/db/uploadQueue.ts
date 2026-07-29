@@ -7,6 +7,14 @@
  */
 import { getSupabaseClient } from "./supabaseClient.js";
 
+// A clip stuck in 'processing' past this long is assumed to belong to a
+// crashed/killed worker, not a slow-but-alive one, and becomes reclaimable -
+// closing the "stuck forever, no automatic recovery" gap this file's
+// claimNextPendingClip() used to explicitly defer. Configurable since real
+// processing time depends on clip length and the machine's GPU/CPU - the
+// default is a generous upper bound, not a measured typical duration.
+const STALE_CLAIM_MINUTES = Number(process.env.UPLOAD_QUEUE_STALE_CLAIM_MINUTES ?? 15);
+
 export interface ClipContext {
   videoClipId: string;
   clipSlug: string;
@@ -19,22 +27,30 @@ export interface ClipContext {
 }
 
 /**
- * Atomically claims the oldest pending clip: `update ... where status =
- * 'pending'` only succeeds (returns a row) for whichever caller gets there
- * first - safe against the worker accidentally being run twice at once,
- * without needing a separate lock table. Returns null when there's nothing
- * to do.
+ * Atomically claims the oldest pending clip - OR a clip stuck in
+ * 'processing' past STALE_CLAIM_MINUTES (a crashed/killed worker never got
+ * to call markClipReady/markClipFailed to move it out of that state).
+ * `update ... where id = X and (status = 'pending' or (status = 'processing'
+ * and claimed_at < staleCutoff))` only succeeds (returns a row) for
+ * whichever caller gets there first - the exact same condition is checked
+ * at both select and update time, so this is safe to call from multiple
+ * concurrent worker processes (real Postgres row-lock serialization, not
+ * just "unlikely to collide") without needing a separate lock table, AND
+ * safe against re-claiming a clip a still-alive worker is legitimately
+ * still processing. Returns null when there's nothing to do.
  */
 export async function claimNextPendingClip(): Promise<ClipContext | null> {
   const supabase = getSupabaseClient();
+  const staleCutoff = new Date(Date.now() - STALE_CLAIM_MINUTES * 60_000).toISOString();
+  const claimableFilter = `status.eq.pending,and(status.eq.processing,claimed_at.lt.${staleCutoff})`;
 
   const { data: candidates, error: findErr } = await supabase
     .from("video_clips")
     .select("id")
-    .eq("status", "pending")
+    .or(claimableFilter)
     .order("created_at", { ascending: true })
     .limit(1);
-  if (findErr) throw new Error(`Finding pending clips: ${findErr.message}`);
+  if (findErr) throw new Error(`Finding claimable clips: ${findErr.message}`);
   if (!candidates || candidates.length === 0) return null;
 
   const candidateId = candidates[0]!.id as string;
@@ -42,7 +58,7 @@ export async function claimNextPendingClip(): Promise<ClipContext | null> {
     .from("video_clips")
     .update({ status: "processing", claimed_at: new Date().toISOString() })
     .eq("id", candidateId)
-    .eq("status", "pending") // the actual race guard - only succeeds if still pending
+    .or(claimableFilter) // the actual race guard - only succeeds if still claimable
     .select("id, clip_slug, raw_gcs_path")
     .maybeSingle();
   if (claimErr) throw new Error(`Claiming clip ${candidateId}: ${claimErr.message}`);

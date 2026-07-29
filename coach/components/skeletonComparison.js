@@ -18,15 +18,48 @@ import { L_HIP, L_KNEE, L_ANKLE, R_HIP, R_KNEE, R_ANKLE } from "./h36mSkeleton.j
 // buildExtensionCorrectedFrames()'s own honesty guard below.
 const EXTENSION_TARGET_DEG = 155;
 
+/** Unpacks joints_blob (Postgres bytea, wire format confirmed empirically:
+ * hex text prefixed with "\x") back into each frame's `joints` array -
+ * mirrors src/services/db/videoClipUpsert.ts's packing exactly, so this is
+ * the one place that format is decoded. Reconstructs the SAME per-frame
+ * shape ({..., joints: [[x,y,z], ...]}) the rest of this file (and
+ * fkCorrection.js/skeletonRenderer.js) already expects, so nothing
+ * downstream of loadClipSkeletonData needs to know this optimization
+ * exists. */
+function unpackJoints(frames, jointNames, hexBlob) {
+  const hex = hexBlob.startsWith("\\x") ? hexBlob.slice(2) : hexBlob;
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  const floats = new Float32Array(bytes.buffer);
+  const jointsPerFrame = jointNames.length;
+
+  return frames.map((f, frameIdx) => {
+    const base = frameIdx * jointsPerFrame * 3;
+    const joints = [];
+    for (let j = 0; j < jointsPerFrame; j++) {
+      joints.push([floats[base + j * 3], floats[base + j * 3 + 1], floats[base + j * 3 + 2]]);
+    }
+    return { ...f, joints };
+  });
+}
+
 /** Real per-clip pose3d data, or null if this clip has no video_clip_pose3d
  * row yet (predates this feature, or is still processing). */
 export async function loadClipSkeletonData(clipId) {
   const { data } = await supabase
     .from("video_clip_pose3d")
-    .select("joint_names, frames, lead_side")
+    .select("joint_names, frames, joints_blob, lead_side")
     .eq("video_clip_id", clipId)
     .maybeSingle();
-  return data ?? null;
+  if (!data) return null;
+
+  // joints_blob is null for any row written before this optimization -
+  // those already have `joints` inline in each frame object, so pass
+  // through unchanged rather than forcing a re-ingest of old clips.
+  const frames = data.joints_blob ? unpackJoints(data.frames, data.joint_names, data.joints_blob) : data.frames;
+  return { ...data, frames };
 }
 
 /** The player's real extension checklist score, or null if unscored. */

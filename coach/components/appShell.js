@@ -26,15 +26,27 @@ export async function loadRosterWithProgress(teamId) {
     .select("id, name, jersey_number, slug")
     .eq("team_id", teamId)
     .order("name");
-  if (error || !players) return { roster: [], confirmedCount: 0, totalCount: 0 };
+  if (error || !players || players.length === 0) return { roster: [], confirmedCount: 0, totalCount: 0 };
+
+  // One batched query for the whole roster instead of one query per player -
+  // same fix as team.html's loadPlayers(), same real N+1 this used to be.
+  const { data: allScores } = await supabase
+    .from("checklist_scores")
+    .select("player_id, score, reviewed_by")
+    .in(
+      "player_id",
+      players.map((p) => p.id),
+    );
+  const scoresByPlayer = new Map();
+  for (const s of allScores ?? []) {
+    if (!scoresByPlayer.has(s.player_id)) scoresByPlayer.set(s.player_id, []);
+    scoresByPlayer.get(s.player_id).push(s);
+  }
 
   let confirmedCount = 0;
   for (const p of players) {
-    const { data: scores } = await supabase
-      .from("checklist_scores")
-      .select("score, reviewed_by")
-      .eq("player_id", p.id);
-    const scored = (scores ?? []).filter((s) => s.score !== null);
+    const scores = scoresByPlayer.get(p.id) ?? [];
+    const scored = scores.filter((s) => s.score !== null);
     p.scoredCount = scored.length;
     p.reviewedCount = scored.filter((s) => s.reviewed_by).length;
     if (scored.length > 0 && scored.every((s) => s.reviewed_by)) confirmedCount += 1;

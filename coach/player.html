@@ -349,9 +349,16 @@
       })
       .join("");
 
-    for (const g of logs ?? []) {
-      await loadClipsForEntry(g.id);
-    }
+    // extensionScore is the same value for every clip on this player's page -
+    // fetch it once here instead of once per clip inside the loop below (a
+    // real N+1: a full season's worth of logged at-bats meant re-fetching
+    // this identical value dozens of times to render one page). Skip the
+    // query entirely when there's nothing to render it for.
+    const extensionScore = logs && logs.length > 0 ? await loadExtensionScore(playerId) : null;
+
+    // Each entry's clip lookup is independent (writes to its own DOM mount),
+    // so run them concurrently rather than one at a time.
+    await Promise.all((logs ?? []).map((g) => loadClipsForEntry(g.id, extensionScore)));
   }
 
   // Tracks whether any card is currently pending/processing, read by
@@ -363,7 +370,7 @@
    * real data - see emily_c.html's AB1 note) - only the first (by position)
    * gets a scrubber/status card for now; a multi-clip picker is a known
    * follow-up, not built this pass. */
-  async function loadClipsForEntry(gameLogEntryId) {
+  async function loadClipsForEntry(gameLogEntryId, extensionScore) {
     const mount = document.querySelector(`.scrubber-mount[data-game-log-entry="${gameLogEntryId}"]`);
     if (!mount) return;
 
@@ -429,7 +436,6 @@
       confidence: r.confidence,
     }));
 
-    const extensionScore = await loadExtensionScore(playerId);
     const correctedFrames = buildExtensionCorrectedFrames(pose3dData.frames, pose3dData.lead_side, extensionScore);
     const note = !pose3dData.lead_side
       ? "Front-leg side unknown for this clip - showing her real swing only."

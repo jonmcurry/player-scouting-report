@@ -1,8 +1,80 @@
 # Open Items, To-Dos, and Future Considerations
 
-Snapshot as of 2026-07-29 (updated after the mobile UX rebuild and Latham/Emily C's Supabase
-migration - see below). This file is a working status doc, not permanent documentation — prune
-or rewrite sections as they get resolved rather than letting it accumulate stale entries.
+Snapshot as of 2026-07-29 (updated after the mobile UX rebuild, Latham/Emily C's Supabase
+migration, the BarrelIQ rebrand, and a performance/scale review - see below). This file is a
+working status doc, not permanent documentation — prune or rewrite sections as they get resolved
+rather than letting it accumulate stale entries.
+
+## Performance/scale review + fixes (2026-07-29)
+
+Reviewed for "what breaks at hundreds/thousands of videos/users" and fixed in priority order:
+
+- [x] **Missing FK indexes** (migration `00011_fk_indexes.sql`) - Postgres auto-indexes primary
+      keys, not foreign keys; `players.team_id`, `game_log_entries.player_id`, `issues.player_id`,
+      `comp_recommendations/comp_notes/drill_recommendations.player_id`, and
+      `checklist_score_history.checklist_score_id` had none. Every RLS policy check re-runs these
+      same lookups per row, so this hits twice as hard as it looks. Applied via
+      `supabase migration up` (not `db reset`) to avoid wiping real data.
+- [x] **N+1 query patterns in the coach app** - `team.html`'s `loadPlayers()` and
+      `appShell.js`'s `loadRosterWithProgress()` did 2 sequential queries *per player* (a
+      20-player roster = 40+ round trips); batched into 2 queries total via `.in("player_id",
+      [...])` + client-side grouping. `player.html` was also re-fetching the player's
+      (player-wide, not per-clip) extension score inside the per-clip loop - hoisted out to once
+      per page load, and the per-entry clip-loading loop now runs concurrently
+      (`Promise.all`) instead of sequentially. Deliberately did NOT convert the 10s status-polling
+      to Supabase Realtime (bigger, separate piece of work; polling is already self-limiting -
+      only fires while something's actually in-flight).
+- [x] **Video processing queue concurrency** - turned out the existing
+      `claimNextPendingClip()` was already race-safe for multiple concurrent workers (a real
+      atomic conditional `UPDATE`, verified against the real local Postgres, not assumed from the
+      code comment) - the actual gap was a crashed/killed worker leaving a clip stuck in
+      `'processing'` forever with no recovery. Fixed: a clip stuck past
+      `UPLOAD_QUEUE_STALE_CLAIM_MINUTES` (default 15) becomes reclaimable, verified with a real
+      insert-stale-row-then-reclaim test against the local DB (including confirming a second
+      immediate reclaim attempt correctly still fails). Real throughput at volume should come from
+      running this same worker on multiple separate machines (already safe), not from
+      parallelizing within one process - pose3d inference is GPU/CPU-bound, so N copies on one
+      machine would just compete for the same GPU.
+- [x] **`video_clip_pose3d.frames` JSONB bloat** - moved the bulky, uniform joint-position data
+      (real observed size: ~14,000 frames for one clip) out of JSONB into a packed Float32 `bytea`
+      column (`joints_blob`, migration `00012`), decoded browser-side back into the exact same
+      in-memory shape the renderer/FK-correction code already expects, so nothing downstream had
+      to change. **Correction to the original review's estimate**: measured via real HTTP
+      payload size (not `pg_column_size`, which reports Postgres's own on-disk TOAST-*compressed*
+      size and is the wrong metric for what the browser actually downloads/parses) - the real win
+      is ~1.9x smaller (48%), not the ~5x originally estimated, because hex-encoding bytea for
+      JSON/REST transport costs a 2x expansion tax that eats into the theoretical binary-packing
+      win. Still a real, meaningful reduction, just smaller than hoped - a true binary
+      transport (e.g. a dedicated blob store) would need to replace the JSON/REST path entirely to
+      get closer to the full win, which is a bigger, separate architecture change.
+- [x] **Local disk cleanup** - `processUploadQueue.ts` now deletes the downloaded raw video copy
+      (`videos/_uploads/...`) once a clip is marked ready (GCS still has the authoritative copy).
+      Deliberately does NOT delete `frames/<player>/<clip>/`'s other outputs - `overlay.mp4` is
+      what a coach needs to watch for the still-open public-skeleton-render sign-off item below,
+      and `pose_3d.json`/`metrics.json` let re-ingestion happen later without re-running the whole
+      pipeline.
+- [ ] **Not done, deliberately deferred**: pagination (team roster/game log fetch everything
+      unbounded - fine at today's roster sizes), a batch/"regenerate all reports" CLI mode
+      (`generate.ts`/`migrate.ts` are one-report-at-a-time), and the Realtime conversion mentioned
+      above.
+
+**A real, serious bug found and fixed while verifying the above, unrelated to the scale work
+itself**: `migrate.ts`'s `replaceGameLogs()` used to `DELETE` every one of a player's
+`game_log_entries` rows and re-`INSERT` fresh ones (new random ids) on every run. Since
+`video_clips.game_log_entry_id` references `game_log_entries` `ON DELETE CASCADE`, simply
+re-running `migrate.ts` again - e.g. after an unrelated edit, which is exactly what happened
+during this session's rebrand verification - silently destroyed every already-ingested clip's
+video/pose3d data for that player. Found by checking real row counts after a routine re-migration,
+not assumed safe from the function's own "safe to re-run" docstring claim. Fixed with a real
+`unique (player_id, date, opponent, ab)` constraint (migration `00013`) and rewrote
+`replaceGameLogs` to upsert by that natural key - re-running `migrate.ts` now preserves the same
+`game_log_entries.id` (and therefore any video_clips/pose3d hanging off it) for an at-bat that
+already exists, only removing entries that are genuinely no longer in the report. Verified by
+re-running `migrate.ts` a second time and confirming a clip's data survived this time, then
+re-ingested the 6 clips lost before this fix was in place (all 7 of Emily's clips are whole again).
+**This bug would have hit Bethlehem Boom 10U's eventual migration too** (any coach editing a report
+and re-running `migrate.ts` would have silently lost ingested video data) - worth knowing this is
+now fixed before that migration happens, not something to re-discover the hard way again.
 
 ## Resolved this session (2026-07-29)
 

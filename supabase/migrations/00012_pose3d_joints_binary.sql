@@ -1,0 +1,23 @@
+-- Performance: video_clip_pose3d.frames stored each frame's 17-joint x/y/z
+-- array as nested JSON arrays inline - real observed size (Emily C's actual
+-- clips, ingested this session) reaches ~14,000 frames for one clip, and
+-- JSON text is a poor fit for a large uniform block of floats (verbose
+-- ASCII number representations, full re-parse cost on every read, no way
+-- for the browser to slice out just the frames it needs).
+--
+-- joints_blob packs every frame's joints as raw Float32 (little-endian,
+-- frame-major: frame 0's 17*3 floats, then frame 1's, ...) - roughly a 5x
+-- size reduction over the equivalent JSON text, decoded browser-side with a
+-- plain Uint8Array/Float32Array view (see coach/components/
+-- skeletonComparison.js), no server round-trip or new storage system
+-- needed. `frames` keeps everything else per-frame (frame/time_s/tracked/
+-- angles) as JSONB - those are small and benefit from staying
+-- human-inspectable; only the genuinely bulky, uniform numeric data moves.
+--
+-- Nullable + no backfill: existing rows (if any) keep frames.joints as the
+-- application already wrote it; only new/re-ingested rows populate
+-- joints_blob and omit joints from their frames array. Application code
+-- (upsertPose3dFrames) always writes both together from here on, so this
+-- is additive, not a breaking rename.
+alter table video_clip_pose3d
+  add column joints_blob bytea;

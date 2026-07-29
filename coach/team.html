@@ -124,30 +124,45 @@
     `;
   }
 
+  /** Batches the whole team's checklist scores + game-log counts into 2
+   * queries total regardless of roster size, instead of the 2-per-player
+   * round trips this used to make (real N+1: a 20-player roster meant 40+
+   * sequential requests before the page could render). */
   async function loadPlayers(teamId) {
     const { data: players, error } = await supabase
       .from("players")
       .select("id, name, jersey_number, slug")
       .eq("team_id", teamId)
       .order("name");
-    if (error || !players) return [];
+    if (error || !players || players.length === 0) return [];
+
+    const playerIds = players.map((p) => p.id);
+    const [{ data: allScores }, { data: allGameLogs }] = await Promise.all([
+      supabase
+        .from("checklist_scores")
+        .select("player_id, score, reviewed_by, checkpoints!inner(slug, sort_order)")
+        .in("player_id", playerIds)
+        .order("sort_order", { referencedTable: "checkpoints" }),
+      supabase.from("game_log_entries").select("player_id").in("player_id", playerIds),
+    ]);
+
+    const scoresByPlayer = new Map();
+    for (const s of allScores ?? []) {
+      if (!scoresByPlayer.has(s.player_id)) scoresByPlayer.set(s.player_id, []);
+      scoresByPlayer.get(s.player_id).push(s);
+    }
+    const abCountByPlayer = new Map();
+    for (const g of allGameLogs ?? []) {
+      abCountByPlayer.set(g.player_id, (abCountByPlayer.get(g.player_id) ?? 0) + 1);
+    }
 
     for (const p of players) {
-      const { data: scores } = await supabase
-        .from("checklist_scores")
-        .select("score, reviewed_by, checkpoints!inner(slug, sort_order)")
-        .eq("player_id", p.id)
-        .order("sort_order", { referencedTable: "checkpoints" });
-      p.scoresBySlug = new Map((scores ?? []).map((s) => [s.checkpoints.slug, s]));
-      const scored = (scores ?? []).filter((s) => s.score !== null);
+      const scores = scoresByPlayer.get(p.id) ?? [];
+      p.scoresBySlug = new Map(scores.map((s) => [s.checkpoints.slug, s]));
+      const scored = scores.filter((s) => s.score !== null);
       p.scoredCount = scored.length;
       p.reviewedCount = scored.filter((s) => s.reviewed_by).length;
-
-      const { count: abCount } = await supabase
-        .from("game_log_entries")
-        .select("id", { count: "exact", head: true })
-        .eq("player_id", p.id);
-      p.abCount = abCount ?? 0;
+      p.abCount = abCountByPlayer.get(p.id) ?? 0;
     }
     return players;
   }

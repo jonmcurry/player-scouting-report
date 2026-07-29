@@ -223,10 +223,37 @@ async function upsertPlayer(
   return data.id as string;
 }
 
+/**
+ * Upserts by the (player_id, date, opponent, ab) natural key
+ * (migration 00013) instead of delete-all-then-insert-fresh, which this
+ * function used to do. That was a real, serious bug: video_clips.
+ * game_log_entry_id cascades on delete, so simply re-running migrate.ts
+ * (e.g. after editing a report's notes) silently destroyed every clip's
+ * ingested video/pose3d data - found by directly checking real row counts
+ * after a routine re-migration, not assumed safe from the docstring's own
+ * "safe to re-run" claim. Upserting by natural key preserves the SAME
+ * game_log_entries.id for an at-bat that already exists, so anything
+ * hanging off it survives a re-migration. Only at-bats no longer present in
+ * the new report get deleted (a genuinely removed/renamed entry), not
+ * everything.
+ */
 async function replaceGameLogs(playerId: string, entries: RawGameLogEntry[]): Promise<void> {
   const supabase = getSupabaseClient();
-  const del = await supabase.from("game_log_entries").delete().eq("player_id", playerId);
-  if (del.error) throw new Error(`Clearing game logs: ${del.error.message}`);
+
+  const { data: existing, error: existingErr } = await supabase
+    .from("game_log_entries")
+    .select("id, date, opponent, ab")
+    .eq("player_id", playerId);
+  if (existingErr) throw new Error(`Loading existing game logs: ${existingErr.message}`);
+
+  const newKeys = new Set(entries.map((e) => `${e.date} ${e.opponent} ${e.ab}`));
+  const staleIds = (existing ?? [])
+    .filter((row) => !newKeys.has(`${row.date} ${row.opponent} ${row.ab}`))
+    .map((row) => row.id as string);
+  if (staleIds.length > 0) {
+    const del = await supabase.from("game_log_entries").delete().in("id", staleIds);
+    if (del.error) throw new Error(`Removing stale game logs: ${del.error.message}`);
+  }
   if (entries.length === 0) return;
 
   const rows = entries.map((e, position) => ({
@@ -245,8 +272,10 @@ async function replaceGameLogs(playerId: string, entries: RawGameLogEntry[]): Pr
     // why (date isn't unique/monotonic enough across real report data).
     position,
   }));
-  const ins = await supabase.from("game_log_entries").insert(rows);
-  if (ins.error) throw new Error(`Inserting game logs: ${ins.error.message}`);
+  const ins = await supabase
+    .from("game_log_entries")
+    .upsert(rows, { onConflict: "player_id,date,opponent,ab" });
+  if (ins.error) throw new Error(`Upserting game logs: ${ins.error.message}`);
 }
 
 async function replaceChecklist(playerId: string, entries: RawChecklistEntry[]): Promise<void> {
