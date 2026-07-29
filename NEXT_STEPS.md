@@ -1,11 +1,103 @@
 # Open Items, To-Dos, and Future Considerations
 
 Snapshot as of 2026-07-29 (updated after the mobile UX rebuild, Latham/Emily C's Supabase
-migration, the BarrelIQ rebrand, a performance/scale review, and a skeleton bone-length rigidity
-fix - see below). This file is a working status doc, not permanent documentation — prune or
-rewrite sections as they get resolved rather than letting it accumulate stale entries.
+migration, the BarrelIQ rebrand, a performance/scale review, a skeleton bone-length rigidity fix,
+an untracked-frame rendering bug fix, and a multi-clip switcher - see below). This file is a
+working status doc, not permanent documentation — prune or rewrite sections as they get resolved
+rather than letting it accumulate stale entries.
 
-## Skeleton rendering quality: bone-length rigidity fix (2026-07-29)
+## Delete At-Bat (2026-07-29)
+
+Added a "Delete At-Bat" button to each game-log card (distinct from "Delete Pitch," which removes
+one physical clip within an at-bat) - removes the whole `game_log_entries` row, which cascades via
+existing FK constraints to remove every pitch clip and all its 3D data for that at-bat in one
+operation. Verified with a real browser test (network request captured directly: a correctly-
+scoped `DELETE .../game_log_entries?id=eq.<uuid>`, not a broad/unfiltered delete) against a
+disposable throwaway at-bat, never against real data.
+
+**Real data was lost during this work, but not from a bug**: while testing the new delete buttons,
+the user deleted Emily C's real 7 video clips through the UI directly. Investigated first
+(captured the actual network request the delete button sends) before assuming a bug - confirmed
+both delete features work exactly as designed (properly scoped by UUID). User confirmed leaving
+the deletion as-is rather than restoring it. If this needs restoring later: the underlying pose3d
+pipeline output still exists locally (`frames/emily_c/*`), so re-ingestion (`ingest-pose3d-frames`
++ `ingest-phases` per clip - see [[latham-emily-c-supabase-migration]]) would restore it without
+re-running the Python pipeline.
+
+## Multi-clip switcher for the game log (2026-07-29)
+
+An external spec (`video_processing_spec.md`, brought to review) proposed tabbed clip switching,
+incremental uploads, deletion, and fixing "Compare against Reference Comp"'s stale context. The
+design was sound but the code had 5 real bugs (verified against the actual codebase, not accepted
+at face value): a delete button reading the wrong `dataset` key (would never work), a
+`game_log_entry_id` used but never selected in the query, two CSS variables that don't exist in
+this palette, a tab-click handler re-fetching the per-player extension score on every click
+(reintroducing an N+1 pattern fixed earlier the same day), and an unnecessary clips-list refetch
+per tab click.
+
+- [x] **Implemented with all 5 bugs fixed**: `loadClipsForEntry` now fetches all of an entry's
+      clips and renders a tab per clip (status dot: green/ready, pulsing amber/processing, solid
+      amber/pending, red/failed) plus an always-visible "➕ Add Pitch" button (fixes the upload
+      lockout). New `renderActiveClip(clipMount, gameLogEntryId, clip, extensionScore)` takes the
+      real id as a parameter instead of reading a column that was never selected.
+      `wireGameLogDelegation` handles tab switches (re-rendering from a cached `clipsByEntry` map,
+      no re-fetch), incremental uploads (reuses `uploadRawClip`, which already assigns `position`
+      correctly), and delete (`deleteBtn.dataset.deleteClip`, matching the actual
+      `data-delete-clip` attribute this time). CSS reuses the existing chip/pill visual language
+      (`--surface-1`/`--border`/`--clay`, all real variables) instead of inventing new ones.
+      `currentExtensionScore` is now a page-level variable set once by `loadGameLog()`, read
+      directly by the tab handler - no re-fetch per click.
+- [x] **Verified end-to-end with real browser interaction, not just code review**: tab switching
+      renders genuinely distinct skeletons per pitch (screenshotted both states); delete removes
+      the real DB row (tested against a disposable throwaway clip, never Emily's real data) and
+      updates the tab count live; "Add Pitch" opens a real file chooser; switching tabs and then
+      opening "Compare against Reference Comp" on a checkpoint renders the newly-active clip's
+      skeleton, confirmed via screenshot.
+- [ ] **Known, accepted limitation carried over from the design**: `firstClipContext` (the shared
+      "reference comp" context) can still be silently reassigned by a background poll reloading a
+      *different* game-log entry's already-ready clip, not just explicit tab clicks. Fixing that
+      fully would need a per-checkpoint-card reference instead of one shared global - a bigger
+      change, not done this pass.
+
+## Skeleton rendering quality, part 2: untracked frames rendered as real data (2026-07-29)
+
+Caught directly from a real rendered screenshot (an anatomically impossible crossed-arm pose),
+not a code-review guess - the user flagged it as "the worst thing built" and was right to.
+
+- [x] **Root cause found and measured, not assumed**: the pipeline stored and rendered EVERY
+      frame from `pose_3d.json`, including frames where `tracked: false` (the 2D detector found no
+      real person at all). VideoPose3D still emits SOME coordinates for those frames - degenerate/
+      carried-forward garbage, not real inferred positions - and nothing downstream (smoothJoints,
+      rigidifySkeleton, the renderer) ever checked the flag. Measured per real clip, not assumed
+      uniform: `Emily_C_AB1 (1)` was 89% tracked (a garbage tail once the batter left frame);
+      `Emily_C_AB2` was 35% tracked (a real ~2,494-frame swing plus a lot of real dead time in a
+      long continuous at-bat); `Emily_C_AB1_game2` was **0.6% tracked** - its rendered "swing" was
+      never real data at all.
+- [x] **Fixed**: new `src/services/pose3d/trackedFrames.ts` - extracts the single LONGEST
+      contiguous run of `tracked==true` frames per clip (not the union of every tracked frame
+      regardless of position, which would stitch scattered fragments into a timeline with visible
+      jump-cuts). Below `MIN_TRACKED_FRAMES` (30, ~1s) in its longest run, a clip gets NO pose3d
+      row at all - the existing "no 3D swing data available" UI state already handles that
+      honestly. Wired into both `processUploadQueue.ts` and `ingestPose3dFrames.ts`, before
+      smoothing/rigidifying (so the bone-length reference is now also computed from only real
+      data). Added `deletePose3dFrames()` to clean up stale rows from before this fix existed.
+- [x] **Verified against real data**: re-ingested all 7 of Emily's clips - every stored clip now
+      has exactly 0 untracked frames (checked directly, not assumed from the code).
+      `Emily_C_AB1_game2` still gets a row (its longest run is 38 frames, just above the
+      threshold) since it's real data, just not a swing - honest, not misleading, even though not
+      very useful. Visually confirmed the real, high-confidence contact frame (frame 1283,
+      `metrics.json`'s own contact detection) renders an anatomically sound load/stance pose.
+- [ ] **Known remaining limitation, not fixed, honestly flagged**: a frame can be `tracked: true`
+      (a real person was detected) and still be a bad 3D lift or a left/right limb-swap during
+      rapid rotation - `tracked` means "something real was detected," not "the pose is anatomically
+      correct." This was already called out as an open risk when reviewing an external pose-model
+      proposal earlier the same day, and it's still true after this fix. Scrubbing to a moment
+      late in a clip (well after any real swing action, e.g. the batter walking/adjusting) can
+      still show an odd-looking but real-data pose - a materially different problem than the one
+      just fixed (real-but-unremarkable vs fabricated-and-wrong), but worth knowing it isn't fully
+      solved.
+
+## Skeleton rendering quality, part 1: bone-length rigidity fix (2026-07-29)
 
 A proposal (from an external source, brought to review) argued the 3D skeleton render "looks
 terrible" and suggested swapping detectors (RTMPose/MMPose), adding a custom bat-keypoint model,

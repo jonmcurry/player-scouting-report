@@ -30,9 +30,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { findPlayerId } from "../services/db/checklistUpsert.js";
-import { findGameLogEntryId, findOrCreateVideoClip, upsertPose3dFrames } from "../services/db/videoClipUpsert.js";
+import {
+  findGameLogEntryId,
+  findOrCreateVideoClip,
+  upsertPose3dFrames,
+  deletePose3dFrames,
+} from "../services/db/videoClipUpsert.js";
 import { smoothJoints, SMOOTHING_METHOD_LABEL, type Pose3dFrame } from "../services/pose3d/smoothJoints.js";
 import { rigidifySkeleton, RIGID_METHOD_LABEL } from "../services/pose3d/rigidifySkeleton.js";
+import { extractLongestTrackedRun, MIN_TRACKED_FRAMES } from "../services/pose3d/trackedFrames.js";
 
 export async function ingestPose3dFrames(
   teamSlug: string,
@@ -68,7 +74,18 @@ export async function ingestPose3dFrames(
     position,
   });
 
-  const smoothedFrames = smoothJoints(pose3d.frames);
+  const trackedFrames = extractLongestTrackedRun(pose3d.frames);
+  if (trackedFrames.length < MIN_TRACKED_FRAMES) {
+    await deletePose3dFrames(videoClipId);
+    console.log(
+      `Skipped ${playerSlug}'s clip "${clipSlug}": longest real tracked run is only ` +
+        `${trackedFrames.length} frame(s) (need >= ${MIN_TRACKED_FRAMES}) - not enough real data ` +
+        `for a skeleton comparison (${date} vs ${opponent}, AB ${ab}).`,
+    );
+    return;
+  }
+
+  const smoothedFrames = smoothJoints(trackedFrames);
   const rigidFrames = rigidifySkeleton(smoothedFrames);
   await upsertPose3dFrames({
     videoClipId,

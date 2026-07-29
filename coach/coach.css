@@ -374,6 +374,39 @@ details.drawer .drawer-body { padding: 0 16px 16px; }
 .upload-control { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
 .upload-control input[type="file"] { flex: 1; min-width: 160px; font-size: 13px; }
 
+/* Multi-clip switcher tabs (player.html game log, one at-bat can have
+   several physical clips) - reuses team.html's existing chip/pill visual
+   language rather than inventing a separate component style. */
+.clip-tabs-container { margin: 10px 0 12px; }
+.clip-tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.clip-tab-btn {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.clip-tab-btn.active { background: var(--clay); color: #fff; border-color: transparent; }
+.clip-tab-btn .clip-status-indicator { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--gridline); }
+.clip-tab-btn.status-ready .clip-status-indicator { background: var(--status-good); }
+.clip-tab-btn.status-pending .clip-status-indicator { background: var(--status-warning); }
+.clip-tab-btn.status-processing .clip-status-indicator { background: var(--status-warning); animation: clip-pulse 1s infinite alternate; }
+.clip-tab-btn.status-failed .clip-status-indicator { background: var(--status-critical); }
+.clip-tab-btn.add-clip-btn { border-style: dashed; background: transparent; color: var(--text-muted); }
+@keyframes clip-pulse { from { opacity: 0.4; } to { opacity: 1; } }
+
+.btn-danger { background: transparent; border: 1.5px solid var(--status-critical); color: var(--status-critical); }
+
 /* Video frame scrubber / 3D skeleton comparison shell (player.html game log) */
 .scrubber { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
 .scrubber-video { width: 100%; border-radius: 4px; background: #000; display: block; margin-bottom: 8px; }

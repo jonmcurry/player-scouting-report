@@ -61,13 +61,27 @@
   let coachDisplayName = "Coach";
   let playerId = null;
   let teamId = null;
-  // First game-log entry's clip that has real pose3d data, if any - used by
-  // "Compare against Reference Comp" for the Tier-1 live skeleton
-  // comparison and the Tier-2 static skeleton-frame snapshot (see
-  // compModal.js). Set inside loadClipsForEntry(); read lazily on click, so
-  // it's populated by the time a coach can actually tap the button (main()
-  // awaits loadGameLog() fully before the page is usable).
+  // Reference-comp context for "Compare against Reference Comp" (Tier-1
+  // live skeleton comparison + Tier-2 static frame snapshot, see
+  // compModal.js) - reflects whichever clip most recently rendered
+  // successfully, whether from initial page load or an explicit tab
+  // switch. Known, accepted limitation: a background poll reloading a
+  // DIFFERENT, unrelated game-log entry's already-ready clip can still
+  // silently reassign this - fixing that fully would need a per-checkpoint-
+  // card reference rather than one shared global, a bigger change not done
+  // this pass.
   let firstClipContext = null;
+  // extensionScore is per-PLAYER, not per-clip - computed once per
+  // loadGameLog() call and reused by every clip's render (including tab
+  // switches), instead of re-querying it per clip or per tab click.
+  let currentExtensionScore = null;
+  // Tracks the active clip ID per game_log_entry_id so the selected tab
+  // survives a re-render (e.g. the periodic in-flight-clip poll).
+  const activeClipIdByEntry = new Map();
+  // Caches each entry's last-fetched clips list (id/status/error_message/
+  // clip_slug/position) so switching tabs re-renders from memory instead of
+  // a fresh Supabase round trip - refreshed whenever loadGameLog() re-runs.
+  const clipsByEntry = new Map();
 
   async function main() {
     const session = await requireSession();
@@ -340,7 +354,10 @@
         const zoneBits = [zoneLabel(g.pitch_zone), outcomeLabel(g.pitch_outcome)].filter(Boolean).join(" · ");
         return `
       <div class="card">
-        <b>${g.date} vs ${g.opponent}, AB ${g.ab}</b>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <b>${g.date} vs ${g.opponent}, AB ${g.ab}</b>
+          <button class="tap-target btn-danger" style="font-size:12px;padding:6px 10px;flex:none;" data-delete-at-bat="${g.id}">🗑 Delete At-Bat</button>
+        </div>
         <p class="hint">${g.pitch ?? "—"}${zoneBits ? ` <span style="color:var(--clay);">(${zoneBits})</span>` : ""}</p>
         <p>${g.result}</p>
         <div class="scrubber-mount" data-game-log-entry="${g.id}"></div>
@@ -354,11 +371,11 @@
     // real N+1: a full season's worth of logged at-bats meant re-fetching
     // this identical value dozens of times to render one page). Skip the
     // query entirely when there's nothing to render it for.
-    const extensionScore = logs && logs.length > 0 ? await loadExtensionScore(playerId) : null;
+    currentExtensionScore = logs && logs.length > 0 ? await loadExtensionScore(playerId) : null;
 
     // Each entry's clip lookup is independent (writes to its own DOM mount),
     // so run them concurrently rather than one at a time.
-    await Promise.all((logs ?? []).map((g) => loadClipsForEntry(g.id, extensionScore)));
+    await Promise.all((logs ?? []).map((g) => loadClipsForEntry(g.id, currentExtensionScore)));
   }
 
   // Tracks whether any card is currently pending/processing, read by
@@ -367,22 +384,25 @@
 
   /** A game_log_entries row can have >1 physical clip (e.g. 4 separate
    * pitches filmed as separate files for one at-bat, per this project's own
-   * real data - see emily_c.html's AB1 note) - only the first (by position)
-   * gets a scrubber/status card for now; a multi-clip picker is a known
-   * follow-up, not built this pass. */
+   * real data - see emily_c.html's AB1 note). Fetches ALL clips for the
+   * entry, renders a tab per clip (plus an always-available "Add Pitch"
+   * upload) and the currently-active one's contents. */
   async function loadClipsForEntry(gameLogEntryId, extensionScore) {
     const mount = document.querySelector(`.scrubber-mount[data-game-log-entry="${gameLogEntryId}"]`);
     if (!mount) return;
 
-    const { data: clips } = await supabase
+    const { data: clips, error } = await supabase
       .from("video_clips")
-      .select("id, status, error_message")
+      .select("id, status, error_message, clip_slug, position")
       .eq("game_log_entry_id", gameLogEntryId)
-      .order("position")
-      .limit(1);
-    const clip = clips?.[0];
+      .order("position");
+    if (error) {
+      mount.innerHTML = `<p class="hint">⚠ Couldn't load clips: ${error.message}</p>`;
+      return;
+    }
+    clipsByEntry.set(gameLogEntryId, clips ?? []);
 
-    if (!clip) {
+    if (!clips || clips.length === 0) {
       mount.innerHTML = `
         <div class="upload-control" data-game-log-entry="${gameLogEntryId}">
           <input type="file" accept="video/*" class="tap-target">
@@ -392,9 +412,49 @@
       return;
     }
 
+    let activeClipId = activeClipIdByEntry.get(gameLogEntryId);
+    let activeClip = clips.find((c) => c.id === activeClipId);
+    if (!activeClip) {
+      activeClip = clips[0];
+      activeClipIdByEntry.set(gameLogEntryId, activeClip.id);
+    }
+
+    const tabsHtml = clips
+      .map((c) => {
+        const isActive = c.id === activeClip.id;
+        return `
+          <button class="clip-tab-btn tap-target ${isActive ? "active" : ""} status-${c.status}"
+                  data-clip-id="${c.id}" data-game-log-entry="${gameLogEntryId}">
+            <span class="clip-status-indicator"></span> Pitch ${c.position + 1}
+          </button>
+        `;
+      })
+      .join("");
+
+    mount.innerHTML = `
+      <div class="clip-tabs-container">
+        <div class="clip-tabs">
+          ${tabsHtml}
+          <button class="clip-tab-btn tap-target add-clip-btn" data-add-clip-for-entry="${gameLogEntryId}">➕ Add Pitch</button>
+        </div>
+        <input type="file" accept="video/*" class="add-clip-input" data-game-log-entry="${gameLogEntryId}" style="display:none;">
+      </div>
+      <div class="active-clip-mount" data-active-clip-mount="${gameLogEntryId}"></div>
+    `;
+
+    const activeClipMount = mount.querySelector(`[data-active-clip-mount="${gameLogEntryId}"]`);
+    await renderActiveClip(activeClipMount, gameLogEntryId, activeClip, extensionScore);
+  }
+
+  /** Renders one clip's status/scrubber/delete-control into clipMount.
+   * Takes gameLogEntryId as its own parameter rather than reading it off
+   * the clip row - the clips query above doesn't select
+   * game_log_entry_id (the caller already has the real id in scope, no
+   * need to round-trip it through the row). */
+  async function renderActiveClip(clipMount, gameLogEntryId, clip, extensionScore) {
     if (clip.status === "pending" || clip.status === "processing") {
       hasInFlightClips = true;
-      mount.innerHTML = `<p class="hint">⏳ Processing video… this can take a minute or more.</p>`;
+      clipMount.innerHTML = `<p class="hint">⏳ Processing video… this can take a minute or more.</p>`;
       return;
     }
 
@@ -405,12 +465,15 @@
       // <details> disclosure for whoever needs it.
       const fullMessage = clip.error_message ?? "unknown error";
       const firstLine = fullMessage.split("\n")[0];
-      mount.innerHTML = `
+      clipMount.innerHTML = `
         <p class="hint">⚠ Video processing failed: ${firstLine}</p>
         <details class="drawer"><summary><span>Full error details</span></summary>
           <div class="drawer-body"><pre style="white-space:pre-wrap;font-size:11px;">${fullMessage}</pre></div>
         </details>
-        <button class="tap-target" style="margin-top:8px;" data-retry-clip="${clip.id}">Retry</button>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="tap-target" data-retry-clip="${clip.id}">Retry</button>
+          <button class="tap-target btn-danger" data-delete-clip="${clip.id}" data-game-log-entry="${gameLogEntryId}">Delete Pitch</button>
+        </div>
       `;
       return;
     }
@@ -419,7 +482,10 @@
 
     const pose3dData = await loadClipSkeletonData(clip.id);
     if (!pose3dData || pose3dData.frames.length === 0) {
-      mount.innerHTML = `<p class="hint">⚠ No 3D swing data available for this clip.</p>`;
+      clipMount.innerHTML = `
+        <p class="hint">⚠ No 3D swing data available for this clip.</p>
+        <button class="tap-target btn-danger" style="margin-top:8px;" data-delete-clip="${clip.id}" data-game-log-entry="${gameLogEntryId}">Delete Pitch</button>
+      `;
       return;
     }
 
@@ -442,11 +508,19 @@
       : correctedFrames
         ? null
         : "Extension is already at target, or unscored - showing her real swing only.";
-    renderSkeletonComparison(mount, { realFrames: pose3dData.frames, correctedFrames, phases, note });
 
-    if (!firstClipContext) {
-      firstClipContext = { realFrames: pose3dData.frames, phases, leadSide: pose3dData.lead_side, extensionScore };
-    }
+    const canvasContainer = document.createElement("div");
+    clipMount.appendChild(canvasContainer);
+    renderSkeletonComparison(canvasContainer, { realFrames: pose3dData.frames, correctedFrames, phases, note });
+
+    const actionRow = document.createElement("div");
+    actionRow.style.cssText = "display:flex;justify-content:flex-end;margin-top:8px;";
+    actionRow.innerHTML = `<button class="tap-target btn-danger" data-delete-clip="${clip.id}" data-game-log-entry="${gameLogEntryId}">🗑 Delete Pitch</button>`;
+    clipMount.appendChild(actionRow);
+
+    // Reflects whichever clip most recently rendered - see this variable's
+    // declaration near the top of this script for the known limitation.
+    firstClipContext = { realFrames: pose3dData.frames, phases, leadSide: pose3dData.lead_side, extensionScore };
   }
 
   /** One delegated listener on the container, attached once - #gameLogList's
@@ -455,6 +529,37 @@
    * up duplicates across refreshes if attached the naive way. */
   function wireGameLogDelegation() {
     document.getElementById("gameLogList").addEventListener("click", async (e) => {
+      // Switch tab: re-render from the already-cached clips list (no fresh
+      // Supabase round trip, no extensionScore re-fetch) rather than
+      // calling loadClipsForEntry() again.
+      const tabBtn = e.target.closest(".clip-tab-btn:not(.add-clip-btn)");
+      if (tabBtn) {
+        const gameLogEntryId = tabBtn.dataset.gameLogEntry;
+        const clipId = tabBtn.dataset.clipId;
+        const clips = clipsByEntry.get(gameLogEntryId) ?? [];
+        const clip = clips.find((c) => c.id === clipId);
+        const mount = document.querySelector(`.scrubber-mount[data-game-log-entry="${gameLogEntryId}"]`);
+        const activeClipMount = mount?.querySelector(`[data-active-clip-mount="${gameLogEntryId}"]`);
+        if (!clip || !activeClipMount) return;
+
+        activeClipIdByEntry.set(gameLogEntryId, clipId);
+        mount.querySelectorAll(".clip-tab-btn").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.clipId === clipId);
+        });
+        activeClipMount.innerHTML = "";
+        await renderActiveClip(activeClipMount, gameLogEntryId, clip, currentExtensionScore);
+        return;
+      }
+
+      // Add Pitch - opens this entry's hidden file input.
+      const addBtn = e.target.closest(".add-clip-btn");
+      if (addBtn) {
+        const gameLogEntryId = addBtn.dataset.addClipForEntry;
+        const mount = document.querySelector(`.scrubber-mount[data-game-log-entry="${gameLogEntryId}"]`);
+        mount?.querySelector(".add-clip-input")?.click();
+        return;
+      }
+
       const attachBtn = e.target.closest("[data-attach-video]");
       if (attachBtn) {
         const control = attachBtn.closest(".upload-control");
@@ -491,6 +596,78 @@
           return;
         }
         await loadGameLog();
+        return;
+      }
+
+      const deleteBtn = e.target.closest("[data-delete-clip]");
+      if (deleteBtn) {
+        if (!confirm("Delete this pitch clip and its 3D data? This can't be undone.")) return;
+        deleteBtn.disabled = true;
+        const clipId = deleteBtn.dataset.deleteClip;
+        const gameLogEntryId = deleteBtn.dataset.gameLogEntry;
+        const { error } = await supabase.from("video_clips").delete().eq("id", clipId);
+        if (error) {
+          alert(`Couldn't delete clip: ${error.message}`);
+          deleteBtn.disabled = false;
+          return;
+        }
+        if (activeClipIdByEntry.get(gameLogEntryId) === clipId) {
+          activeClipIdByEntry.delete(gameLogEntryId);
+        }
+        await loadGameLog();
+        return;
+      }
+
+      // Delete At-Bat - removes the whole game_log_entries row. video_clips
+      // (and, via ITS OWN cascade, video_clip_pose3d/swing_phases) are all
+      // FK'd to game_log_entries ON DELETE CASCADE (see migration
+      // 00004_video_clips_and_phases.sql), so every pitch clip and its 3D
+      // data for this at-bat is removed in the same operation - no separate
+      // per-clip cleanup needed here.
+      const deleteAtBatBtn = e.target.closest("[data-delete-at-bat]");
+      if (deleteAtBatBtn) {
+        if (
+          !confirm(
+            "Delete this entire at-bat, including every pitch clip and all its 3D data? This can't be undone.",
+          )
+        )
+          return;
+        deleteAtBatBtn.disabled = true;
+        const gameLogEntryId = deleteAtBatBtn.dataset.deleteAtBat;
+        const { error } = await supabase.from("game_log_entries").delete().eq("id", gameLogEntryId);
+        if (error) {
+          alert(`Couldn't delete at-bat: ${error.message}`);
+          deleteAtBatBtn.disabled = false;
+          return;
+        }
+        activeClipIdByEntry.delete(gameLogEntryId);
+        clipsByEntry.delete(gameLogEntryId);
+        await loadGameLog();
+      }
+    });
+
+    document.getElementById("gameLogList").addEventListener("change", async (e) => {
+      const fileInput = e.target.closest(".add-clip-input");
+      if (!fileInput) return;
+      const gameLogEntryId = fileInput.dataset.gameLogEntry;
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      const mount = document.querySelector(`.scrubber-mount[data-game-log-entry="${gameLogEntryId}"]`);
+      const addBtn = mount?.querySelector(".add-clip-btn");
+      if (addBtn) {
+        addBtn.disabled = true;
+        addBtn.innerHTML = "⏳ Uploading…";
+      }
+      try {
+        await uploadRawClip(gameLogEntryId, file);
+        await loadGameLog();
+      } catch (err) {
+        alert(`Couldn't upload video: ${err.message}`);
+        if (addBtn) {
+          addBtn.disabled = false;
+          addBtn.innerHTML = "➕ Add Pitch";
+        }
       }
     });
   }

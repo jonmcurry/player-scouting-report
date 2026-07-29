@@ -168,6 +168,17 @@ export async function upsertPose3dFrames(input: Pose3dFramesUpsertInput): Promis
   if (error) throw new Error(`Upserting video_clip_pose3d row: ${error.message}`);
 }
 
+/** Removes a clip's stored pose3d data (if any) - used when a re-run
+ * decides there isn't enough real tracked data to justify storing/showing
+ * a skeleton at all (see src/services/pose3d/trackedFrames.ts), including
+ * cleaning up a stale row from before that decision existed. Not an error
+ * if no row exists. */
+export async function deletePose3dFrames(videoClipId: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from("video_clip_pose3d").delete().eq("video_clip_id", videoClipId);
+  if (error) throw new Error(`Deleting video_clip_pose3d row for ${videoClipId}: ${error.message}`);
+}
+
 export async function upsertSwingPhase(input: PhaseUpsertInput): Promise<void> {
   const supabase = getSupabaseClient();
   const { error } = await supabase.from("swing_phases").upsert(
