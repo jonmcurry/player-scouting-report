@@ -1,4 +1,5 @@
-Mobile UX Implementation GuideStep 1: Mobile UX Strategy & ArchitectureTo optimize the Softball/Baseball Swing Scouting Reports app for field use, the mobile design prioritizes high-contrast visibility, thumb-first ergonomics, and clear AI vs. coach data verification. Core Ergonomic PrinciplesThumb-First Target Sizing: All key interactive elements maintain a minimum target size of $48\text{px} \times 48\text{px}$ to facilitate easy one-handed operation while standing behind a backstop or holding a phone on the field. Sunlight-Optimized Contrast: Utilizes a dark slate background (#121418) paired with high-contrast clay/terracotta primary accents (#C2593F) and sand text (#F4EFEA) to ensure legibility in direct sunlight. Instant Confirmation Flows: Score updates require a single tap on a numeric stepper rather than opening dropdowns or navigating sub-menus. Explicit AI Statuses: Visual badges explicitly distinguish unreviewed AI drafts (🤖 AI Draft) from verified observations (✓ Coach Reviewed). Step 2: Information Architecture & Mobile NavigationThe mobile layout shifts from dense desktop tables to a mobile-friendly layout anchored by a Sticky App Header and a Bottom Navigation Bar.+-------------------------------------------------------+
+Mobile UX Implementation Guide# Step 1: Mobile UX Strategy & ArchitectureTo optimize the Softball/Baseball Swing Scouting Reports app for field use, the mobile design prioritizes high-contrast visibility, thumb-first ergonomics, and clear AI vs. coach data verification. Core Ergonomic PrinciplesThumb-First Target Sizing: All key interactive elements maintain a minimum target size of $48\text{px} \times 48\text{px}$ to facilitate easy one-handed operation while standing behind a backstop or holding a phone on the field. Sunlight-Optimized Contrast: Utilizes a dark slate background (#121418) paired with high-contrast clay/terracotta primary accents (#C2593F) and sand text (#F4EFEA) to ensure legibility in direct sunlight. Instant Confirmation Flows: Score updates require a single tap on a numeric stepper rather than opening dropdowns or navigating sub-menus. Explicit AI Statuses: Visual badges explicitly distinguish unreviewed AI drafts (🤖 AI Draft) from verified observations (✓ Coach Reviewed). 
+# Step 2: Information Architecture & Mobile NavigationThe mobile layout shifts from dense desktop tables to a mobile-friendly layout anchored by a Sticky App Header and a Bottom Navigation Bar.+-------------------------------------------------------+
 | [#10 Emily C. ▼] Latham Lady Bison 10U [ ☀️/🌙 ] | <-- Sticky App Bar
 +-------------------------------------------------------+
 | |
@@ -8,7 +9,8 @@ Mobile UX Implementation GuideStep 1: Mobile UX Strategy & ArchitectureTo optimi
 +-------------------------------------------------------+
 | [ ⚾ Roster ] [ 📊 Report ] [ ➕ Log AB ] | <-- Sticky Bottom Nav
 +-------------------------------------------------------+
-Key Navigation Routes⚾ Team Roster: Fast player switcher, roster confirmation progress (e.g., "9/11 Confirmed"), and overall team-wide trend filters.📊 Scouting Report: Interactive player breakdown with card-based checklist items, trend banners, and pitch outcome correlations.➕ Quick Log & AB Capture: Rapid-entry modal featuring a 9-zone touch strike zone for logging pitch locations and game outcomes.Step 3: Interactive Component WireframesA. Single-Tap Checkpoint CardConverts tabular checklist items into standalone mobile cards.+-------------------------------------------------------+
+Key Navigation Routes⚾ Team Roster: Fast player switcher, roster confirmation progress (e.g., "9/11 Confirmed"), and overall team-wide trend filters.📊 Scouting Report: Interactive player breakdown with card-based checklist items, trend banners, and pitch outcome correlations.➕ Quick Log & AB Capture: Rapid-entry modal featuring a 9-zone touch strike zone for logging pitch locations and game outcomes.
+# Step 3: Interactive Component WireframesA. Single-Tap Checkpoint CardConverts tabular checklist items into standalone mobile cards.+-------------------------------------------------------+
 | CHECKPOINT 03 [ 🤖 AI Draft ] |
 | Hip-Shoulder Separation |
 |-------------------------------------------------------|
@@ -31,7 +33,8 @@ B. 9-Zone Strike Zone PickerAllows fast pitch location logging without typing. [
 
       Outcome: ( Take )  [ Foul ]  ( Ball in Play )
 
-Step 4: Standalone HTML5/Tailwind Mobile UX PrototypeHTML<!DOCTYPE html>
+
+# Step 4: Standalone HTML5/Tailwind Mobile UX PrototypeHTML<!DOCTYPE html>
 
 <html lang="en">
 <head>
@@ -202,7 +205,8 @@ Step 4: Standalone HTML5/Tailwind Mobile UX PrototypeHTML<!DOCTYPE html>
 
 </body>
 </html>
-Step 5: Web Implementation & Integration ModulesStep 5.1: Touch-Friendly Steppers & Supabase PersistenceTo enable single-tap updates from the mobile UI, checkpoint steppers bind directly to Supabase RPCs or table updates.JavaScript// coach/components/scoreStepper.js
+
+# Step 5: Web Implementation & Integration ModulesStep 5.1: Touch-Friendly Steppers & Supabase PersistenceTo enable single-tap updates from the mobile UI, checkpoint steppers bind directly to Supabase RPCs or table updates.JavaScript// coach/components/scoreStepper.js
 import { supabase } from '../lib/supabaseClient.js';
 
 export async function updateCheckpointScore({ teamId, playerId, checkpointId, newScore, coachName }) {
