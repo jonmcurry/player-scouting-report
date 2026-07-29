@@ -36,13 +36,10 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 
+from pose_common import JOINTS, make_tracker, smooth_sequence
+
 MODEL_PATH = pathlib.Path(__file__).parent / "models" / "pose_landmarker_full.task"
 
-JOINTS = {
-    "nose": 0, "l_shoulder": 11, "r_shoulder": 12, "l_elbow": 13, "r_elbow": 14,
-    "l_wrist": 15, "r_wrist": 16, "l_hip": 23, "r_hip": 24, "l_knee": 25,
-    "r_knee": 26, "l_ankle": 27, "r_ankle": 28, "l_foot": 31, "r_foot": 32,
-}
 LOWER_BODY = ["l_hip", "r_hip", "l_knee", "r_knee", "l_ankle", "r_ankle", "l_foot", "r_foot"]
 
 # colors are BGR (cv2); silhouette fill is the site's series-1 blue
@@ -64,12 +61,6 @@ LEGS = [("l_hip", "l_knee"), ("l_knee", "l_ankle"), ("l_ankle", "l_foot"),
 JOINT_DOTS = ["l_shoulder", "r_shoulder", "l_elbow", "r_elbow", "l_hip", "r_hip", "l_knee", "r_knee", "l_ankle", "r_ankle"]
 
 CONTACT_FRAME = 112  # matches the viewer's data-located contact frame
-
-# Where the batter stands, in normalized frame coords, for this behind-the-plate
-# footage. Seeding selection here matters: largest-bounding-box seeds on the
-# UMPIRE (closest to camera), not the batter - verified against raw frames.
-BATTER_SEED = (0.40, 0.50)
-TRACK_GATE = 0.10  # max normalized hip jump per frame; beyond this = detection lost
 
 # Schematic hip-lead envelope (frame indices, matches the timing used for this
 # swing's phases): ramps in through the late load, peaks at contact, releases
@@ -96,31 +87,6 @@ def make_landmarker(with_masks):
     ))
 
 
-def hip_center_norm(lms):
-    return ((lms[JOINTS["l_hip"]].x + lms[JOINTS["r_hip"]].x) / 2,
-             (lms[JOINTS["l_hip"]].y + lms[JOINTS["r_hip"]].y) / 2)
-
-
-def make_tracker():
-    """Batter selection: seed at the batter's-box position, then follow the nearest
-    hip center frame to frame, gated so a lost detection (motion blur during the
-    swing) freezes the track instead of snapping to the catcher or umpire."""
-    state = {"prev": BATTER_SEED}
-
-    def pick(result):
-        px, py = state["prev"]
-        idx = min(range(len(result.pose_landmarks)),
-                  key=lambda i: (hip_center_norm(result.pose_landmarks[i])[0] - px) ** 2 +
-                                (hip_center_norm(result.pose_landmarks[i])[1] - py) ** 2)
-        hx, hy = hip_center_norm(result.pose_landmarks[idx])
-        if ((hx - px) ** 2 + (hy - py) ** 2) ** 0.5 > TRACK_GATE:
-            return None
-        state["prev"] = (hx, hy)
-        return idx
-
-    return pick
-
-
 def iterate(video_path, start_s, end_s, with_masks, on_frame):
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
@@ -138,7 +104,7 @@ def iterate(video_path, start_s, end_s, with_masks, on_frame):
             image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             result = lm.detect_for_video(image, int(t * 1000))
             if t >= start_s and result.pose_landmarks:
-                on_frame(bgr, result, pick(result))
+                on_frame(bgr, result, pick(result.pose_landmarks))
             idx += 1
     cap.release()
 
@@ -146,31 +112,6 @@ def iterate(video_path, start_s, end_s, with_masks, on_frame):
 def stroke(img, p1, p2, color, w):
     cv2.line(img, p1, p2, (*DARK, 255), w + 4, cv2.LINE_AA)
     cv2.line(img, p1, p2, (*color, 255), w, cv2.LINE_AA)
-
-
-def smooth_sequence(raw, window=3):
-    """Centered moving average per joint, filling gaps (None frames) by carrying
-    the last good reading forward first. Stabilizes the overlay skeleton, which
-    otherwise visibly wobbles frame to frame from real pose-detection noise."""
-    filled = []
-    last = None
-    for fr in raw:
-        if fr is not None:
-            last = fr
-        filled.append(last)
-    n = len(filled)
-    out = []
-    half = window // 2
-    for i in range(n):
-        lo, hi = max(0, i - half), min(n, i + half + 1)
-        window_frames = [f for f in filled[lo:hi] if f is not None]
-        avg = {}
-        for name in JOINTS:
-            xs = [f[name][0] for f in window_frames]
-            ys = [f[name][1] for f in window_frames]
-            avg[name] = (sum(xs) / len(xs), sum(ys) / len(ys))
-        out.append(avg)
-    return out
 
 
 def clean_mask(mask, seed_xy, thresh=0.3):

@@ -32,6 +32,8 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 
+from pose_common import make_tracker
+
 MODEL_PATH = pathlib.Path(__file__).parent / "models" / "pose_landmarker_full.task"
 
 # MediaPipe Pose landmark indices we care about (BlazePose 33-point topology)
@@ -128,6 +130,7 @@ def main():
 
     detected_count = 0
     frame_idx = 0
+    pick = make_tracker()
 
     with mp_vision.PoseLandmarker.create_from_options(options) as landmarker:
         while True:
@@ -146,19 +149,16 @@ def main():
             shoulder_3d = hip_3d = sep_3d = None
             n_people = len(result.pose_landmarks) if result.pose_landmarks else 0
 
-            if n_people > 0:
-                detected_count += 1
-                # Batter selection: in this fixed-camera setup the batter is reliably
-                # the largest person in frame (catcher/ump are smaller and/or partly
-                # cropped by the frame edge). Picking by landmark bounding-box area is
-                # more robust across all 5 clips than assuming detection order, which
-                # isn't guaranteed to put the batter first when >1 person is detected.
-                def bbox_area(landmarks):
-                    xs = [p.x for p in landmarks]
-                    ys = [p.y for p in landmarks]
-                    return (max(xs) - min(xs)) * (max(ys) - min(ys))
+            # Batter selection: seed at the batter's-box position and follow the
+            # nearest hip center frame to frame (see pose_common.make_tracker) - NOT
+            # largest-bounding-box, which locks onto the umpire (closest to camera)
+            # in this footage. A gated loss (motion blur mid-swing) returns None
+            # rather than snapping to the catcher, so this frame is written as "no
+            # detection" instead of tracking the wrong person.
+            idx = pick(result.pose_landmarks) if n_people > 0 else None
 
-                idx = max(range(n_people), key=lambda i: bbox_area(result.pose_landmarks[i]))
+            if idx is not None:
+                detected_count += 1
                 lm = result.pose_landmarks[idx]
 
                 # 2D image-plane version: unstable whenever the shoulder/hip line is
