@@ -32,6 +32,7 @@ import { pathToFileURL } from "node:url";
 import { findPlayerId } from "../services/db/checklistUpsert.js";
 import { findGameLogEntryId, findOrCreateVideoClip, upsertPose3dFrames } from "../services/db/videoClipUpsert.js";
 import { smoothJoints, SMOOTHING_METHOD_LABEL, type Pose3dFrame } from "../services/pose3d/smoothJoints.js";
+import { rigidifySkeleton, RIGID_METHOD_LABEL } from "../services/pose3d/rigidifySkeleton.js";
 
 export async function ingestPose3dFrames(
   teamSlug: string,
@@ -68,12 +69,13 @@ export async function ingestPose3dFrames(
   });
 
   const smoothedFrames = smoothJoints(pose3d.frames);
+  const rigidFrames = rigidifySkeleton(smoothedFrames);
   await upsertPose3dFrames({
     videoClipId,
     jointNames: pose3d.meta.joint_names,
-    smoothingMethod: SMOOTHING_METHOD_LABEL,
+    smoothingMethod: `${SMOOTHING_METHOD_LABEL}+${RIGID_METHOD_LABEL}`,
     leadSide: metrics.lead_side_guess ?? null,
-    frames: smoothedFrames,
+    frames: rigidFrames,
   });
 
   console.log(

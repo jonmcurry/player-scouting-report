@@ -1,9 +1,55 @@
 # Open Items, To-Dos, and Future Considerations
 
 Snapshot as of 2026-07-29 (updated after the mobile UX rebuild, Latham/Emily C's Supabase
-migration, the BarrelIQ rebrand, and a performance/scale review - see below). This file is a
-working status doc, not permanent documentation — prune or rewrite sections as they get resolved
-rather than letting it accumulate stale entries.
+migration, the BarrelIQ rebrand, a performance/scale review, and a skeleton bone-length rigidity
+fix - see below). This file is a working status doc, not permanent documentation — prune or
+rewrite sections as they get resolved rather than letting it accumulate stale entries.
+
+## Skeleton rendering quality: bone-length rigidity fix (2026-07-29)
+
+A proposal (from an external source, brought to review) argued the 3D skeleton render "looks
+terrible" and suggested swapping detectors (RTMPose/MMPose), adding a custom bat-keypoint model,
+switching lifters (MotionBERT), applying temporal smoothing, enforcing fixed bone lengths, and
+rendering with Three.js/WebGL instead of Canvas2D.
+
+- [x] **Analyzed against what's actually here, not accepted at face value.** Read
+      `scripts/pose3d/detect_2d.py`/`lift_3d.py` directly: RTMPose/MMPose was already attempted
+      and rejected for this environment (`mmcv` has no prebuilt wheel for this machine's torch
+      build, and building from source needs an MSVC+CUDA toolchain that isn't installed).
+      MotionBERT was also already evaluated and rejected (OneDrive-hosted checkpoint behind
+      interactive auth, Halpe-26 format mismatch). VideoPose3D is exactly what's running today. A
+      real bat detector (YOLOv8 COCO "baseball bat" class + ByteTrack, tip/knob estimated from box
+      geometry) already exists. One-Euro temporal smoothing is already applied twice (2D keypoints
+      + bat path, and again after 3D lifting with separately re-tuned constants). Most of the
+      proposal was already built or already tried and rejected for documented reasons - re-doing
+      it wouldn't have fixed anything.
+- [x] **Found the real, measured root cause: bone-length instability, not detector/lifter
+      quality.** Measured real bone lengths across all 1,871 frames of a real ingested clip before
+      touching anything: forearm length varied ~97% of its own mean, hip-knee ~91-95% - a visibly
+      broken, stretching/shrinking skeleton. Root cause: `smoothJoints.ts`'s One-Euro filter
+      smooths each of the 17 joints' x/y/z completely independently, with nothing constraining the
+      DISTANCE between a joint and its parent.
+- [x] **Fixed**: new `src/services/pose3d/rigidifySkeleton.ts`, run after `smoothJoints()` (which
+      stays unchanged - still handles timing). Takes each bone's median observed length across the
+      whole clip as a fixed per-clip reference, then reconstructs every frame's joints top-down
+      from the root, reusing each frame's observed bone DIRECTION but replacing its LENGTH with
+      the reference - the same forward-kinematics idea `fkCorrection.js` already uses for its 2
+      corrected checkpoints, applied generally. Wired into both `processUploadQueue.ts` and
+      `ingestPose3dFrames.ts`; `video_clip_pose3d.smoothing_method` now records
+      `"one_euro_v1+rigid_v1"` so old vs new rows are distinguishable.
+- [x] **Verified, not assumed**: re-measured the exact same clip after the fix - every bone length
+      is now exactly constant (0.0% variance, down from 66-97%) across all 1,871 frames.
+      Re-ingested all 7 of Emily's real clips and visually confirmed via real screenshots at 5
+      points across the swing that limb proportions stay consistent (no stretching/shrinking)
+      end-to-end through the actual coach app.
+- [ ] **Not done, and a real, open question, not a rejected idea**: Three.js/WebGL with
+      orbit-rotate camera vs the current fixed-camera Canvas2D orthographic projection. This is a
+      genuine capability gap (a coach can't currently rotate the view), just probably a smaller
+      contributor to "looks terrible" than the bone-length bug was - worth reconsidering once the
+      rigidity fix has had a chance to be judged on its own.
+- [ ] **Deliberately not pursued**: SMPL-X/BEDLAM parametric body-mesh fitting. Real, heavy addition
+      (per-frame differentiable fitting, GPU cost, another dependency) - no concrete evidence yet
+      that skeleton-only (now rigid) isn't sufficient for this app's coaching-cue purpose.
 
 ## Performance/scale review + fixes (2026-07-29)
 

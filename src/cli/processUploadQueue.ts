@@ -48,6 +48,7 @@ import { claimNextPendingClip, markClipFailed, markClipReady } from "../services
 import { upsertPose3dFrames } from "../services/db/videoClipUpsert.js";
 import { downloadFile } from "../services/storage/gcs.js";
 import { smoothJoints, SMOOTHING_METHOD_LABEL, type Pose3dFrame } from "../services/pose3d/smoothJoints.js";
+import { rigidifySkeleton, RIGID_METHOD_LABEL } from "../services/pose3d/rigidifySkeleton.js";
 import { ingestPhases } from "./ingestPhases.js";
 
 const POLL_INTERVAL_MS = 10_000;
@@ -108,12 +109,13 @@ export async function processOnePendingClip(): Promise<boolean> {
       lead_side_guess?: "l" | "r" | null;
     };
     const smoothedFrames = smoothJoints(pose3d.frames);
+    const rigidFrames = rigidifySkeleton(smoothedFrames);
     await upsertPose3dFrames({
       videoClipId: clip.videoClipId,
       jointNames: pose3d.meta.joint_names,
-      smoothingMethod: SMOOTHING_METHOD_LABEL,
+      smoothingMethod: `${SMOOTHING_METHOD_LABEL}+${RIGID_METHOD_LABEL}`,
       leadSide: metrics.lead_side_guess ?? null,
-      frames: smoothedFrames,
+      frames: rigidFrames,
     });
 
     await markClipReady(clip.videoClipId);

@@ -451,7 +451,7 @@ details.drawer .drawer-body { padding: 0 16px 16px; }
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin: 0 calc(-1 * 14px) 16px;
+  margin: 0 0 16px;
 }
 .app-bar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .app-bar-titles { min-width: 0; }
