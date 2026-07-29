@@ -173,6 +173,21 @@
   }
   :root[data-theme="dark"] .evidence-warning { color: var(--status-warning); }
 
+  .trend-callout {
+    background: color-mix(in srgb, var(--status-good) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--status-good) 40%, transparent);
+    color: #0b6b0b;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .trend-callout { color: var(--status-good); }
+  }
+  :root[data-theme="dark"] .trend-callout { color: var(--status-good); }
+
   details { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
   details + details { margin-top: 10px; }
   summary {
@@ -217,6 +232,7 @@
       <span><b>At-bats reviewed:</b> <span id="abCount">0</span></span>
       <span><b>Vantage:</b> {{e.g. behind backstop}}</span>
     </div>
+    <div id="trendCallout"></div>
   </header>
 
   <section>
@@ -393,6 +409,13 @@
     </details>
 
     <details>
+      <summary>At-Bat Outcome Correlation</summary>
+      <div class="details-body" id="atBatCorrelation">
+        <p>Not enough linked at-bat data yet to compute a correlation.</p>
+      </div>
+    </details>
+
+    <details>
       <summary>Reference Comp — What a Fix Looks Like</summary>
       <div class="details-body">
         <table class="comp-table">
@@ -459,8 +482,13 @@
   // "pitch" = location/type of the pitch she swung at (or took), e.g. "Outside, low",
   // "Middle-middle", "Rise ball, high". Without it, a bad result on a tough pitch can get
   // misread as a swing flaw — pitch context protects every conclusion below.
+  // "outcome" = a short tag for the AT-BAT'S FINAL pitch result: "take" (no swing on the
+  // deciding pitch), "foul-no-advance" (contact but the at-bat continued), or "ball-in-play"
+  // (contact plus a baserunning result). Powers the computed At-Bat Outcome Correlation section
+  // below via CHECKLIST/ISSUES' own "atBats" field (array position in THIS list — 1st/2nd/3rd
+  // logged at-bat, not the "ab" field, since "ab" can repeat across games).
   const GAME_LOG = [
-    // { date: "2026-08-02", opponent: "Eagles", ab: 1, pitch: "Rise ball, high", result: "K swinging", clip: "videos/{{slug}}_20260802_eagles_ab1.mp4" },
+    // { date: "2026-08-02", opponent: "Eagles", ab: 1, pitch: "Rise ball, high", result: "K swinging", clip: "videos/{{slug}}_20260802_eagles_ab1.mp4", outcome: "take" },
   ];
 
   const gameLogBody = document.querySelector("#gameLogTable tbody");
@@ -495,18 +523,22 @@
   // unconfirmed "AI draft" badge). When a coach reviews it, set reviewedBy to their name; if they
   // agree, leave score as-is; if they disagree, change score but leave aiDraft untouched — the
   // badge will then show both, so the AI-vs-coach gap is never silently lost.
+  //
+  // "atBats" — numeric references into GAME_LOG above (array position — 1st/2nd/3rd logged
+  // at-bat, not the "ab" field). Fill in as you cite specific at-bats in "notes"; powers the
+  // computed At-Bat Outcome Correlation section. Leave as [] until real notes cite real at-bats.
   const CHECKLIST = [
-    { label: "Stance & setup", score: null, aiDraft: null, reviewedBy: null, history: [], notes: "Awaiting video" },
-    { label: "Load", score: null, aiDraft: null, reviewedBy: null, history: [], notes: "Awaiting video" },
-    { label: "Stride / front-foot plant", score: null, aiDraft: null, reviewedBy: null, history: [], notes: "Awaiting video" },
-    { label: "Hip-shoulder separation", score: null, aiDraft: null, reviewedBy: null, history: [], notes: "Awaiting video" },
-    { label: "Hand path to ball", score: null, aiDraft: null, reviewedBy: null, history: [], notes: "Awaiting video" },
-    { label: "Bat path through zone", score: null, aiDraft: null, reviewedBy: null, history: [], notes: "Awaiting video" },
-    { label: "Contact point", score: null, aiDraft: null, reviewedBy: null, history: [], notes: "Awaiting video" },
-    { label: "Extension", score: null, aiDraft: null, reviewedBy: null, history: [], notes: "Awaiting video" },
-    { label: "Head/eyes", score: null, aiDraft: null, reviewedBy: null, history: [], notes: "Awaiting video" },
-    { label: "Follow-through & finish", score: null, aiDraft: null, reviewedBy: null, history: [], notes: "Awaiting video" },
-    { label: "Swing decisions (pitch selection)", score: null, aiDraft: null, reviewedBy: null, history: [], notes: "Awaiting video" },
+    { label: "Stance & setup", score: null, aiDraft: null, reviewedBy: null, history: [], atBats: [], notes: "Awaiting video" },
+    { label: "Load", score: null, aiDraft: null, reviewedBy: null, history: [], atBats: [], notes: "Awaiting video" },
+    { label: "Stride / front-foot plant", score: null, aiDraft: null, reviewedBy: null, history: [], atBats: [], notes: "Awaiting video" },
+    { label: "Hip-shoulder separation", score: null, aiDraft: null, reviewedBy: null, history: [], atBats: [], notes: "Awaiting video" },
+    { label: "Hand path to ball", score: null, aiDraft: null, reviewedBy: null, history: [], atBats: [], notes: "Awaiting video" },
+    { label: "Bat path through zone", score: null, aiDraft: null, reviewedBy: null, history: [], atBats: [], notes: "Awaiting video" },
+    { label: "Contact point", score: null, aiDraft: null, reviewedBy: null, history: [], atBats: [], notes: "Awaiting video" },
+    { label: "Extension", score: null, aiDraft: null, reviewedBy: null, history: [], atBats: [], notes: "Awaiting video" },
+    { label: "Head/eyes", score: null, aiDraft: null, reviewedBy: null, history: [], atBats: [], notes: "Awaiting video" },
+    { label: "Follow-through & finish", score: null, aiDraft: null, reviewedBy: null, history: [], atBats: [], notes: "Awaiting video" },
+    { label: "Swing decisions (pitch selection)", score: null, aiDraft: null, reviewedBy: null, history: [], atBats: [], notes: "Awaiting video" },
   ];
 
   const meaning = { 1: "Needs work", 2: "Developing", 3: "Solid" };
@@ -519,6 +551,26 @@
     if (!hist.length) return "—";
     return hist.concat(isPending(row.score) ? [] : [row.score]).join(" → ");
   };
+
+  // Kid-facing trend callout (added 2026-07-28): not gamification, just making existing
+  // progress visible to the player, not only the coach. Reuses trendLabel's own
+  // history.concat(score) sequence - a checkpoint is "trending up" if its most recent score
+  // improved over the immediately preceding session's score. Renders nothing (not an empty box)
+  // until a player actually has re-film history - most players' first session has none yet.
+  const improving = CHECKLIST.filter(row => {
+    const hist = row.history || [];
+    if (isPending(row.score) || hist.length === 0) return false;
+    return row.score > hist[hist.length - 1];
+  });
+  const trendCalloutEl = document.getElementById("trendCallout");
+  if (improving.length > 0) {
+    const names = improving.map(row => row.label).join(", ");
+    trendCalloutEl.innerHTML = `<div class="trend-callout">📈 Trending up: ${names} — ` +
+      `improved from the last filming session. Keep it up!</div>`;
+  } else {
+    trendCalloutEl.innerHTML = "";
+  }
+
   const reviewBadge = row => {
     if (isPending(row.score)) return "";
     if (!row.reviewedBy) {
@@ -584,15 +636,57 @@
   // swing" from "this is what a tough pitch does to any swing." e.g. "AB 1 vs Storm (7/12) was
   // middle-middle, so the rollover there is the swing, not the pitch." A citation with no pitch
   // context is a weaker claim than one that rules out the pitch as the cause.
+  //
+  // "atBats" — same GAME_LOG array-position references CHECKLIST uses above, backfilled from
+  // what "seenInAtBats" already names in prose. Powers the computed At-Bat Outcome Correlation
+  // section below.
   const ISSUES = [
     // {
     //   issue: "e.g. Steps in the bucket — front foot opens toward third base before the swing starts",
+    //   atBats: [1, 2],
     //   seenInAtBats: "e.g. AB 1 vs Eagles (8/2, middle-middle - so this is the swing, not the pitch), AB 2 vs Hawks (8/9)",
     //   likelyCause: "e.g. fear of the ball / no weight transfer practice",
     //   effect: "e.g. pulls off outside pitches, rolls over to weak grounders",
     //   reviewedBy: null,
     // },
   ];
+
+  // Computed At-Bat Outcome Correlation (added 2026-07-28): cross-references CHECKLIST[].atBats
+  // / ISSUES[].atBats against GAME_LOG[].outcome to surface which real game outcomes tend to
+  // follow a specific checkpoint or issue - computed live from the data above, not hand-written
+  // prose, same "compute it, don't eyeball it" principle as the evidence-warning banner above
+  // and the team report's detected-patterns block.
+  function outcomeCounts(atBats) {
+    const counts = {};
+    (atBats || []).forEach(pos => {
+      const g = GAME_LOG[pos - 1];
+      if (!g || !g.outcome) return;
+      counts[g.outcome] = (counts[g.outcome] || 0) + 1;
+    });
+    return counts;
+  }
+  function formatCounts(counts) {
+    return Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(", ") || "no outcome data";
+  }
+  const atBatCorrelationEl = document.getElementById("atBatCorrelation");
+  const correlationLines = [];
+  ISSUES.forEach(iss => {
+    if (!iss.atBats || iss.atBats.length === 0) return;
+    correlationLines.push(
+      `<li><b>${iss.issue}:</b> ${formatCounts(outcomeCounts(iss.atBats))} ` +
+      `(${iss.atBats.length} of ${GAME_LOG.length} logged at-bats)</li>`
+    );
+  });
+  CHECKLIST.forEach(row => {
+    if (isPending(row.score) || row.score >= 3 || !row.atBats || row.atBats.length === 0) return;
+    correlationLines.push(
+      `<li><b>${row.label}</b> (scored ${row.score}/3): ${formatCounts(outcomeCounts(row.atBats))} ` +
+      `(${row.atBats.length} of ${GAME_LOG.length} logged at-bats)</li>`
+    );
+  });
+  atBatCorrelationEl.innerHTML = correlationLines.length
+    ? `<ul>${correlationLines.join("")}</ul>`
+    : "<p>Not enough linked at-bat data yet to compute a correlation.</p>";
 
   const issueReviewBadge = iss => iss.reviewedBy
     ? `<div style="margin-top:8px;"><span class="review-badge confirmed" title="Confirmed by ${iss.reviewedBy}">✓ ${iss.reviewedBy}</span></div>`

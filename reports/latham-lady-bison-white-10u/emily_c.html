@@ -173,6 +173,21 @@
   }
   :root[data-theme="dark"] .evidence-warning { color: var(--status-warning); }
 
+  .trend-callout {
+    background: color-mix(in srgb, var(--status-good) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--status-good) 40%, transparent);
+    color: #0b6b0b;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .trend-callout { color: var(--status-good); }
+  }
+  :root[data-theme="dark"] .trend-callout { color: var(--status-good); }
+
   details { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
   details + details { margin-top: 10px; }
   summary {
@@ -218,6 +233,7 @@
       <span><b>Vantage:</b> Behind backstop (game 1); distant first-base side (game 2)</span>
       <span><a href="emily_c_swing_model.html" style="color:var(--series-1);">Interactive 3D swing model →</a></span>
     </div>
+    <div id="trendCallout"></div>
   </header>
 
   <section>
@@ -337,7 +353,7 @@
             <td>Hip-shoulder separation</td>
             <td><span class="pill" data-score="2">2 · Developing</span><br><span class="review-badge ai-draft" title="AI-drafted score, not yet reviewed by a coach">🤖 AI draft</span></td>
             <td>—</td>
-            <td class="notes">Hard to grade from these camera angles. Single-camera pose estimation on G1 AB1 pitch 4 did show a textbook stretch-and-fire pattern (separation near zero through the load, spiking to ~59° at contact, releasing on follow-through), but the metric was too noisy on the other swings to call it a confirmed pattern.</td>
+            <td class="notes">Hard to grade from these camera angles. Corrected 2026-07-28: this project's newer pose3d pipeline (YOLO11-pose + VideoPose3D, replacing the earlier MediaPipe-based read) auto-detects the contact instant per clip and flags the previously-cited G1 AB1 pitch 4 swing as a LOW-confidence contact read — the ~59° separation once attributed to it should not be treated as a confirmed measurement. The one swing this pipeline can confidently locate contact for (G1 AB1 pitch 1) measures ~32° hip-shoulder separation at contact — a real, trustworthy reading, but a single swing, not enough on its own to confirm a pattern.</td>
           </tr>
           <tr>
             <td>Hand path to ball</td>
@@ -349,7 +365,7 @@
             <td>Bat path through zone</td>
             <td><span class="pill" data-score="2">2 · Developing</span><br><span class="review-badge ai-draft" title="AI-drafted score, not yet reviewed by a coach">🤖 AI draft</span></td>
             <td>—</td>
-            <td class="notes">Appears level-to-slightly-up through the zone on the clear-contact swings — no obvious steep chop or uppercut.</td>
+            <td class="notes">Appears level-to-slightly-up through the zone on the clear-contact swings — no obvious steep chop or uppercut. Added 2026-07-28: the pose3d pipeline measured peak bat-tip speed of ~42 shoulder-widths/sec near contact on the one high-confidence swing (G1 AB1 pitch 1) — body-relative units, since no camera calibration exists for this footage to convert to a real mph figure. It also computed a raw attack-angle reading, but that number depends on this camera's exact orientation to home plate (unknown), so it isn't reported here as a swing-plane verdict — tracking it release over release, once more high-confidence swings exist, is more meaningful than one uncalibrated number today.</td>
           </tr>
           <tr>
             <td>Contact point</td>
@@ -361,7 +377,7 @@
             <td>Extension</td>
             <td><span class="pill" data-score="3">3 · Solid</span><br><span class="review-badge ai-draft" title="AI-drafted score, not yet reviewed by a coach">🤖 AI draft</span></td>
             <td>—</td>
-            <td class="notes">Strongest mechanical trait on film — full arm extension with a firm front leg on every clean-contact swing across both games (G1 AB1 pitch 4, G1 AB2 final, G2 AB2 final). Pose estimation on the game-1 film quantifies it: front knee bends to ~130-150° in the load, then straightens to ~155-180° through contact and extension, on every real swing.</td>
+            <td class="notes">Strongest mechanical trait on film. Corrected 2026-07-28: the newer pose3d pipeline (YOLO11-pose + VideoPose3D) is more conservative about which swings it trusts than the earlier MediaPipe-based read was — of Emily's 6 filmed clips, only G1 AB1 pitch 1 clears its high-confidence bar for locating the contact instant (the previously-cited G1 AB1 pitch 4 does not). On that one confirmed swing, front knee reaches ~158° at contact — full extension, consistent with the earlier read, but from one confirmed swing rather than "every swing across both games" as previously written. Revisit as more high-confidence swings accumulate.</td>
           </tr>
           <tr>
             <td>Head/eyes</td>
@@ -399,6 +415,13 @@
           <b>Effect on outcomes:</b> Turns real bat speed into foul balls instead of balls in play, and extends at-bats — which also reflects the plate discipline noted in Swing Decisions above.
           <div style="margin-top:8px;"><span class="review-badge ai-draft" title="AI-drafted diagnosis, not yet reviewed by a coach">🤖 AI draft</span></div>
         </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>At-Bat Outcome Correlation</summary>
+      <div class="details-body" id="atBatCorrelation">
+        <p>Not enough linked at-bat data yet to compute a correlation.</p>
       </div>
     </details>
 
@@ -448,11 +471,17 @@
   // "pitch" = location/type of the pitch she swung at (or took), e.g. "Outside, low",
   // "Middle-middle", "Rise ball, high". Without it, a bad result on a tough pitch can get
   // misread as a swing flaw — pitch context protects every conclusion below.
+  // "outcome" (added 2026-07-28): a short tag for the AT-BAT'S FINAL pitch result, derived
+  // faithfully from the existing "result" text above it — "take" (no swing on the deciding
+  // pitch), "foul-no-advance" (contact but the at-bat continued/no baserunning), or
+  // "ball-in-play" (contact plus a baserunning result). This is array-position indexed (1st,
+  // 2nd, 3rd, 4th logged at-bat) since "ab" repeats 1,2,1,2 across the two games — CHECKLIST/
+  // ISSUES atBats references below mean "this position in this array," not the "ab" field.
   const GAME_LOG = [
-    { date: "2026-07-25", opponent: "EG Xpress Hurricanes", ab: 1, pitch: "4 pitches filmed as separate clips (filename order may not match the true in-game sequence)", result: "1 take (no swing), 2 full swings with contact but no baserunning (likely fouls), 1 full swing with a hard sprint to 1B (apparent ball in play) — final safe/out call not visible on this camera angle", clip: "videos/Emily_C_AB1 (1-4).mp4" },
-    { date: "2026-07-25", opponent: "EG Xpress Hurricanes", ab: 2, pitch: "Extended at-bat (~4 min continuous clip) — early foul-looking contact (~0:51), several pitches taken working deep into the count", result: "Full swing, clean contact on the final pitch — ball hit in the air, hard sprint to 1B on contact; outcome of the play not visible (camera stays on infield/plate)", clip: "videos/Emily_C_AB2.mp4" },
-    { date: "2026-07-25", opponent: "Cohoes Rush Riptide", ab: 1, pitch: "One pitch captured in a ~7.75-min clip (action window ~0:17-0:21); camera focus locked on the background, so the footage is soft", result: "Taken pitch — no swing anywhere in the clip; ball/strike call not determinable from video", clip: "videos/Emily_C_AB1_game2.mp4" },
-    { date: "2026-07-25", opponent: "Cohoes Rush Riptide", ab: 2, pitch: "Marathon at-bat (~15-min continuous clip, including a coach timeout mid-AB) — full clean swing at ~1:02 with no baserunning after (likely foul), multiple pitches taken", result: "Final pitch (~15:16): full swing with the ball visibly in flight, bat dropped, hard sprint to 1B — ball in play; final call not visible on camera", clip: "videos/Emily_C_AB2_game2.mp4" },
+    { date: "2026-07-25", opponent: "EG Xpress Hurricanes", ab: 1, pitch: "4 pitches filmed as separate clips (filename order may not match the true in-game sequence)", result: "1 take (no swing), 2 full swings with contact but no baserunning (likely fouls), 1 full swing with a hard sprint to 1B (apparent ball in play) — final safe/out call not visible on this camera angle", clip: "videos/Emily_C_AB1 (1-4).mp4", outcome: "ball-in-play" },
+    { date: "2026-07-25", opponent: "EG Xpress Hurricanes", ab: 2, pitch: "Extended at-bat (~4 min continuous clip) — early foul-looking contact (~0:51), several pitches taken working deep into the count", result: "Full swing, clean contact on the final pitch — ball hit in the air, hard sprint to 1B on contact; outcome of the play not visible (camera stays on infield/plate)", clip: "videos/Emily_C_AB2.mp4", outcome: "ball-in-play" },
+    { date: "2026-07-25", opponent: "Cohoes Rush Riptide", ab: 1, pitch: "One pitch captured in a ~7.75-min clip (action window ~0:17-0:21); camera focus locked on the background, so the footage is soft", result: "Taken pitch — no swing anywhere in the clip; ball/strike call not determinable from video", clip: "videos/Emily_C_AB1_game2.mp4", outcome: "take" },
+    { date: "2026-07-25", opponent: "Cohoes Rush Riptide", ab: 2, pitch: "Marathon at-bat (~15-min continuous clip, including a coach timeout mid-AB) — full clean swing at ~1:02 with no baserunning after (likely foul), multiple pitches taken", result: "Final pitch (~15:16): full swing with the ball visibly in flight, bat dropped, hard sprint to 1B — ball in play; final call not visible on camera", clip: "videos/Emily_C_AB2_game2.mp4", outcome: "ball-in-play" },
   ];
 
   const gameLogBody = document.querySelector("#gameLogTable tbody");
@@ -487,18 +516,24 @@
   // unconfirmed "AI draft" badge). When a coach reviews it, set reviewedBy to their name; if they
   // agree, leave score as-is; if they disagree, change score but leave aiDraft untouched — the
   // badge will then show both, so the AI-vs-coach gap is never silently lost.
+  //
+  // "atBats" (added 2026-07-28): numeric references into GAME_LOG above (array position —
+  // 1st/2nd/3rd/4th logged at-bat, see GAME_LOG's own comment on why position, not the "ab"
+  // field), backfilled faithfully from what each row's existing "notes" prose already cites.
+  // Powers the computed correlation block below — not a new judgment call, just formalizing
+  // what was already written.
   const CHECKLIST = [
-    { label: "Stance & setup", score: 2, aiDraft: 2, reviewedBy: null, history: [], notes: "Balanced, athletic stance held consistently across all 4 at-bats and both games — including two marathon ABs — nothing alarming, nothing textbook either." },
-    { label: "Load", score: 2, aiDraft: 2, reviewedBy: null, history: [], notes: "Bat stays loaded/cocked pre-pitch in every clip; weight shift back is present but hard to grade precisely from a single fixed camera angle." },
-    { label: "Stride / front-foot plant", score: 2, aiDraft: 2, reviewedBy: null, history: [], notes: "Front foot plants firmly before contact on every clear swing (G1 AB1 pitch 4, G1 AB2 final pitch, G2 AB2 final pitch) — stride looks under control, not lunging." },
-    { label: "Hip-shoulder separation", score: 2, aiDraft: 2, reviewedBy: null, history: [], notes: "Hard to grade from these camera angles. Single-camera pose estimation on G1 AB1 pitch 4 did show a textbook stretch-and-fire pattern (separation near zero through the load, spiking to ~59° at contact, releasing on follow-through), but the metric was too noisy on the other swings to call it a confirmed pattern." },
-    { label: "Hand path to ball", score: 2, aiDraft: 2, reviewedBy: null, history: [], notes: "Hands work to a level path in the clear-contact clips; no obvious casting or dropping the barrel early." },
-    { label: "Bat path through zone", score: 2, aiDraft: 2, reviewedBy: null, history: [], notes: "Appears level-to-slightly-up through the zone on the clear-contact swings — no obvious steep chop or uppercut." },
-    { label: "Contact point", score: 2, aiDraft: 2, reviewedBy: null, history: [], notes: "Contact looks to be roughly out over the front of the plate on the clean swings — reasonable, though exact depth is hard to pin down at 30fps from these angles." },
-    { label: "Extension", score: 3, aiDraft: 3, reviewedBy: null, history: [], notes: "Strongest mechanical trait on film — full arm extension with a firm front leg on every clean-contact swing across both games (G1 AB1 pitch 4, G1 AB2 final, G2 AB2 final). Pose estimation on the game-1 film quantifies it: front knee bends to ~130-150° in the load, then straightens to ~155-180° through contact and extension, on every real swing." },
-    { label: "Head/eyes", score: 2, aiDraft: 2, reviewedBy: null, history: [], notes: "No obvious pulling off the ball, but head-tracking through contact can't be precisely confirmed at this resolution/frame rate." },
-    { label: "Follow-through & finish", score: 3, aiDraft: 3, reviewedBy: null, history: [], notes: "Full, balanced follow-through on every clean-contact swing, matching the strong extension noted above." },
-    { label: "Swing decisions (pitch selection)", score: 2, aiDraft: 2, reviewedBy: null, history: [], notes: "Consistent, real patience across both games: took pitches without chasing (G1 AB1 pitch 3; the lone pitch filmed in G2 AB1), and worked two marathon at-bats (G1 AB2 ~4 min, G2 AB2 ~15 min incl. a coach timeout) before putting the final pitch in play each time. Held at \"Developing\" only because ball/strike accuracy of the takes isn't confirmable from video, and several mechanically-sound swings ended as fouls." },
+    { label: "Stance & setup", score: 2, aiDraft: 2, reviewedBy: null, history: [], atBats: [1, 2, 3, 4], notes: "Balanced, athletic stance held consistently across all 4 at-bats and both games — including two marathon ABs — nothing alarming, nothing textbook either." },
+    { label: "Load", score: 2, aiDraft: 2, reviewedBy: null, history: [], atBats: [1, 2, 3, 4], notes: "Bat stays loaded/cocked pre-pitch in every clip; weight shift back is present but hard to grade precisely from a single fixed camera angle." },
+    { label: "Stride / front-foot plant", score: 2, aiDraft: 2, reviewedBy: null, history: [], atBats: [1, 2, 4], notes: "Front foot plants firmly before contact on every clear swing (G1 AB1 pitch 4, G1 AB2 final pitch, G2 AB2 final pitch) — stride looks under control, not lunging." },
+    { label: "Hip-shoulder separation", score: 2, aiDraft: 2, reviewedBy: null, history: [], atBats: [1], notes: "Hard to grade from these camera angles. Corrected 2026-07-28: this project's newer pose3d pipeline (YOLO11-pose + VideoPose3D, replacing the earlier MediaPipe-based read) auto-detects the contact instant per clip and flags the previously-cited G1 AB1 pitch 4 swing as a LOW-confidence contact read — the ~59° separation once attributed to it should not be treated as a confirmed measurement. The one swing this pipeline can confidently locate contact for (G1 AB1 pitch 1) measures ~32° hip-shoulder separation at contact — a real, trustworthy reading, but a single swing, not enough on its own to confirm a pattern." },
+    { label: "Hand path to ball", score: 2, aiDraft: 2, reviewedBy: null, history: [], atBats: [1, 2, 4], notes: "Hands work to a level path in the clear-contact clips; no obvious casting or dropping the barrel early." },
+    { label: "Bat path through zone", score: 2, aiDraft: 2, reviewedBy: null, history: [], atBats: [1, 2, 4], notes: "Appears level-to-slightly-up through the zone on the clear-contact swings — no obvious steep chop or uppercut. Added 2026-07-28: the pose3d pipeline measured peak bat-tip speed of ~42 shoulder-widths/sec near contact on the one high-confidence swing (G1 AB1 pitch 1) — body-relative units, since no camera calibration exists for this footage to convert to a real mph figure. It also computed a raw attack-angle reading, but that number depends on this camera's exact orientation to home plate (unknown), so it isn't reported here as a swing-plane verdict — tracking it release over release, once more high-confidence swings exist, is more meaningful than one uncalibrated number today." },
+    { label: "Contact point", score: 2, aiDraft: 2, reviewedBy: null, history: [], atBats: [1, 2, 4], notes: "Contact looks to be roughly out over the front of the plate on the clean swings — reasonable, though exact depth is hard to pin down at 30fps from these angles." },
+    { label: "Extension", score: 3, aiDraft: 3, reviewedBy: null, history: [], atBats: [1, 2, 4], notes: "Strongest mechanical trait on film. Corrected 2026-07-28: the newer pose3d pipeline (YOLO11-pose + VideoPose3D) is more conservative about which swings it trusts than the earlier MediaPipe-based read was — of Emily's 6 filmed clips, only G1 AB1 pitch 1 clears its high-confidence bar for locating the contact instant (the previously-cited G1 AB1 pitch 4 does not). On that one confirmed swing, front knee reaches ~158° at contact — full extension, consistent with the earlier read, but from one confirmed swing rather than \"every swing across both games\" as previously written. Revisit as more high-confidence swings accumulate." },
+    { label: "Head/eyes", score: 2, aiDraft: 2, reviewedBy: null, history: [], atBats: [1, 2, 3, 4], notes: "No obvious pulling off the ball, but head-tracking through contact can't be precisely confirmed at this resolution/frame rate." },
+    { label: "Follow-through & finish", score: 3, aiDraft: 3, reviewedBy: null, history: [], atBats: [1, 2, 4], notes: "Full, balanced follow-through on every clean-contact swing, matching the strong extension noted above." },
+    { label: "Swing decisions (pitch selection)", score: 2, aiDraft: 2, reviewedBy: null, history: [], atBats: [1, 2, 3, 4], notes: "Consistent, real patience across both games: took pitches without chasing (G1 AB1 pitch 3; the lone pitch filmed in G2 AB1), and worked two marathon at-bats (G1 AB2 ~4 min, G2 AB2 ~15 min incl. a coach timeout) before putting the final pitch in play each time. Held at \"Developing\" only because ball/strike accuracy of the takes isn't confirmable from video, and several mechanically-sound swings ended as fouls." },
   ];
 
   const meaning = { 1: "Needs work", 2: "Developing", 3: "Solid" };
@@ -511,6 +546,26 @@
     if (!hist.length) return "—";
     return hist.concat(isPending(row.score) ? [] : [row.score]).join(" → ");
   };
+
+  // Kid-facing trend callout (added 2026-07-28): not gamification, just making existing
+  // progress visible to the player, not only the coach. Reuses trendLabel's own
+  // history.concat(score) sequence - a checkpoint is "trending up" if its most recent score
+  // improved over the immediately preceding session's score. Renders nothing (not an empty box)
+  // until a player actually has re-film history - Emily has none yet (first session), so this
+  // correctly shows nothing on her real page today.
+  const improving = CHECKLIST.filter(row => {
+    const hist = row.history || [];
+    if (isPending(row.score) || hist.length === 0) return false;
+    return row.score > hist[hist.length - 1];
+  });
+  const trendCalloutEl = document.getElementById("trendCallout");
+  if (improving.length > 0) {
+    const names = improving.map(row => row.label).join(", ");
+    trendCalloutEl.innerHTML = `<div class="trend-callout">📈 Trending up: ${names} — ` +
+      `improved from the last filming session. Keep it up!</div>`;
+  } else {
+    trendCalloutEl.innerHTML = "";
+  }
   const reviewBadge = row => {
     if (isPending(row.score)) return "";
     if (!row.reviewedBy) {
@@ -576,15 +631,56 @@
   // swing" from "this is what a tough pitch does to any swing." e.g. "AB 1 vs Storm (7/12) was
   // middle-middle, so the rollover there is the swing, not the pitch." A citation with no pitch
   // context is a weaker claim than one that rules out the pitch as the cause.
+  //
+  // "atBats" (added 2026-07-28): same GAME_LOG array-position references CHECKLIST uses above,
+  // backfilled from what "seenInAtBats" already names in prose — powers the computed
+  // correlation block below.
   const ISSUES = [
     {
       issue: "Squares up several pitches mechanically (full extension, firm front leg) but produces foul balls rather than fair contact",
+      atBats: [1, 4],
       seenInAtBats: "G1 AB 1, pitch 4 vs EG Xpress Hurricanes (7/25) — full extension and firm front leg at contact, but no baserunning followed, consistent with a foul; G1 AB 1, pitch 2 shows the same pattern; G2 AB 2 vs Cohoes Rush Riptide (7/25, ~1:02 into the clip) — another full, clean swing with no baserunning after. Now a repeating pattern across 4 logged at-bats and two games, not a one-off.",
       likelyCause: "Mechanics look solid on these reps, so this reads more like a timing/contact-point issue (slightly early or late relative to the pitch) than a swing-shape flaw.",
       effect: "Turns real bat speed into foul balls instead of balls in play, and extends at-bats — which also reflects the plate discipline noted in Swing Decisions above.",
       reviewedBy: null,
     },
   ];
+
+  // Computed At-Bat Outcome Correlation (added 2026-07-28): cross-references CHECKLIST[].atBats
+  // / ISSUES[].atBats against GAME_LOG[].outcome to surface which real game outcomes tend to
+  // follow a specific checkpoint or issue - computed live from the data above, not hand-written
+  // prose, same "compute it, don't eyeball it" principle as the evidence-warning banner above.
+  function outcomeCounts(atBats) {
+    const counts = {};
+    (atBats || []).forEach(pos => {
+      const g = GAME_LOG[pos - 1];
+      if (!g || !g.outcome) return;
+      counts[g.outcome] = (counts[g.outcome] || 0) + 1;
+    });
+    return counts;
+  }
+  function formatCounts(counts) {
+    return Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(", ") || "no outcome data";
+  }
+  const atBatCorrelationEl = document.getElementById("atBatCorrelation");
+  const correlationLines = [];
+  ISSUES.forEach(iss => {
+    if (!iss.atBats || iss.atBats.length === 0) return;
+    correlationLines.push(
+      `<li><b>${iss.issue}:</b> ${formatCounts(outcomeCounts(iss.atBats))} ` +
+      `(${iss.atBats.length} of ${GAME_LOG.length} logged at-bats)</li>`
+    );
+  });
+  CHECKLIST.forEach(row => {
+    if (isPending(row.score) || row.score >= 3 || !row.atBats || row.atBats.length === 0) return;
+    correlationLines.push(
+      `<li><b>${row.label}</b> (scored ${row.score}/3): ${formatCounts(outcomeCounts(row.atBats))} ` +
+      `(${row.atBats.length} of ${GAME_LOG.length} logged at-bats)</li>`
+    );
+  });
+  atBatCorrelationEl.innerHTML = correlationLines.length
+    ? `<ul>${correlationLines.join("")}</ul>`
+    : "<p>Not enough linked at-bat data yet to compute a correlation.</p>";
 
   const issueReviewBadge = iss => iss.reviewedBy
     ? `<div style="margin-top:8px;"><span class="review-badge confirmed" title="Confirmed by ${iss.reviewedBy}">✓ ${iss.reviewedBy}</span></div>`
