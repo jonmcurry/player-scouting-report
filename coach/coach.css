@@ -552,7 +552,7 @@ details.drawer .drawer-body { padding: 0 16px 16px; }
   justify-content: center;
   font-size: 18px;
   font-weight: 700;
-  margin-top: -18px;
+  margin-top: -8px;
   border: 2px solid var(--page);
   box-shadow: 0 2px 8px rgba(0,0,0,0.4);
 }
