@@ -194,11 +194,8 @@ distance to plate, or camera height), so:
 
 ## Feeding the existing report format
 
-`pose3d_to_checklist.py` reproduces the exact same two CHECKLIST keys
-(`Extension`, `Hip-shoulder separation`) `scripts/pose_to_checklist.py`
-already produces from the old MediaPipe CSVs - same thresholds, same output
-shape, so it drops into a report the same way. The difference: no
-hand-authored `windows.json` sidecar. Contact timing is auto-detected per
-clip (see above); only clips where `metrics.json`'s `contact.confidence` is
-`"high"` are used, taking over the role the old script's `clean_contact`
-flag + alignment check used to play.
+`pose3d_to_checklist.py` produces two CHECKLIST keys (`Extension`,
+`Hip-shoulder separation`) in the same shape the report format expects, with
+no hand-authored `windows.json` sidecar - contact timing is auto-detected per
+clip (see above), and only clips where `metrics.json`'s `contact.confidence`
+is `"high"` are used.

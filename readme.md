@@ -21,13 +21,16 @@ flight.
 | **Bethlehem Boom 10U** | TBD | #2 Ellie T | [team_summary.html](https://jonmcurry.github.io/player-scouting-report/reports/team_summary.html) |
 | **Latham Lady Bison White 10U** | TBD | #10 Emily C | [team_summary.html](https://jonmcurry.github.io/player-scouting-report/reports/latham-lady-bison-white-10u/team_summary.html) |
 
-**Migration status:** both real teams above are still on the hand-edited static-HTML path
-described in this readme — neither is in Supabase yet. Only the fictional demo team ("Thunder
-10U" / `example_maddie.html` / `example_ava.html`) has been migrated into the Supabase-backed
-coach app described under [Cloud layer](#cloud-layer-optional-supabase--gcs--gemini--coach-app)
-below. Don't assume a real team is Supabase-backed without checking (query the local Supabase DB
-directly, e.g. `docker exec supabase_db_softball_analysis psql -U postgres -d postgres -c
-"select name from teams;"` — cheaper than guessing from memory).
+**Migration status:** Bethlehem Boom 10U is still fully on the hand-edited static-HTML path
+described in this readme — not in Supabase. Latham Lady Bison White 10U is partially migrated:
+Emily C (#10) is in Supabase (`npm run migrate`, real game log/checklist/issues/comps/drills/
+video+pose3d data for all 7 of her real clips — see the Cloud layer section below), but she's the
+team's only player so far; any other Latham roster spot still needs its own `migrate.ts` run once
+it has real hand-filled report content. The demo team ("Thunder 10U" / seed.sql fixture data) is
+also in Supabase, for local dev/testing only. Don't assume a real team/player is Supabase-backed
+without checking (query the local Supabase DB directly, e.g. `docker exec
+supabase_db_softball_analysis psql -U postgres -d postgres -c "select name from teams;"` — cheaper
+than guessing from memory).
 
 ## Live site
 
@@ -237,6 +240,25 @@ npm run analyze -- --team latham-lady-bison-white-10u --player emily_c \
 ```
 Both respect the same rule: never silently overwrite a checkpoint a coach has already confirmed
 (`reviewed_by` set) unless you pass `--force`.
+
+Getting an already-filmed player's real video/pose3d data into the coach app's 3D skeleton
+comparison (`coach/components/skeletonComparison.js`) when the pose3d pipeline has already been
+run locally (`frames/<player>/<clip>/` already has `pose_3d.json`/`metrics.json`), rather than via
+a coach's live browser upload:
+```powershell
+# swing_phases (per clip) - which at-bat a physical clip belongs to is a human judgment call,
+# so --date/--opponent/--ab must match an existing game_log_entries row exactly
+npm run ingest-phases -- --team latham-lady-bison-white-10u --player emily_c \
+  --date 2026-07-25 --opponent "EG Xpress Hurricanes" --ab 1 --clipDir "frames/emily_c/Emily_C_AB1 (1)"
+
+# smoothed joint frames (video_clip_pose3d) - the piece ingest-phases doesn't cover
+npm run ingest-pose3d-frames -- --team latham-lady-bison-white-10u --player emily_c \
+  --date 2026-07-25 --opponent "EG Xpress Hurricanes" --ab 1 \
+  --clipDir "frames/emily_c/Emily_C_AB1 (1)" --position 0
+```
+`--position` matters when one at-bat has multiple physical clip files (e.g. several pitches filmed
+separately) - only the lowest position is surfaced by default in the coach app, so put the
+highest-confidence clip at `--position 0`.
 
 ### GCP deployment (production)
 

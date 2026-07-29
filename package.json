@@ -12,6 +12,7 @@
     "extract": "tsx src/cli/extract.ts",
     "migrate": "tsx src/cli/migrate.ts",
     "ingest-phases": "tsx src/cli/ingestPhases.ts",
+    "ingest-pose3d-frames": "tsx src/cli/ingestPose3dFrames.ts",
     "process-upload-queue": "tsx src/cli/processUploadQueue.ts",
     "ingest": "tsx src/cli/ingest.ts",
     "analyze": "tsx src/cli/analyze.ts",

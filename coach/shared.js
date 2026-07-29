@@ -59,6 +59,15 @@ export function qs(name) {
   return new URLSearchParams(window.location.search).get(name);
 }
 
+// PWA offline shell (ux.md Step 5.3) - registered once here since shared.js
+// is imported by every coach/*.html page, rather than duplicating a
+// <script> registration block per page.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}
+
 /** Same three states as the public report's .review-badge (ai-draft /
  * edited-unconfirmed / confirmed), rendered with this app's punchier badge
  * classes. Mirrors the exact logic in

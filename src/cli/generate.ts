@@ -58,12 +58,14 @@ interface DbGameLog {
   pitch: string | null;
   result: string;
   clip_gcs_path: string | null;
+  outcome: string | null;
 }
 interface DbChecklistRow {
   score: Score | null;
   ai_draft: Score | null;
   reviewed_by: string | null;
   notes: string;
+  at_bats: number[] | null;
   checkpoints: { label: string };
   checklist_score_history: { score: Score }[];
 }
@@ -73,6 +75,7 @@ interface DbIssue {
   likely_cause: string;
   effect: string;
   reviewed_by: string | null;
+  at_bats: number[] | null;
 }
 interface DbCompRecommendation {
   comp_name: string;
@@ -135,7 +138,7 @@ function serializeGameLog(rows: DbGameLog[]): string {
     (g) =>
       `    { date: ${jsStringLiteral(g.date)}, opponent: ${jsStringLiteral(g.opponent)}, ` +
       `ab: ${g.ab}, pitch: ${jsStringLiteral(g.pitch)}, result: ${jsStringLiteral(g.result)}, ` +
-      `clip: ${jsStringLiteral(g.clip_gcs_path)} },`,
+      `clip: ${jsStringLiteral(g.clip_gcs_path)}, outcome: ${jsStringLiteral(g.outcome)} },`,
   );
   return `[\n${lines.join("\n")}\n  ]`;
 }
@@ -144,10 +147,11 @@ function serializeChecklist(rows: DbChecklistRow[]): string {
   if (rows.length === 0) return "[]";
   const lines = rows.map((r) => {
     const history = r.checklist_score_history.map((h) => h.score).join(", ");
+    const atBats = (r.at_bats ?? []).join(", ");
     return (
       `    { label: ${jsStringLiteral(r.checkpoints.label)}, score: ${r.score ?? "null"}, ` +
       `aiDraft: ${r.ai_draft ?? "null"}, reviewedBy: ${jsStringLiteral(r.reviewed_by)}, ` +
-      `history: [${history}], notes: ${jsStringLiteral(r.notes)} },`
+      `history: [${history}], atBats: [${atBats}], notes: ${jsStringLiteral(r.notes)} },`
     );
   });
   return `[\n${lines.join("\n")}\n  ]`;
@@ -159,6 +163,7 @@ function serializeIssues(rows: DbIssue[]): string {
     (i) =>
       `    {\n` +
       `      issue: ${jsStringLiteral(i.issue)},\n` +
+      `      atBats: [${(i.at_bats ?? []).join(", ")}],\n` +
       `      seenInAtBats: ${jsStringLiteral(i.seen_in_at_bats)},\n` +
       `      likelyCause: ${jsStringLiteral(i.likely_cause)},\n` +
       `      effect: ${jsStringLiteral(i.effect)},\n` +
@@ -234,20 +239,20 @@ export async function generateReport(reportPath: string): Promise<void> {
   const [gameLogRes, checklistRes, issuesRes, compsRes, notesRes, drillsRes] = await Promise.all([
     supabase
       .from("game_log_entries")
-      .select("date, opponent, ab, pitch, result, clip_gcs_path")
+      .select("date, opponent, ab, pitch, result, clip_gcs_path, outcome")
       .eq("player_id", player.id)
       .order("position"),
     supabase
       .from("checklist_scores")
       .select(
-        "score, ai_draft, reviewed_by, notes, checkpoints!inner(label, sort_order), " +
+        "score, ai_draft, reviewed_by, notes, at_bats, checkpoints!inner(label, sort_order), " +
           "checklist_score_history(score)",
       )
       .eq("player_id", player.id)
       .order("sort_order", { referencedTable: "checkpoints" }),
     supabase
       .from("issues")
-      .select("issue, seen_in_at_bats, likely_cause, effect, reviewed_by")
+      .select("issue, seen_in_at_bats, likely_cause, effect, reviewed_by, at_bats")
       .eq("player_id", player.id),
     supabase
       .from("comp_recommendations")

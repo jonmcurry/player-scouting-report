@@ -40,6 +40,12 @@ export interface GameLogEntry {
   /** Local video path today (e.g. "videos/emily_c_...ab1.mp4"); a GCS object path
    * once media is migrated to cloud storage - see gcsPath vs clip note below. */
   clip: string;
+  /** Short tag for the at-bat's final-pitch result, added 2026-07-28 - powers the
+   * report's At-Bat Outcome Correlation section via ChecklistEntry/IssueEntry's own
+   * `atBats` (this entry's own array position, 1-indexed, in a player's GameLogEntry
+   * list - not the `ab` field, which can repeat across games). Absent/null for
+   * older entries that predate this feature. */
+  outcome: "take" | "foul-no-advance" | "ball-in-play" | null;
 }
 
 export interface ChecklistEntry {
@@ -56,6 +62,10 @@ export interface ChecklistEntry {
    * table (checklist_score_history) in Supabase, not a bare int[] column - see the
    * migration for why. */
   history: Score[];
+  /** Array-position references (1-indexed) into this player's own GameLogEntry
+   * list - which logged at-bats this score's `notes` cite. Powers the At-Bat
+   * Outcome Correlation section (cross-referenced against GameLogEntry.outcome). */
+  atBats: number[];
   notes: string;
   source: DraftSource | null;
 }
@@ -65,6 +75,8 @@ export interface IssueEntry {
   playerId: string;
   issue: string;
   seenInAtBats: string;
+  /** Same GameLogEntry array-position references ChecklistEntry.atBats uses. */
+  atBats: number[];
   likelyCause: string;
   effect: string;
   reviewedBy: string | null;

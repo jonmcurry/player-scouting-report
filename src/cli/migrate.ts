@@ -34,6 +34,9 @@ interface RawGameLogEntry {
   pitch: string | null;
   result: string;
   clip: string | null;
+  // Added 2026-07-28 to the report template, so older already-hand-filled
+  // reports may not have this key at all - undefined reads the same as null.
+  outcome?: "take" | "foul-no-advance" | "ball-in-play" | null;
 }
 interface RawChecklistEntry {
   label: string;
@@ -42,6 +45,8 @@ interface RawChecklistEntry {
   reviewedBy: string | null;
   history: Score[];
   notes: string;
+  // Added 2026-07-28 alongside GAME_LOG's "outcome" - same optional-key caveat.
+  atBats?: number[];
 }
 interface RawIssueEntry {
   issue: string;
@@ -49,6 +54,7 @@ interface RawIssueEntry {
   likelyCause: string;
   effect: string;
   reviewedBy: string | null;
+  atBats?: number[];
 }
 interface RawCompRecommendation {
   compName: string;
@@ -234,6 +240,7 @@ async function replaceGameLogs(playerId: string, entries: RawGameLogEntry[]): Pr
     // carry over as-is for now; a separate future step uploads videos/*.mp4
     // and updates this column to a real gs:// path.
     clip_gcs_path: e.clip,
+    outcome: e.outcome ?? null,
     // Source array index - see the position column's migration comment for
     // why (date isn't unique/monotonic enough across real report data).
     position,
@@ -269,6 +276,7 @@ async function replaceChecklist(playerId: string, entries: RawChecklistEntry[]):
       ai_draft: e.aiDraft,
       reviewed_by: e.reviewedBy,
       notes: e.notes,
+      at_bats: e.atBats ?? [],
       // Migrated legacy data's provenance (Claude-vision draft vs coach entry)
       // isn't reliably distinguishable from the HTML alone - only genuinely
       // new writes from geminiAnalyzer.ts/ingest.ts set 'gemini'/'pose3d'.
@@ -309,6 +317,7 @@ async function replaceIssues(playerId: string, entries: RawIssueEntry[]): Promis
     likely_cause: e.likelyCause,
     effect: e.effect,
     reviewed_by: e.reviewedBy,
+    at_bats: e.atBats ?? [],
     source: null,
   }));
   const ins = await supabase.from("issues").insert(rows);

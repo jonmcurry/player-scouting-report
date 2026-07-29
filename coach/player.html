@@ -2,22 +2,26 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Player View</title>
-<link rel="stylesheet" href="./coach.css?v=5">
+<link rel="stylesheet" href="./coach.css?v=6">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/icon-192.svg">
+<meta name="theme-color" content="#121418">
 </head>
 <body>
+<header class="app-bar" id="appBar"></header>
 <div class="wrap">
-  <p class="hint"><a id="backLink" href="./team.html">← Team view</a></p>
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
-    <div class="jersey-badge lg" id="playerBadge">—</div>
-    <h1 id="playerName" style="margin:0;">Loading…</h1>
+  <div id="trendBanner"></div>
+  <div class="stats-row" id="statsRow"></div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h2 style="margin-top:0;">Swing Checklist</h2>
+    <span class="hint">11 Checkpoints</span>
   </div>
+  <div id="checklistCards"></div>
 
-  <h2>1. Mechanics Checklist</h2>
-  <div id="checklistDrawers"></div>
-
-  <h2>2–5. Diagnosis, Comps &amp; Plan</h2>
+  <h2>Diagnosis, Comps &amp; Plan</h2>
   <details class="drawer" open>
     <summary><span>Primary Issue(s) Identified</span></summary>
     <div class="drawer-body" id="issuesList"></div>
@@ -35,35 +39,11 @@
     <div class="drawer-body" id="followUp"></div>
   </details>
 
-  <h2>Log New At-Bat</h2>
-  <div class="card">
-    <p class="hint">Tap a zone for a quick starting phrase - the text field stays fully editable
-      for clip timing, outcome, and narrative context a fixed grid can't capture.</p>
-    <div class="pitch-grid" id="pitchGrid">
-      <button data-loc="Inside, high">In/Hi</button>
-      <button data-loc="Middle, high">Mid/Hi</button>
-      <button data-loc="Outside, high">Out/Hi</button>
-      <button data-loc="Inside">Inside</button>
-      <button data-loc="Middle-middle">Mid-Mid</button>
-      <button data-loc="Outside">Outside</button>
-      <button data-loc="Inside, low">In/Lo</button>
-      <button data-loc="Middle, low">Mid/Lo</button>
-      <button data-loc="Outside, low">Out/Lo</button>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;">
-      <input type="text" id="newDate" placeholder="Date (YYYY-MM-DD)">
-      <input type="text" id="newOpponent" placeholder="Opponent">
-      <input type="text" id="newAb" placeholder="AB #">
-      <input type="text" id="newPitch" placeholder="Pitch location/context (tap a zone above to start)">
-      <input type="text" id="newResult" placeholder="Result">
-      <label class="hint" for="newVideo">Video (optional) — processing starts automatically after upload</label>
-      <input type="file" id="newVideo" accept="video/*">
-      <button class="primary tap-target" id="addAtBatBtn">Add At-Bat</button>
-      <p class="hint" id="addAtBatStatus"></p>
-    </div>
-  </div>
+  <h2>Game Log</h2>
   <div id="gameLogList"></div>
 </div>
+
+<nav class="bottom-nav" id="bottomNav"></nav>
 
 <script type="module">
   import { supabase, requireSession, getMyDisplayName, CHECKPOINTS, qs, renderReviewBadge } from "./shared.js";
@@ -71,13 +51,16 @@
   import { openCompModal } from "./components/compModal.js";
   import { loadClipSkeletonData, loadExtensionScore, buildExtensionCorrectedFrames, renderSkeletonComparison } from "./components/skeletonComparison.js";
   import { uploadRawClip } from "./components/videoUpload.js";
+  import { renderPlayerAppBar, renderBottomNav, loadRosterWithProgress, setLastPlayerSlug } from "./components/appShell.js";
+  import { renderZonePicker, zoneLabel, outcomeLabel } from "./components/pitchZonePicker.js";
 
+  const MIN_ATBATS_FOR_PATTERN = 3;
   const teamSlug = qs("team");
   const playerSlug = qs("player");
-  document.getElementById("backLink").href = `./team.html?team=${teamSlug}`;
 
   let coachDisplayName = "Coach";
   let playerId = null;
+  let teamId = null;
   // First game-log entry's clip that has real pose3d data, if any - used by
   // "Compare against Reference Comp" for the Tier-1 live skeleton
   // comparison and the Tier-2 static skeleton-frame snapshot (see
@@ -93,41 +76,142 @@
 
     const { data: player, error } = await supabase
       .from("players")
-      .select("id, name, jersey_number, refilm_by, what_to_check_next, teams!inner(slug)")
+      .select("id, name, jersey_number, slug, refilm_by, what_to_check_next, teams!inner(id, slug, name)")
       .eq("slug", playerSlug)
       .eq("teams.slug", teamSlug)
       .single();
     if (error || !player) {
-      document.getElementById("playerName").textContent = "Player not found (or you don't have access)";
+      document.getElementById("appBar").innerHTML = `<h1>Player not found (or you don't have access)</h1>`;
       return;
     }
     playerId = player.id;
-    document.getElementById("playerName").textContent = player.name;
-    document.getElementById("playerBadge").textContent = player.jersey_number;
+    teamId = player.teams.id;
+    setLastPlayerSlug(teamSlug, playerSlug);
 
+    const { roster, confirmedCount, totalCount } = await loadRosterWithProgress(teamId);
+    renderPlayerAppBar(document.getElementById("appBar"), {
+      player,
+      teamName: player.teams.name,
+      teamSlug,
+      roster,
+      confirmedCount,
+      totalCount,
+    });
+
+    const reportHref = `./player.html?team=${teamSlug}&player=${playerSlug}`;
+    renderBottomNav(document.getElementById("bottomNav"), {
+      teamSlug,
+      activeTab: "report",
+      reportHref,
+      logAbHref: `${reportHref}&openLog=1`,
+      onLogAbClick: openLogAbModal,
+    });
+
+    await loadTrend();
     await loadChecklist();
     await loadIssues();
     await loadCompsAndDrills();
     renderFollowUp(player.refilm_by, player.what_to_check_next);
     await loadGameLog();
-    wirePitchGrid();
-    wireAddAtBat();
+    await renderStats();
     wireGameLogDelegation();
     startStatusPolling();
+
+    if (qs("openLog") === "1") {
+      openLogAbModal();
+      history.replaceState(null, "", reportHref);
+    }
   }
 
+  /** Only rendered when a real checklist_score_history row shows an actual
+   * improvement since the last change - never a fabricated/always-on
+   * banner (see the pose3d-skeleton-comparison honesty convention this
+   * project follows elsewhere). */
+  async function loadTrend() {
+    const el = document.getElementById("trendBanner");
+    const { data: latestRows } = await supabase
+      .from("checklist_score_history")
+      .select("score, changed_at, checklist_score_id, checklist_scores!inner(player_id, ai_draft, checkpoints!inner(label))")
+      .eq("checklist_scores.player_id", playerId)
+      .order("changed_at", { ascending: false })
+      .limit(1);
+    const latest = latestRows?.[0];
+    if (!latest) {
+      el.innerHTML = "";
+      return;
+    }
+
+    const { data: priorRows } = await supabase
+      .from("checklist_score_history")
+      .select("score")
+      .eq("checklist_score_id", latest.checklist_score_id)
+      .lt("changed_at", latest.changed_at)
+      .order("changed_at", { ascending: false })
+      .limit(1);
+    const priorScore = priorRows?.[0]?.score ?? latest.checklist_scores.ai_draft;
+
+    if (priorScore == null || latest.score <= priorScore) {
+      el.innerHTML = "";
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="trend-banner">
+        <div class="trend-icon">📈</div>
+        <div>
+          <span class="trend-label">Trending Up</span>
+          <span class="trend-body">Checkpoint <b>${latest.checklist_scores.checkpoints.label}</b> improved from
+            <span class="trend-old">${priorScore}</span> → <span class="trend-new">${latest.score}</span> since last session!</span>
+        </div>
+      </div>
+    `;
+  }
+
+  async function renderStats() {
+    const { count: abCount } = await supabase
+      .from("game_log_entries")
+      .select("id", { count: "exact", head: true })
+      .eq("player_id", playerId);
+
+    const { data: teamStats } = await supabase.from("team_summary_stats").select("avg_score").eq("team_id", teamId);
+    const scores = (teamStats ?? []).map((r) => Number(r.avg_score)).filter((n) => !Number.isNaN(n));
+    const teamAvg = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
+
+    const count = abCount ?? 0;
+    const statusLabel = count >= MIN_ATBATS_FOR_PATTERN ? "Pattern Ready" : `Early Read (${count}/${MIN_ATBATS_FOR_PATTERN})`;
+
+    document.getElementById("statsRow").innerHTML = `
+      <div class="stat-tile">
+        <span class="stat-label">Logged ABs</span>
+        <div class="stat-value">${count}</div>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">Team Avg</span>
+        <div class="stat-value accent">${teamAvg}</div>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">Status</span>
+        <div class="stat-value status">${statusLabel.toUpperCase()}</div>
+      </div>
+    `;
+  }
+
+  /** Flat, always-visible checkpoint cards (ux.md Step 3A) - replaces the
+   * earlier collapsible <details> drawers. Tapping a stepper score both
+   * saves AND confirms in one tap (see stepper.js) - there's no separate
+   * "Confirm Score" step, since the single-tap IS the confirmation. */
   async function loadChecklist() {
-    const { data: rows, error } = await supabase
+    const { data: rows } = await supabase
       .from("checklist_scores")
       .select("id, score, ai_draft, reviewed_by, notes, source, checkpoints!inner(slug, label, sort_order)")
       .eq("player_id", playerId)
       .order("sort_order", { referencedTable: "checkpoints" });
 
-    const container = document.getElementById("checklistDrawers");
+    const container = document.getElementById("checklistCards");
     container.innerHTML = "";
     const bySlug = new Map((rows ?? []).map((r) => [r.checkpoints.slug, r]));
 
-    for (const cp of CHECKPOINTS) {
+    CHECKPOINTS.forEach((cp, idx) => {
       const row = bySlug.get(cp.slug) ?? {
         id: null,
         score: null,
@@ -136,43 +220,40 @@
         notes: "Awaiting video",
         checkpoints: cp,
       };
-      const details = document.createElement("details");
-      details.className = "drawer";
-      details.innerHTML = `
-        <summary>
-          <span>${cp.label}</span>
-          <span class="score-${row.score ?? "pending"}">${row.score ?? "—"}</span>
-        </summary>
-        <div class="drawer-body">
-          <p>${row.notes ?? ""}</p>
-          ${row.id ? renderReviewBadge(row) : `<span class="hint">Not scored yet</span>`}
-          <div class="stepper-mount" style="margin-top:10px;"></div>
-          ${row.id ? `<button class="tap-target" style="margin-top:8px;" data-comp="${cp.slug}" data-label="${cp.label}">Compare against Reference Comp</button>` : ""}
+      const unconfirmed = !!row.id && row.score !== null && !row.reviewed_by;
+
+      const card = document.createElement("div");
+      card.className = `checkpoint-card${unconfirmed ? " unconfirmed" : ""}`;
+      card.innerHTML = `
+        ${unconfirmed ? `<div class="ai-ribbon">🤖 AI Draft — Unconfirmed</div>` : ""}
+        <div class="cp-eyebrow">Checkpoint ${String(idx + 1).padStart(2, "0")}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <h3>${cp.label}</h3>
+          ${row.id && row.reviewed_by ? `<span class="verified-pill">✓ Verified</span>` : ""}
         </div>
+        ${row.id ? `<div class="stepper-mount"></div>` : ""}
+        <p class="cp-notes">${row.notes ?? ""}</p>
+        ${
+          row.id
+            ? `
+          <div class="cp-actions">
+            <button type="button" class="view-skeleton-btn tap-target" data-comp="${cp.slug}" data-label="${cp.label}">📐 View 3D Skeleton</button>
+            <span class="cp-meta">${row.reviewed_by ? `Reviewed by ${row.reviewed_by}` : ""}</span>
+          </div>
+        `
+            : `<p class="hint">Not scored yet</p>`
+        }
       `;
-      container.appendChild(details);
+      container.appendChild(card);
 
       if (row.id) {
-        const mount = details.querySelector(".stepper-mount");
-        const onScoreChange = (updatedRow) => {
-          const summaryScore = details.querySelector("summary span:last-child");
-          summaryScore.textContent = updatedRow.score;
-          summaryScore.className = `score-${updatedRow.score}`;
-          const badgeSlot = details.querySelector(".drawer-body p").nextElementSibling;
-          badgeSlot.outerHTML = renderReviewBadge(updatedRow);
-          // Re-render the stepper itself too - otherwise its data-active
-          // highlight goes stale, still showing the OLD score selected
-          // (caught by actually looking at a screenshot, not just asserting
-          // on text content - the badge/summary updated correctly, but the
-          // button highlight silently didn't).
-          renderStepper(mount, updatedRow, coachDisplayName, onScoreChange);
-        };
-        renderStepper(mount, row, coachDisplayName, onScoreChange);
-        details.querySelector("[data-comp]").addEventListener("click", (e) => {
-          openCompModal(e.target.dataset.comp, e.target.dataset.label, firstClipContext);
+        const mount = card.querySelector(".stepper-mount");
+        renderStepper(mount, row, coachDisplayName, () => loadChecklist());
+        card.querySelector("[data-comp]").addEventListener("click", (e) => {
+          openCompModal(e.currentTarget.dataset.comp, e.currentTarget.dataset.label, firstClipContext);
         });
       }
-    }
+    });
   }
 
   async function loadIssues() {
@@ -250,21 +331,22 @@
   async function loadGameLog() {
     const { data: logs } = await supabase
       .from("game_log_entries")
-      .select("id, date, opponent, ab, pitch, result")
+      .select("id, date, opponent, ab, pitch, result, pitch_zone, pitch_outcome")
       .eq("player_id", playerId)
       .order("position");
     const el = document.getElementById("gameLogList");
     el.innerHTML = (logs ?? [])
-      .map(
-        (g) => `
+      .map((g) => {
+        const zoneBits = [zoneLabel(g.pitch_zone), outcomeLabel(g.pitch_outcome)].filter(Boolean).join(" · ");
+        return `
       <div class="card">
         <b>${g.date} vs ${g.opponent}, AB ${g.ab}</b>
-        <p class="hint">${g.pitch ?? "—"}</p>
+        <p class="hint">${g.pitch ?? "—"}${zoneBits ? ` <span style="color:var(--clay);">(${zoneBits})</span>` : ""}</p>
         <p>${g.result}</p>
         <div class="scrubber-mount" data-game-log-entry="${g.id}"></div>
       </div>
-    `,
-      )
+    `;
+      })
       .join("");
 
     for (const g of logs ?? []) {
@@ -418,21 +500,51 @@
     }, 10000);
   }
 
-  function wirePitchGrid() {
-    document.getElementById("pitchGrid").querySelectorAll("button").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        document.getElementById("newPitch").value = btn.dataset.loc;
-      });
+  /** Log AB (ux.md Step 2/3B) - opened from the bottom nav's "+" button
+   * instead of living inline in the page, so logging a new at-bat doesn't
+   * push the whole checklist/game-log down every time it's not in use. */
+  function openLogAbModal() {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.innerHTML = `
+      <div class="modal">
+        <button type="button" class="close-btn tap-target">✕</button>
+        <h2 style="margin-top:0;">Log New At-Bat</h2>
+        <p class="hint">Tap a zone for the pitch location, then an outcome - both save as real structured fields.
+          The pitch field below stays freeform for anything a fixed grid can't capture (pitch type, count, etc).</p>
+        <div class="zone-picker-mount"></div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px;">
+          <input type="text" id="newDate" placeholder="Date (YYYY-MM-DD)">
+          <input type="text" id="newOpponent" placeholder="Opponent">
+          <input type="text" id="newAb" placeholder="AB #">
+          <input type="text" id="newPitch" placeholder="Pitch type/context (optional, e.g. &quot;Rise ball&quot;)">
+          <input type="text" id="newResult" placeholder="Result">
+          <label class="hint" for="newVideo">Video (optional) — processing starts automatically after upload</label>
+          <input type="file" id="newVideo" accept="video/*">
+          <button class="primary tap-target" id="addAtBatBtn">Add At-Bat</button>
+          <p class="hint" id="addAtBatStatus"></p>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    backdrop.querySelector(".close-btn").addEventListener("click", () => backdrop.remove());
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) backdrop.remove();
     });
-  }
 
-  function wireAddAtBat() {
-    document.getElementById("addAtBatBtn").addEventListener("click", async () => {
-      const date = document.getElementById("newDate").value.trim();
-      const opponent = document.getElementById("newOpponent").value.trim();
-      const ab = Number(document.getElementById("newAb").value);
-      const pitch = document.getElementById("newPitch").value.trim() || null;
-      const result = document.getElementById("newResult").value.trim();
+    let pitchState = { zone: null, outcome: null };
+    renderZonePicker(backdrop.querySelector(".zone-picker-mount"), {
+      onChange: (s) => {
+        pitchState = s;
+      },
+    });
+
+    backdrop.querySelector("#addAtBatBtn").addEventListener("click", async () => {
+      const date = backdrop.querySelector("#newDate").value.trim();
+      const opponent = backdrop.querySelector("#newOpponent").value.trim();
+      const ab = Number(backdrop.querySelector("#newAb").value);
+      const pitch = backdrop.querySelector("#newPitch").value.trim() || null;
+      const result = backdrop.querySelector("#newResult").value.trim();
 
       if (!date || !opponent || !ab || !result) {
         alert("Date, opponent, AB #, and result are required.");
@@ -453,6 +565,8 @@
           ab,
           pitch,
           result,
+          pitch_zone: pitchState.zone,
+          pitch_outcome: pitchState.outcome,
           position: count ?? 0,
         })
         .select("id")
@@ -462,27 +576,23 @@
         return;
       }
 
-      const videoFile = document.getElementById("newVideo").files[0];
-      const statusEl = document.getElementById("addAtBatStatus");
+      const videoFile = backdrop.querySelector("#newVideo").files[0];
+      const statusEl = backdrop.querySelector("#addAtBatStatus");
+      let closeDelay = 0;
       if (videoFile) {
         statusEl.textContent = "Uploading video…";
+        closeDelay = 1200;
         try {
           await uploadRawClip(newEntry.id, videoFile);
           statusEl.textContent = "Video uploaded - processing will start automatically.";
         } catch (err) {
           statusEl.textContent = `⚠ At-bat saved, but video upload failed: ${err.message}`;
         }
-      } else {
-        statusEl.textContent = "";
       }
 
-      document.getElementById("newDate").value = "";
-      document.getElementById("newOpponent").value = "";
-      document.getElementById("newAb").value = "";
-      document.getElementById("newPitch").value = "";
-      document.getElementById("newResult").value = "";
-      document.getElementById("newVideo").value = "";
       await loadGameLog();
+      await renderStats();
+      setTimeout(() => backdrop.remove(), closeDelay);
     });
   }
 

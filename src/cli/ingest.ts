@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * Loads the checklist-shaped JSON scripts/pose3d/pose3d_to_checklist.py (or
- * the older scripts/pose_to_checklist.py) emits and upserts it into Supabase
- * with source='pose3d'. This is the integration point between the separate
- * Python pose-estimation pipeline and this Node/Supabase layer - the Python
- * side never talks to Supabase directly (no credentials needed there), it
- * just writes a JSON file; this command is what actually loads it.
+ * Loads the checklist-shaped JSON scripts/pose3d/pose3d_to_checklist.py
+ * emits and upserts it into Supabase with source='pose3d'. This is the
+ * integration point between the separate Python pose-estimation pipeline and
+ * this Node/Supabase layer - the Python side never talks to Supabase
+ * directly (no credentials needed there), it just writes a JSON file; this
+ * command is what actually loads it.
  *
  * Shape consumed (exact output of pose3d_to_checklist.py, confirmed by
  * running it for real): a plain object keyed by checkpoint LABEL text (not

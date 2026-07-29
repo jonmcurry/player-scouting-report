@@ -2,14 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Team View</title>
-<link rel="stylesheet" href="./coach.css?v=5">
+<link rel="stylesheet" href="./coach.css?v=6">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/icon-192.svg">
+<meta name="theme-color" content="#121418">
 </head>
 <body>
+<header class="app-bar" id="appBar"></header>
 <div class="wrap">
-  <h1 id="teamName">Loading…</h1>
-  <p class="hint"><a href="./index.html">← My teams</a></p>
 
   <div id="focusBanner"></div>
 
@@ -36,8 +38,11 @@
   <div id="playerCards"></div>
 </div>
 
+<nav class="bottom-nav" id="bottomNav"></nav>
+
 <script type="module">
   import { supabase, requireSession, CHECKPOINTS, qs } from "./shared.js";
+  import { renderTeamAppBar, renderBottomNav, getLastPlayerSlug } from "./components/appShell.js";
 
   const MIN_ATBATS_FOR_PATTERN = 3;
   const teamSlug = qs("team");
@@ -46,7 +51,7 @@
     const session = await requireSession();
     if (!session) return;
     if (!teamSlug) {
-      document.getElementById("teamName").textContent = "No team specified";
+      document.getElementById("appBar").innerHTML = `<h1>No team specified</h1>`;
       return;
     }
 
@@ -56,16 +61,33 @@
       .eq("slug", teamSlug)
       .single();
     if (teamErr || !team) {
-      document.getElementById("teamName").textContent = "Team not found (or you don't have access)";
+      document.getElementById("appBar").innerHTML = `<h1>Team not found (or you don't have access)</h1>`;
       return;
     }
-    document.getElementById("teamName").textContent = team.name;
     document.getElementById("checkpointKey").innerHTML = CHECKPOINTS.map(
       (cp) => `<li>${cp.label}</li>`,
     ).join("");
 
     await renderFocusBanner(team.id);
     const players = await loadPlayers(team.id);
+
+    const confirmedCount = players.filter((p) => p.scoredCount > 0 && p.reviewedCount === p.scoredCount).length;
+    renderTeamAppBar(document.getElementById("appBar"), {
+      teamName: team.name,
+      confirmedCount,
+      totalCount: players.length,
+    });
+
+    const defaultPlayerSlug = getLastPlayerSlug(teamSlug) ?? players[0]?.slug ?? null;
+    const reportHref = defaultPlayerSlug ? `./player.html?team=${teamSlug}&player=${defaultPlayerSlug}` : "#";
+    const logAbHref = defaultPlayerSlug ? `./player.html?team=${teamSlug}&player=${defaultPlayerSlug}&openLog=1` : "#";
+    renderBottomNav(document.getElementById("bottomNav"), {
+      teamSlug,
+      activeTab: "roster",
+      reportHref,
+      logAbHref,
+    });
+
     let currentFilter = "all";
     renderPlayerCards(players, currentFilter);
 
@@ -117,6 +139,9 @@
         .eq("player_id", p.id)
         .order("sort_order", { referencedTable: "checkpoints" });
       p.scoresBySlug = new Map((scores ?? []).map((s) => [s.checkpoints.slug, s]));
+      const scored = (scores ?? []).filter((s) => s.score !== null);
+      p.scoredCount = scored.length;
+      p.reviewedCount = scored.filter((s) => s.reviewed_by).length;
 
       const { count: abCount } = await supabase
         .from("game_log_entries")
@@ -150,15 +175,13 @@
           const cls = row?.score ? `bg-score-${row.score}` : "bg-score-pending";
           return `<div class="block ${cls}" title="${cp.label}: ${row?.score ?? "—"}"></div>`;
         }).join("");
-        const reviewedCount = [...p.scoresBySlug.values()].filter((r) => r.reviewed_by).length;
-        const scoredCount = [...p.scoresBySlug.values()].filter((r) => r.score != null).length;
         return `
           <a class="lineup-row tap-target" href="./player.html?team=${teamSlug}&player=${p.slug}">
             <div class="jersey-badge">${p.jersey_number}</div>
             <div class="lineup-main">
               <div class="lineup-head">
                 <span class="lineup-name">${p.name}</span>
-                <span class="hint">${reviewedCount}/${scoredCount} confirmed</span>
+                <span class="hint">${p.reviewedCount}/${p.scoredCount} confirmed</span>
               </div>
               <div class="mini-heatmap">${blocks}</div>
               ${p.abCount < MIN_ATBATS_FOR_PATTERN ? `<p class="hint" style="margin:6px 0 0;">⚠ Only ${p.abCount} at-bat(s) logged</p>` : ""}
