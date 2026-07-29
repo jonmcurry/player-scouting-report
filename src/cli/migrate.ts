@@ -70,10 +70,10 @@ interface RawFollowUp {
 }
 
 function extractPlayerNameAndJersey(html: string): { name: string; jerseyNumber: string } {
-  const match = html.match(/<title>Swing Scouting Report — (.+?) \(#(\w+)\)<\/title>/);
+  const match = html.match(/<title>BarrelIQ Swing Report — (.+?) \(#(\w+)\)<\/title>/);
   if (!match) {
     throw new Error(
-      'Could not find `<title>Swing Scouting Report — Name (#N)</title>` - is this an individual player report?',
+      'Could not find `<title>BarrelIQ Swing Report — Name (#N)</title>` - is this an individual player report?',
     );
   }
   const [, name, jerseyNumber] = match;
@@ -171,9 +171,9 @@ function parseFollowUp(html: string): RawFollowUp {
 }
 
 function extractTeamName(teamSummaryHtml: string): string {
-  const match = teamSummaryHtml.match(/<h1>Team Swing Overview — (.+?)<\/h1>/);
+  const match = teamSummaryHtml.match(/<h1>BarrelIQ Team Overview — (.+?)<\/h1>/);
   if (!match) {
-    throw new Error('Could not find `<h1>Team Swing Overview — Name</h1>` in team_summary.html');
+    throw new Error('Could not find `<h1>BarrelIQ Team Overview — Name</h1>` in team_summary.html');
   }
   return match[1]!;
 }

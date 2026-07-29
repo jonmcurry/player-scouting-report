@@ -1,4 +1,4 @@
-# Softball/Baseball Swing Scouting Reports
+# BarrelIQ — Softball/Baseball Swing Scouting Reports
 
 Video-based swing analysis, built to support multiple teams (currently two, more planned —
 this is being developed as a general tool, not a one-team script). Extract key frames from

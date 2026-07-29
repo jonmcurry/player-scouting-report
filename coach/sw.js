@@ -2,7 +2,7 @@
 // only - Supabase API calls and GCS-hosted video are never cached here, so
 // "offline" means the shell loads instantly and shows cached data, not that
 // live coach edits work with no connection.
-const CACHE_NAME = "scouting-coach-v1";
+const CACHE_NAME = "barreliq-coach-v1";
 const ASSETS = [
   "./index.html",
   "./team.html",

@@ -1,8 +1,8 @@
 {
-  "name": "player-scouting-report",
+  "name": "barreliq",
   "version": "0.1.0",
   "private": true,
-  "description": "Node/TypeScript CLI layer for the softball scouting-report pipeline: Supabase-backed coach editing, GCS media, Gemini-assisted drafts, and static HTML generation for GitHub Pages. Separate from and does not replace the existing Python pose3d pipeline (scripts/pose3d/).",
+  "description": "Node/TypeScript CLI layer for BarrelIQ's swing-scouting pipeline: Supabase-backed coach editing, GCS media, Gemini-assisted drafts, and static HTML generation for GitHub Pages. Separate from and does not replace the existing Python pose3d pipeline (scripts/pose3d/).",
   "type": "module",
   "engines": {
     "node": ">=20"

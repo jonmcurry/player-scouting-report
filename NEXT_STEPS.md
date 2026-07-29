@@ -30,6 +30,22 @@ or rewrite sections as they get resolved rather than letting it accumulate stale
       through the coach app's browser flow. Documented in readme.md's Cloud layer section.
 - [x] `readme.md`'s Teams/Migration-status section updated to reflect Latham/Emily C's real
       status (partially migrated - Emily C only) instead of "neither real team is in Supabase."
+- [x] **Rebranded the whole product to "BarrelIQ"** (chosen after screening candidates for
+      obvious trademark/product-name conflicts - not a substitute for a real USPTO search, see
+      the conversation this was decided in). Scope: the private coach app (manifest.json,
+      page titles, login screen header, service-worker cache name) AND the public GitHub Pages
+      reports/*.html site (every report's `<title>`/`<h1>` - was "Swing Scouting Report — Name" /
+      "Team Swing Overview — Name", now "BarrelIQ Swing Report — Name" / "BarrelIQ Team Overview
+      — Name"), plus `package.json`'s name. Deliberately did NOT rename the GitHub repo itself
+      (would break the live Pages URL again, same as the earlier `bethlehem-boom-10u-scouting` →
+      `player-scouting-report` rename - see [[distribution-approach]]) - the repo stays
+      `jonmcurry/player-scouting-report`. Updated the two regexes in `migrate.ts` that parse
+      these exact strings (`extractPlayerNameAndJersey`, `extractTeamName`) AND
+      `scripts/generate_team_reports.ps1`'s two hardcoded `.Replace()` calls that had the OLD
+      text baked in (would have silently no-op'd otherwise - the same stale-`.Replace()`-target
+      bug class already documented in [[multi-team-architecture]]). Re-verified: `migrate.ts`
+      parses the new title correctly, and `build:reports`'s round-trip is still byte-identical
+      except for the intended title/header lines.
 - [x] **Reproducibility verified**: ran `supabase db reset` (full wipe back to migrations +
       seed.sql) and redid the entire Emily C migration/ingestion from scratch - same end state,
       same byte-identical round trip, same real skeleton rendering in the coach app. This time the

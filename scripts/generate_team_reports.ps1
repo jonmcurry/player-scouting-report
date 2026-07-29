@@ -50,7 +50,7 @@ foreach ($p in $Players) {
         "AWAITING VIDEO — no at-bats filmed yet for $displayName. Film her at-bats in a game (every AB, not just notable ones), drop the clip(s) in videos/, run scripts/extract_frames.ps1, then fill in this report."
     )
 
-    $html = $html.Replace("Swing Scouting Report — {{PLAYER_NAME}}", "Swing Scouting Report — $displayName")
+    $html = $html.Replace("BarrelIQ Swing Report — {{PLAYER_NAME}}", "BarrelIQ Swing Report — $displayName")
     $html = $html.Replace("{{PLAYER_NAME}}", $displayName)
 
     $html = $html.Replace(
@@ -132,7 +132,7 @@ $teamHtml = Get-Content $teamTemplatePath -Raw
 $sorted = $Players | Sort-Object Number
 $coachesStr = $Coaches -join ", "
 
-$teamHtml = $teamHtml.Replace("Team Swing Overview — {{TEAM_NAME}}", "Team Swing Overview — $TeamName")
+$teamHtml = $teamHtml.Replace("BarrelIQ Team Overview — {{TEAM_NAME}}", "BarrelIQ Team Overview — $TeamName")
 
 $teamHtml = $teamHtml.Replace(
     "TEMPLATE — copy this file, rename it, and edit the PLAYERS array near the bottom of the &lt;body&gt; (one object per player, scores 1-3 in the same checkpoint order as CHECKPOINTS). Report links should point at each player's individual report .html file.",
