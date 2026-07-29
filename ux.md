@@ -1,36 +1,38 @@
-Mobile UX Implementation GuideStep 1: Mobile UX Strategy & ArchitectureTo optimize the Softball/Baseball Swing Scouting Reports app for field use, the mobile design prioritizes high-contrast visibility, thumb-first ergonomics, and clear AI vs. coach data verification.  Core Ergonomic PrinciplesThumb-First Target Sizing: All key interactive elements maintain a minimum target size of $48\text{px} \times 48\text{px}$ to facilitate easy one-handed operation while standing behind a backstop or holding a phone on the field.  Sunlight-Optimized Contrast: Utilizes a dark slate background (#121418) paired with high-contrast clay/terracotta primary accents (#C2593F) and sand text (#F4EFEA) to ensure legibility in direct sunlight.  Instant Confirmation Flows: Score updates require a single tap on a numeric stepper rather than opening dropdowns or navigating sub-menus.  Explicit AI Statuses: Visual badges explicitly distinguish unreviewed AI drafts (🤖 AI Draft) from verified observations (✓ Coach Reviewed).  Step 2: Information Architecture & Mobile NavigationThe mobile layout shifts from dense desktop tables to a mobile-friendly layout anchored by a Sticky App Header and a Bottom Navigation Bar.+-------------------------------------------------------+
-|  [#10 Emily C. ▼]   Latham Lady Bison 10U   [ ☀️/🌙 ]  |  <-- Sticky App Bar
+Mobile UX Implementation GuideStep 1: Mobile UX Strategy & ArchitectureTo optimize the Softball/Baseball Swing Scouting Reports app for field use, the mobile design prioritizes high-contrast visibility, thumb-first ergonomics, and clear AI vs. coach data verification. Core Ergonomic PrinciplesThumb-First Target Sizing: All key interactive elements maintain a minimum target size of $48\text{px} \times 48\text{px}$ to facilitate easy one-handed operation while standing behind a backstop or holding a phone on the field. Sunlight-Optimized Contrast: Utilizes a dark slate background (#121418) paired with high-contrast clay/terracotta primary accents (#C2593F) and sand text (#F4EFEA) to ensure legibility in direct sunlight. Instant Confirmation Flows: Score updates require a single tap on a numeric stepper rather than opening dropdowns or navigating sub-menus. Explicit AI Statuses: Visual badges explicitly distinguish unreviewed AI drafts (🤖 AI Draft) from verified observations (✓ Coach Reviewed). Step 2: Information Architecture & Mobile NavigationThe mobile layout shifts from dense desktop tables to a mobile-friendly layout anchored by a Sticky App Header and a Bottom Navigation Bar.+-------------------------------------------------------+
+| [#10 Emily C. ▼] Latham Lady Bison 10U [ ☀️/🌙 ] | <-- Sticky App Bar
 +-------------------------------------------------------+
-|                                                       |
-|                     MAIN CONTENT                      |
-|             (Roster / Report / Log View)              |
-|                                                       |
+| |
+| MAIN CONTENT |
+| (Roster / Report / Log View) |
+| |
 +-------------------------------------------------------+
-|  [ ⚾ Roster ]      [ 📊 Report ]      [ ➕ Log AB ]  |  <-- Sticky Bottom Nav
+| [ ⚾ Roster ] [ 📊 Report ] [ ➕ Log AB ] | <-- Sticky Bottom Nav
 +-------------------------------------------------------+
 Key Navigation Routes⚾ Team Roster: Fast player switcher, roster confirmation progress (e.g., "9/11 Confirmed"), and overall team-wide trend filters.📊 Scouting Report: Interactive player breakdown with card-based checklist items, trend banners, and pitch outcome correlations.➕ Quick Log & AB Capture: Rapid-entry modal featuring a 9-zone touch strike zone for logging pitch locations and game outcomes.Step 3: Interactive Component WireframesA. Single-Tap Checkpoint CardConverts tabular checklist items into standalone mobile cards.+-------------------------------------------------------+
-| CHECKPOINT 03                         [ 🤖 AI Draft ] |
-| Hip-Shoulder Separation                               |
+| CHECKPOINT 03 [ 🤖 AI Draft ] |
+| Hip-Shoulder Separation |
 |-------------------------------------------------------|
-| Score:  [ 1 ]  ( 2 )  [ 3 ]      (Selected: 2)        |
-|                                                       |
-| Notes: "Hips opening early on middle-in pitches."     |
-| Cites: AB#2, AB#4                                     |
+| Score: [ 1 ] ( 2 ) [ 3 ] (Selected: 2) |
+| |
+| Notes: "Hips opening early on middle-in pitches." |
+| Cites: AB#2, AB#4 |
 |-------------------------------------------------------|
-| [ 📐 View 3D Skeleton ]          [ Confirm Score ]    |
+| [ 📐 View 3D Skeleton ] [ Confirm Score ] |
 +-------------------------------------------------------+
-B. 9-Zone Strike Zone PickerAllows fast pitch location logging without typing.              [ Pitch Location ]
-             +---+---+---+
-             | 1 | 2 | 3 |  (High)
-             +---+---+---+
-             | 4 | 5 | 6 |  (Middle)
-             +---+---+---+
-             | 7 | 8 | 9 |  (Low)
-             +---+---+---+
-          [ In ]  [ Mid ]  [ Out ]
+B. 9-Zone Strike Zone PickerAllows fast pitch location logging without typing. [ Pitch Location ]
++---+---+---+
+| 1 | 2 | 3 | (High)
++---+---+---+
+| 4 | 5 | 6 | (Middle)
++---+---+---+
+| 7 | 8 | 9 | (Low)
++---+---+---+
+[ In ] [ Mid ] [ Out ]
 
       Outcome: ( Take )  [ Foul ]  ( Ball in Play )
+
 Step 4: Standalone HTML5/Tailwind Mobile UX PrototypeHTML<!DOCTYPE html>
+
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -195,6 +197,7 @@ Step 4: Standalone HTML5/Tailwind Mobile UX PrototypeHTML<!DOCTYPE html>
       </div>
       <span class="text-[10px] font-display uppercase tracking-wider">Log AB</span>
     </button>
+
   </nav>
 
 </body>
@@ -203,79 +206,78 @@ Step 5: Web Implementation & Integration ModulesStep 5.1: Touch-Friendly Stepper
 import { supabase } from '../lib/supabaseClient.js';
 
 export async function updateCheckpointScore({ teamId, playerId, checkpointId, newScore, coachName }) {
-  const { data, error } = await supabase
-    .from('checklists')
-    .update({
-      score: newScore,
-      reviewed_by: coachName,
-      updated_at: new Date().toISOString()
-    })
-    .match({ team_id: teamId, player_id: playerId, checkpoint_id: checkpointId });
+const { data, error } = await supabase
+.from('checklists')
+.update({
+score: newScore,
+reviewed_by: coachName,
+updated_at: new Date().toISOString()
+})
+.match({ team_id: teamId, player_id: playerId, checkpoint_id: checkpointId });
 
-  if (error) {
-    console.error('Failed to update score:', error);
-    return false;
-  }
-  return true;
+if (error) {
+console.error('Failed to update score:', error);
+return false;
+}
+return true;
 }
 Step 5.2: 9-Zone Pitch Log ComponentA lightweight JavaScript ES module providing a touchable $3 \times 3$ grid for quick pitch location capture.JavaScript// coach/components/pitchZonePicker.js
 export function renderZonePicker(containerEl, onSelect) {
-  const zones = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-  containerEl.innerHTML = `
-    <div class="grid grid-cols-3 gap-1.5 w-48 h-48 mx-auto bg-black/40 p-2 rounded-xl border border-gray-800">
-      ${zones.map(z => `
-        <button data-zone="${z}" class="zone-btn touch-target bg-card border border-gray-700/60 rounded-lg flex items-center justify-center text-sm font-bold font-display text-gray-300 active:bg-clay active:text-white">
-          ${z}
-        </button>
-      `).join('')}
+const zones = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+containerEl.innerHTML = `    <div class="grid grid-cols-3 gap-1.5 w-48 h-48 mx-auto bg-black/40 p-2 rounded-xl border border-gray-800">
+      ${zones.map(z =>`
+<button data-zone="${z}" class="zone-btn touch-target bg-card border border-gray-700/60 rounded-lg flex items-center justify-center text-sm font-bold font-display text-gray-300 active:bg-clay active:text-white">
+${z}
+</button>
+`).join('')}
     </div>
   `;
 
-  containerEl.querySelectorAll('.zone-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const zone = e.target.dataset.zone;
-      containerEl.querySelectorAll('.zone-btn').forEach(b => b.classList.remove('bg-clay', 'text-white'));
-      btn.classList.add('bg-clay', 'text-white');
-      onSelect(zone);
-    });
-  });
+containerEl.querySelectorAll('.zone-btn').forEach(btn => {
+btn.addEventListener('click', (e) => {
+const zone = e.target.dataset.zone;
+containerEl.querySelectorAll('.zone-btn').forEach(b => b.classList.remove('bg-clay', 'text-white'));
+btn.classList.add('bg-clay', 'text-white');
+onSelect(zone);
+});
+});
 }
 Step 5.3: PWA / Offline Shell ConfigurationEnables home screen installation and basic offline shell caching for field use.Manifest File (public/manifest.json)JSON{
-  "short_name": "Scouting",
-  "name": "Softball & Baseball Swing Scouting",
-  "icons": [
-    {
-      "src": "/icons/icon-192.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "/icons/icon-512.png",
-      "type": "image/png",
-      "sizes": "512x512"
-    }
-  ],
-  "start_url": "/coach/index.html",
-  "background_color": "#121418",
-  "theme_color": "#C2593F",
-  "display": "standalone",
-  "orientation": "portrait"
+"short_name": "Scouting",
+"name": "Softball & Baseball Swing Scouting",
+"icons": [
+{
+"src": "/icons/icon-192.png",
+"type": "image/png",
+"sizes": "192x192"
+},
+{
+"src": "/icons/icon-512.png",
+"type": "image/png",
+"sizes": "512x512"
+}
+],
+"start_url": "/coach/index.html",
+"background_color": "#121418",
+"theme_color": "#C2593F",
+"display": "standalone",
+"orientation": "portrait"
 }
 Service Worker (public/sw.js)JavaScriptconst CACHE_NAME = 'scouting-v1';
 const ASSETS = [
-  '/coach/index.html',
-  '/manifest.json',
-  'https://cdn.tailwindcss.com'
+'/coach/index.html',
+'/manifest.json',
+'https://cdn.tailwindcss.com'
 ];
 
 self.addEventListener('install', (evt) => {
-  evt.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-  );
+evt.waitUntil(
+caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+);
 });
 
 self.addEventListener('fetch', (evt) => {
-  evt.respondWith(
-    caches.match(evt.request).then((res) => res || fetch(evt.request))
-  );
+evt.respondWith(
+caches.match(evt.request).then((res) => res || fetch(evt.request))
+);
 });
