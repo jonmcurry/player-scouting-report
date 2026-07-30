@@ -5,6 +5,12 @@ I/O contract specifies under frames/<player_slug>/<clip_stem>/:
   pose_2d.json, bat_path.json, pose_3d.json, metrics.json, overlay.mp4
 
 Stack (see scripts/pose3d/README.md for the full rationale + install notes):
+  0. Audio-based swing locate (locate_swing.py) - for clips over 60s, cheaply
+     finds roughly where bat-ball contact happens via a bat-crack onset in
+     the audio track, and trims to a short window around it so stages 1-4
+     below only analyze that window instead of the whole clip. Falls back
+     to the original full clip whenever the audio signal is missing, silent,
+     or ambiguous - never guesses a wrong window.
   1. YOLO11-pose (person + COCO-17 2D pose) - substituted for RTMDet+RTMPose,
      which has no installable path in this environment (no mmcv wheel for
      this machine's torch/CUDA build, no local compiler toolchain to build
@@ -29,6 +35,7 @@ import pathlib
 import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
+import locate_swing
 import detect_2d
 import lift_3d
 import metrics as metrics_mod
@@ -43,8 +50,16 @@ def run(video_path, out_dir):
     t0 = time.time()
     print(f"=== pose3d pipeline: {video_path} -> {out_dir} ===")
 
+    print("\n--- Stage 0/4: audio-based swing locate (locate_swing) ---")
+    stage0 = locate_swing.run(video_path, out_dir)
+    # analysis_video_path is resolved exactly once here and passed unchanged
+    # to both detect_2d.run() and overlay.run() below - the single point of
+    # truth that keeps their frame indices aligned, whether Stage 0 trimmed
+    # or fell back to the original upload.
+    analysis_video_path = pathlib.Path(stage0["video_path_for_pipeline"])
+
     print("\n--- Stage 1/4: person + bat detection (detect_2d) ---")
-    detect_2d.run(video_path, out_dir)
+    detect_2d.run(analysis_video_path, out_dir)
 
     print("\n--- Stage 2/4: 2D->3D lift + coaching angles (lift_3d) ---")
     lift_3d.run(out_dir / "pose_2d.json", out_dir)
@@ -53,10 +68,11 @@ def run(video_path, out_dir):
     metrics_mod.run(out_dir)
 
     print("\n--- Stage 4/4: annotated overlay for QA (overlay) ---")
-    overlay.run(out_dir, video_path)
+    overlay.run(out_dir, analysis_video_path)
 
     dt = time.time() - t0
     print(f"\n=== Done in {dt:.1f}s. Output: {out_dir} ===")
+    print(f"  Stage 0: {'trimmed' if stage0['trimmed'] else 'full-clip (fallback): ' + stage0['reason']}")
     for name in ("pose_2d.json", "bat_path.json", "pose_3d.json", "metrics.json", "overlay.mp4"):
         p = out_dir / name
         print(f"  {'OK ' if p.exists() else 'MISSING'} {p}")

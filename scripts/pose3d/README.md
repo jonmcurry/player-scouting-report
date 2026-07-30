@@ -84,6 +84,19 @@ CSV format, not this pipeline's JSON contract.
 
 ## Pipeline stages
 
+0. **`locate_swing.py`** - for uploads over 60s (real coach uploads are full
+   continuous at-bat recordings, not pre-trimmed single-swing clips), cheaply
+   locates roughly where bat-ball contact happens via a bat-crack onset in
+   the audio track (short-time energy envelope after a high-pass filter,
+   peak-picked with an explicit ambiguity check), then trims to a ~12s
+   window around it so stages 1-4 below only analyze that window instead of
+   the whole clip. Falls back to the original untrimmed clip whenever the
+   audio is missing, silent, or ambiguous (e.g. a foul ball plus the real
+   contact both producing similarly loud transients) - never guesses a wrong
+   window. Audio-based rather than a cheaper/faster vision pass deliberately:
+   if the full-resolution model can't track a small/blurry batter, a lighter
+   model over the same footage has no reason to do better at finding the
+   window either, whereas audio doesn't depend on visual resolution at all.
 1. **`detect_2d.py`** - YOLO11-pose (all people, COCO-17 keypoints) + YOLOv8
    bat detection/tracking on every frame, then:
    - **Batter identity**: builds a persistent track per detected person for

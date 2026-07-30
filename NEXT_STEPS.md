@@ -3,9 +3,55 @@
 Snapshot as of 2026-07-30 (updated after the mobile UX rebuild, Latham/Emily C's Supabase
 migration, the BarrelIQ rebrand, a performance/scale review, a skeleton bone-length rigidity fix,
 an untracked-frame rendering bug fix, a multi-clip switcher, delete-at-bat, interactive camera
-rotation, a processing-status polling/microrefresh fix, and a Capacitor Android wrap - see below).
-This file is a working status doc, not permanent documentation — prune or rewrite sections as they
-get resolved rather than letting it accumulate stale entries.
+rotation, a processing-status polling/microrefresh fix, a Capacitor Android wrap, and a
+swing-locating pre-pass for the pose3d pipeline - see below). This file is a working status doc,
+not permanent documentation — prune or rewrite sections as they get resolved rather than letting
+it accumulate stale entries.
+
+## Pose3D pipeline: swing-locating pre-pass (Stage 0) (2026-07-30)
+
+Real coach uploads are full continuous at-bat recordings (walk-up, multiple pitches, dead time
+between pitches) - not pre-trimmed single-swing clips - but the pipeline ran two full YOLO passes
+over EVERY frame of whatever got uploaded, so a several-minute upload meant several minutes of GPU
+compute, almost all of it on dead time. New `scripts/pose3d/locate_swing.py` (Stage 0, runs before
+`detect_2d.py`): for clips over 60s, extracts the audio track, high-pass filters it (1000Hz,
+zero-phase), computes a short-time energy onset envelope, and looks for one confident, isolated
+bat-crack transient. If found, trims to a 12s window around it (ffmpeg re-encode, not stream-copy,
+for frame-accurate cuts) and only that window gets analyzed. Falls back to today's exact full-clip
+behavior (never a guess) whenever the audio is missing, silent, or ambiguous (e.g. multiple
+similarly-loud transients - a foul ball plus the real contact).
+
+Chose audio over a cheaper/faster vision-based pre-pass deliberately: a lighter model over the same
+footage has the identical blind spot as the full-resolution model it would be protecting (see the
+diagnosed clip below - 0.62% tracked frames), whereas audio doesn't depend on visual
+resolution/focus at all.
+
+- [x] **Verified for real, not just code review**: (a) a known-good 42s clip runs completely
+      unchanged (Stage 0 skips itself entirely below the 60s threshold; re-ran the full pipeline
+      and diffed `metrics.json` against the pre-existing baseline - identical contact
+      frame/time/confidence). (b) The real diagnosed failing clip (`Emily_C_AB1_game2`, 465s)
+      correctly and honestly falls back - found 6 similarly-loud candidate audio peaks (top=1.00,
+      runner-up=0.96), correctly declined to guess, in 1.5s. (c) Built a synthetic clip (40s of
+      black/silent padding + a known-good 42s clip, known contact time) to verify actual trimming
+      + frame-index alignment: Stage 0 found a confident onset ~1s off from the clip's own
+      (already low-confidence) video-based contact estimate - expected, since these are two
+      different signals - but after re-running the full pipeline on the trimmed window, the
+      reconstructed absolute contact time matched the original untrimmed clip's own contact
+      detection to within **83 milliseconds**. Visually confirmed via the overlay video that the
+      "CONTACT" marker lands on the real swing, not the padding.
+- [x] **Small companion fix found along the way**: `processUploadQueue.ts`'s `runPipeline()` never
+      forwarded `child.stdout` anywhere (only `stderr`, only surfaced on failure) - meant none of
+      the `[detect_2d]`/`[metrics]`/`[overlay]`/now `[locate_swing]` progress prints were ever
+      visible to anyone tailing the Node worker's console, success or failure. Fixed with one
+      `child.stdout.on("data", ...)` forward.
+- **Known, stated-plainly limitation**: this doesn't fix the diagnosed clip's own underlying
+  problem (camera too far/blurry to reliably track the batter at all, confirmed by visually
+  comparing frames against a clip that succeeded) - it makes failure fast instead of failure slow
+  for clips like that. Real speedup only shows up once a clip's audio cooperates and its footage
+  is actually trackable.
+- **Not done**: friendlier user-facing error messaging for the "cannot locate contact" case (still
+  a raw Python exception string in the coach UI today) - discussed as a separate, smaller follow-up,
+  not yet requested/built.
 
 ## Capacitor native app wrap - Android working, iOS pending (2026-07-30)
 

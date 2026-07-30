@@ -64,6 +64,14 @@ function runPipeline(videoPath: string, outDir: string): Promise<void> {
     // argument through verbatim regardless of its contents.
     const child = spawn(VENV_PYTHON, [PIPELINE_SCRIPT, videoPath, outDir]);
     let stderr = "";
+    // Forward the pipeline's own [locate_swing]/[detect_2d]/[metrics]/
+    // [overlay]-tagged progress prints live to this worker's console -
+    // previously only stderr was captured (and only surfaced on failure),
+    // so none of that stage-by-stage output was ever visible to anyone
+    // tailing this process, success or failure.
+    child.stdout.on("data", (chunk) => {
+      process.stdout.write(chunk);
+    });
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
