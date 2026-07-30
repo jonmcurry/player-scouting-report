@@ -424,7 +424,8 @@ details.drawer .drawer-body { padding: 0 16px 16px; }
 .skeleton-canvases { display: flex; gap: 10px; margin-bottom: 8px; }
 .skeleton-canvas-col { flex: 1; min-width: 0; text-align: center; }
 .skeleton-canvas-label { font-size: 11.5px; color: var(--text-muted); margin: 0 0 4px; }
-.skeleton-canvas { width: 100%; border-radius: 4px; background: #000; display: block; }
+.skeleton-canvas { width: 100%; border-radius: 4px; background: #000; display: block; cursor: grab; touch-action: none; }
+.skeleton-canvas:active { cursor: grabbing; }
 
 /* Modal (comp overlay + Log AB sheet) */
 .modal-backdrop {

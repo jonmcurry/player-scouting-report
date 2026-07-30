@@ -6,7 +6,7 @@
 // never raw video, so none of the Content-Type/codec/frame-rate/caching bug
 // class this replaces can recur.
 import { supabase } from "../shared.js";
-import { drawFigure, DEFAULT_CAMERA } from "./skeletonRenderer.js";
+import { drawFigure, DEFAULT_CAMERA, attachDragToRotate } from "./skeletonRenderer.js";
 import { correctKneeAngle } from "./fkCorrection.js";
 import { L_HIP, L_KNEE, L_ANKLE, R_HIP, R_KNEE, R_ANKLE } from "./h36mSkeleton.js";
 
@@ -134,6 +134,7 @@ export function renderSkeletonComparison(mountEl, { realFrames, correctedFrames,
           <option value="0.5" selected>0.5x</option>
           <option value="1">1x</option>
         </select>
+        <button type="button" class="tap-target" data-reset-camera>&#8635; Reset View</button>
         <span class="scrubber-phase-label" data-phase-label>&mdash;</span>
       </div>
       <div class="scrubber-track-wrap">
@@ -141,7 +142,8 @@ export function renderSkeletonComparison(mountEl, { realFrames, correctedFrames,
         <div class="scrubber-ticks" data-ticks></div>
       </div>
       <p class="hint">Reconstructed from her real filmed swing (YOLO11-pose + VideoPose3D, smoothed) -
-        not a video, a rendered 3D model, so drag to rotate isn't available here; scrub or press play.</p>
+        not a video, a rendered 3D model. Drag the figure to rotate the view (e.g. side-on for bat
+        path, overhead for hip-shoulder separation); scrub or press play to move through the swing.</p>
     </div>
   `;
 
@@ -173,13 +175,19 @@ export function renderSkeletonComparison(mountEl, { realFrames, correctedFrames,
   let speed = Number(speedSelect.value);
   let lastTick = 0;
   let acc = 0;
+  // Own mutable clone, not the shared DEFAULT_CAMERA constant - each mount
+  // (a page can have several game-log cards' comparisons on screen at once)
+  // gets its own independent rotation. Both panels share this one object so
+  // rotating one rotates both in sync - the point of a side-by-side
+  // real-vs-target comparison is seeing them from the same angle.
+  const camera = { ...DEFAULT_CAMERA };
 
   function render() {
     const f = realFrames[frame];
-    drawFigure(cvReal.getContext("2d"), f.joints, cvReal.width, cvReal.height, DEFAULT_CAMERA, {});
+    drawFigure(cvReal.getContext("2d"), f.joints, cvReal.width, cvReal.height, camera, {});
     if (twoPanel) {
       const cf = correctedFrames[frame];
-      drawFigure(cvCorrected.getContext("2d"), cf.joints, cvCorrected.width, cvCorrected.height, DEFAULT_CAMERA, {});
+      drawFigure(cvCorrected.getContext("2d"), cf.joints, cvCorrected.width, cvCorrected.height, camera, {});
     }
     scrubInput.value = String(Math.round((frame / Math.max(1, n - 1)) * 1000));
     phaseLabel.textContent = currentPhaseLabel(locatedPhases, f.time_s);
@@ -213,6 +221,14 @@ export function renderSkeletonComparison(mountEl, { realFrames, correctedFrames,
     render();
   });
 
+  const resetCameraBtn = mountEl.querySelector("[data-reset-camera]");
+  resetCameraBtn.addEventListener("click", () => {
+    camera.yaw = DEFAULT_CAMERA.yaw;
+    camera.pitch = DEFAULT_CAMERA.pitch;
+    render();
+  });
+  attachDragToRotate(twoPanel ? [cvReal, cvCorrected] : [cvReal], camera, render);
+
   render();
   requestAnimationFrame(tick);
 }
@@ -233,5 +249,11 @@ export function renderSkeletonFrameToCanvas(realFrames, phaseTimeS, canvasEl) {
   }
   canvasEl.width = 360;
   canvasEl.height = 420;
-  drawFigure(canvasEl.getContext("2d"), nearest.joints, canvasEl.width, canvasEl.height, DEFAULT_CAMERA, {});
+  // Own mutable clone (see renderSkeletonComparison's identical reasoning) -
+  // a static single-frame view still benefits from letting a coach rotate
+  // to check the same instant from a different angle.
+  const camera = { ...DEFAULT_CAMERA };
+  const render = () => drawFigure(canvasEl.getContext("2d"), nearest.joints, canvasEl.width, canvasEl.height, camera, {});
+  attachDragToRotate([canvasEl], camera, render);
+  render();
 }

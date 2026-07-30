@@ -55,6 +55,60 @@ export function project(p, camera, w, h) {
   return [w / 2 + x * camera.scale, h * camera.groundFrac - vert * camera.scale];
 }
 
+// Wide enough to see a swing from nearly side-on or nearly overhead (e.g.
+// checking hip-shoulder separation from above), but stops short of
+// straight-down/straight-up, which would flip the figure through a
+// disorienting gimbal-like flop as pitch crosses +-90deg.
+const PITCH_MIN = -1.3;
+const PITCH_MAX = 1.3;
+const YAW_SENSITIVITY = 0.01;
+const PITCH_SENSITIVITY = 0.01;
+
+/**
+ * Wires pointer-drag-to-rotate on one or more canvases that share the same
+ * mutable camera object - horizontal drag adjusts yaw, vertical drag
+ * adjusts pitch. Multiple canvases (e.g. a real-vs-corrected comparison's
+ * two panels) rotate in sync since they share one camera object - the
+ * point of a side-by-side comparison is seeing both from the same angle,
+ * not two independently-orbitable views.
+ *
+ * @param {HTMLCanvasElement[]} canvasEls
+ * @param {{yaw:number,pitch:number,scale:number,groundFrac:number}} camera - mutated in place
+ * @param {() => void} onChange - called after every drag-driven camera update, to re-render
+ */
+export function attachDragToRotate(canvasEls, camera, onChange) {
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+
+  function onPointerDown(e) {
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function onPointerMove(e) {
+    if (!dragging) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    camera.yaw += dx * YAW_SENSITIVITY;
+    camera.pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camera.pitch + dy * PITCH_SENSITIVITY));
+    onChange();
+  }
+  function onPointerUp() {
+    dragging = false;
+  }
+
+  for (const el of canvasEls) {
+    el.addEventListener("pointerdown", onPointerDown);
+    el.addEventListener("pointermove", onPointerMove);
+    el.addEventListener("pointerup", onPointerUp);
+    el.addEventListener("pointercancel", onPointerUp);
+  }
+}
+
 export function shade(hex, amt) {
   const n = parseInt(hex.slice(1), 16);
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;

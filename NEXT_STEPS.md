@@ -1,10 +1,42 @@
 # Open Items, To-Dos, and Future Considerations
 
-Snapshot as of 2026-07-29 (updated after the mobile UX rebuild, Latham/Emily C's Supabase
+Snapshot as of 2026-07-30 (updated after the mobile UX rebuild, Latham/Emily C's Supabase
 migration, the BarrelIQ rebrand, a performance/scale review, a skeleton bone-length rigidity fix,
-an untracked-frame rendering bug fix, and a multi-clip switcher - see below). This file is a
-working status doc, not permanent documentation — prune or rewrite sections as they get resolved
-rather than letting it accumulate stale entries.
+an untracked-frame rendering bug fix, a multi-clip switcher, delete-at-bat, and interactive camera
+rotation - see below). This file is a working status doc, not permanent documentation — prune or
+rewrite sections as they get resolved rather than letting it accumulate stale entries.
+
+## Interactive camera rotation for the 3D skeleton view (2026-07-30)
+
+Asked for a second opinion (fed to Gemini) on whether to attempt a synthesized "future state"
+corrected full-swing skeleton animation, vs. staying strictly text/illustration-based for the 9
+checkpoints outside the existing Tier-1 FK correction. Gemini's answer: don't attempt full-swing
+synthesis (multi-joint IK without ground/balance constraints would produce anatomically broken
+results, similar to the untracked-frame bug already fixed), keep the existing 3-tier system, and
+instead add interactive camera rotation to the real reconstructed skeleton - a genuine, previously
+unaddressed gap, not new advice (this was already flagged as an open item in the earlier
+bone-rigidity review). Checked the recommendation against the actual code before trusting it: the
+tiered system it describes already exists exactly as stated (not new advice, same as the earlier
+external proposal's pattern), and the camera-rotation suggestion is architecturally sound -
+`drawFigure()`/`project()` in `skeletonRenderer.js` already take a `camera` object as a plain
+parameter rather than a hardcoded constant, so this was a real, well-contained addition, not a
+rewrite.
+
+- [x] **Implemented**: new `attachDragToRotate()` in `skeletonRenderer.js` - pointer-drag
+      (mouse + touch via Pointer Events) adjusts a shared mutable `camera.yaw`/`camera.pitch`
+      (pitch clamped to +-1.3 rad to avoid a disorienting near-upside-down flip), re-rendering the
+      current frame. Wired into both `renderSkeletonComparison` (the main scrubber - both real and
+      corrected panels share one camera object, so rotating one rotates both in sync, keeping the
+      side-by-side comparison meaningful) and `renderSkeletonFrameToCanvas` (the Tier-2 static
+      snapshot). Each mount gets its own camera clone (not the shared `DEFAULT_CAMERA` constant),
+      so multiple game-log cards on one page rotate independently. Added a "Reset View" button and
+      updated the disclaimer text that used to say rotation "isn't available here."
+- [x] **Verified with a real drag interaction, not just code review**: since Emily's real pose3d
+      data is gone (deleted during the delete-feature testing above, left deleted per the user's
+      choice) and the Thunder fixture clip never had real pose3d data, built a small synthetic
+      (clearly-fake, disposable) 17-joint test fixture to verify against - confirmed the figure
+      visibly rotates to a different angle on drag and "Reset View" restores the exact original
+      pose, via screenshots, before cleaning up the test fixture.
 
 ## Delete At-Bat (2026-07-29)
 
