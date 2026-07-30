@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dev-only cleartext exception for the local Supabase/GCS-emulator stack
+     running on the dev machine's LAN IP (see coach/config.js's isNativeShell
+     branch). Move this whole file to a debug-variant-only resource override
+     before ever producing a release/Ad Hoc APK, so a shared build doesn't
+     carry a hardcoded cleartext exception. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.1.231</domain>
+    </domain-config>
+</network-security-config>

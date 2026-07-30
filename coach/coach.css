@@ -407,6 +407,20 @@ details.drawer .drawer-body { padding: 0 16px 16px; }
 
 .btn-danger { background: transparent; border: 1.5px solid var(--status-critical); color: var(--status-critical); }
 
+/* "Processing video" indicator (player.html game log) - a spinner + real
+   client-side elapsed-time counter, not a fabricated progress percentage
+   (the pipeline only reports pending/processing/ready/failed, no real
+   progress fraction exists to show). */
+.processing-indicator { display: flex; align-items: center; gap: 10px; }
+.processing-spinner {
+  width: 15px; height: 15px; flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--gridline);
+  border-top-color: var(--clay);
+  animation: processing-spin 0.8s linear infinite;
+}
+@keyframes processing-spin { to { transform: rotate(360deg); } }
+
 /* Video frame scrubber / 3D skeleton comparison shell (player.html game log) */
 .scrubber { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
 .scrubber-video { width: 100%; border-radius: 4px; background: #000; display: block; margin-bottom: 8px; }

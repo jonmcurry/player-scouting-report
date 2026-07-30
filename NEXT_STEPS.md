@@ -2,9 +2,140 @@
 
 Snapshot as of 2026-07-30 (updated after the mobile UX rebuild, Latham/Emily C's Supabase
 migration, the BarrelIQ rebrand, a performance/scale review, a skeleton bone-length rigidity fix,
-an untracked-frame rendering bug fix, a multi-clip switcher, delete-at-bat, and interactive camera
-rotation - see below). This file is a working status doc, not permanent documentation — prune or
-rewrite sections as they get resolved rather than letting it accumulate stale entries.
+an untracked-frame rendering bug fix, a multi-clip switcher, delete-at-bat, interactive camera
+rotation, a processing-status polling/microrefresh fix, and a Capacitor Android wrap - see below).
+This file is a working status doc, not permanent documentation — prune or rewrite sections as they
+get resolved rather than letting it accumulate stale entries.
+
+## Capacitor native app wrap - Android working, iOS pending (2026-07-30)
+
+Goal: ship the coach app as real installable Android/iOS apps (App Store/Play Store bypassed
+entirely - Ad Hoc for iOS, direct APK share for Android), testable locally via emulator/simulator.
+Full plan at the time: `mobile/` subdirectory, Capacitor 6.2.1 pinned (not latest - the only Mac
+available for iOS work is a Mid-2017 MacBook Pro capped at macOS Ventura -> Xcode 15.2, and
+Capacitor 7+ requires Xcode 16; confirmed via two independent searches). Ad Hoc distribution was
+confirmed (also via search) to NOT require Apple's April 2026 Xcode 26/iOS 26 SDK mandate, since
+that mandate only applies to App Store Connect uploads (which includes TestFlight, confirmed via
+real developer bug reports - but not true Ad Hoc, which never touches App Store Connect).
+
+- [x] **Android: scaffolded and verified working end-to-end**, this session, on a real local
+      emulator (not just code review). `mobile/package.json` + `capacitor.config.json`
+      (`webDir: "../coach"` - no duplication of the existing web app), `coach/config.js` given a
+      `window.Capacitor.isNativePlatform()` branch so it uses the dev machine's LAN IP instead of
+      `window.location.hostname` (which resolves to the device itself inside a native shell, not
+      the machine running Supabase/Docker).
+  - Installed the Android SDK **command-line tools only** (no full Android Studio GUI needed) -
+    fully scriptable: downloaded `commandlinetools-win`, accepted licenses, installed
+    platform-tools/build-tools/an API 34 platform+system-image/emulator via `sdkmanager`, created
+    an AVD via `avdmanager`. Android Studio itself is still worth installing for a normal IDE
+    workflow going forward, but wasn't required to get this far.
+  - **Real bug found and fixed, not anticipated by the original plan**: login failed with "Failed
+    to fetch" on the emulator even after the Android Network Security Config's cleartext exception
+    was in place. Root cause (found via `adb logcat`, not guessed): the WebView's separate **Mixed
+    Content** policy was blocking the HTTPS app shell (`https://localhost`, Capacitor's default)
+    from calling the plain-HTTP local Supabase stack - a different restriction than the OS-level
+    Network Security Config, which only governs cleartext at the network-stack level, not the
+    WebView's own mixed-content blocking. Fixed via `"android": {"allowMixedContent": true}` in
+    `capacitor.config.json` (Capacitor's `android.allowMixedContent` config key, confirmed by
+    reading `@capacitor/android`'s own `CapConfig.java` source directly rather than guessing).
+    Dev-only setting - moot once pointed at a real hosted (HTTPS) Supabase project.
+  - Also needed: `AndroidManifest.xml` camera/video permissions
+    (`CAMERA`/`READ_MEDIA_VIDEO`/`READ_EXTERNAL_STORAGE`) for the plain `<input type=file>` video
+    picker, and `network_security_config.xml` with a cleartext exception scoped to the dev LAN IP
+    only (flagged to remove before any real release build).
+  - `npx cap run android` itself fails on this Windows/Git-Bash setup (`'gradlew' is not
+    recognized` - a known Capacitor-CLI-on-Windows spawn quirk with `.bat` resolution); worked
+    around by driving `gradlew.bat assembleDebug` + `adb install`/`adb shell am start` directly.
+  - **Verified for real**: booted an AVD, installed the debug APK, and drove the UI via `adb shell
+    input` (not just a static screenshot) - confirmed sign-in with a real test coach account
+    succeeds over the LAN IP, the team list loads real Supabase data (Thunder 10U, Latham Lady
+    Bison White 10U), and opening a team renders its real roster with real per-player checkpoint
+    scores. This confirms the full auth + Postgrest read path works natively, not just that the
+    app boots.
+- [ ] **iOS: not yet started** - needs the Mac (Xcode 15.2 + CocoaPods install, `npx cap add ios`,
+      `Info.plist` camera/photo-library usage strings + an ATS exception for the dev LAN IP, run on
+      Simulator). Documented as a full runbook in the approved plan
+      (`C:\Users\jonmc\.claude\plans\logical-yawning-gosling.md` at plan time - copy the relevant
+      steps into a repo-tracked doc if this needs to survive past the current Claude session). The
+      Mixed Content fix above is Android-specific (WebView-level); iOS's WKWebView has its own ATS
+      mechanism instead, already anticipated in the plan but not yet verified against real
+      hardware.
+- [ ] **Not done yet**: real app icons (current `coach/icons/*.svg` are placeholder), Ad Hoc/APK
+      distribution setup (Phase 4 of the plan - includes one open decision on where to host the
+      iOS OTA `.ipa`/manifest, deliberately deferred rather than assumed), and vendoring
+      `@supabase/supabase-js` locally instead of the `esm.sh` CDN import in `coach/shared.js`
+      (Phase 5, recommended hardening, not blocking).
+
+## Processing-status polling caused full-page "microrefresh" (2026-07-30)
+
+User reported the whole game log page kept flickering/rebuilding every few seconds after an
+upload, causing eye strain, and asked for a real progress indicator plus an end to the refresh.
+
+**Root cause**: `startStatusPolling()` called the full `loadGameLog()` (which does
+`el.innerHTML = ...` on the entire `#gameLogList`) every 10s whenever *any* clip anywhere was
+in-flight - tearing down and rebuilding every card and skeleton canvas on the page regardless of
+which clip actually changed.
+
+- [x] **Fixed**: replaced the old `hasInFlightClips` boolean with an `inFlightClips` Map
+      (clip id -> game_log_entry_id), populated for every pending/processing clip (not just the
+      active tab) in `loadClipsForEntry`. `startStatusPolling()` now runs a targeted
+      `.in("id", clipIds)` query against only in-flight clips, and for each one that finished
+      updates just that tab's status-dot class and, only if it's the active tab, re-renders that
+      one clip's mount - the rest of the page is never touched.
+- [x] **Added a real progress indicator**: CSS spinner + a client-side `startElapsedTicker()`
+      that increments a `[data-elapsed]` label every second from the clip's actual `created_at`
+      (no fabricated percentage, since the pipeline has no real progress-fraction signal).
+- [x] **Verified with real browser tests** on disposable Thunder/Maddie R test at-bats (never
+      touching Emily's data): tagged an unrelated pre-existing card with a unique DOM marker,
+      waited past a full 10s poll tick, and confirmed via `page.evaluate` the marked node still
+      existed (proving no full-list rebuild); confirmed the elapsed label incremented correctly
+      over real wall-clock time; confirmed a clip transitioning pending -> ready re-renders in
+      place (screenshot) without disturbing sibling cards.
+- Local dev infra also needed a restart during this work: `gcs-emulator` and the
+  `get-upload-url` edge function had silently exited, and `process-upload-queue` wasn't running
+  at all - see [[coach_app_supabase_architecture]] for this recurring gotcha.
+- **Flag, not fixed**: while monitoring the queue, found a pre-existing failed clip on Emily's
+  real player record (`opponent="Other", ab=1, date=2026-07-23`) that doesn't match any of her
+  real logged at-bats - looks like leftover test/reproduction data from earlier session work, not
+  caused by this fix. Left in place (shows as a normal "failed" clip with existing Retry/Delete
+  Pitch buttons) pending the user's call on whether to delete it.
+
+**Round 2 - user reported it still refreshed ~10s after uploading.** Two real, separate causes
+found:
+1. `wireGameLogDelegation()`'s Attach Video / Retry / Delete Pitch / Delete At-Bat / Add Pitch
+   handlers all still called the full `loadGameLog()` on success (only `startStatusPolling()`'s
+   own 10s tick had been fixed in round 1). Since a real upload takes several seconds, the
+   post-upload full rebuild landed close enough to "10 seconds after uploading" to look like the
+   same bug. Fixed by switching all five to `loadClipsForEntry(gameLogEntryId, ...)` (targets just
+   that entry's mount) except Delete At-Bat, which now just removes its own `.card` element
+   directly (`deleteAtBatBtn.closest(".card")?.remove()`) since that whole card is what's actually
+   gone. The "Log AB" new-at-bat flow (`openLogAbModal`) still calls full `loadGameLog()`
+   deliberately - a genuinely new card needs to be added to the list, which isn't a targeted-update
+   case.
+2. **`coach/sw.js`'s service-worker cache had never been bumped all session** (`CACHE_NAME` stayed
+   `"barreliq-coach-v1"` through every player.html change this session - multi-clip switcher,
+   delete-at-bat, camera rotation, round-1 polling fix). Since the SW's fetch handler is
+   cache-first and its own bytes hadn't changed, browsers with an already-registered SW kept
+   serving the stale precached `player.html` indefinitely - this is why the round-1 polling fix
+   verified fine in a fresh Playwright browser (no prior SW registration to be stale) but a real
+   persistent browser session could still be running old code. Fixed: bumped `CACHE_NAME` to `v2`,
+   and added `self.skipWaiting()` (install) + `self.clients.claim()` (activate) so a new deploy
+   takes over on the very next reload instead of requiring every open tab to be closed first.
+   **Any future `coach/*` change needs `CACHE_NAME` bumped in `sw.js` to actually reach browsers**
+   with the app already installed/open - easy to forget, as this session just demonstrated.
+- Verified the targeted Attach-Video fix with a real browser test (DOM-marker technique again) -
+  first attempt showed the marker wiped, which looked like the fix hadn't worked, but the console
+  log `"Live reload enabled."` gave it away: VS Code Live Server was reloading the test's own
+  browser tab because I was actively editing `player.html`/`sw.js` concurrently with the test run.
+  Re-ran with no concurrent edits and the marker survived cleanly - confirms the fix is correct;
+  the false failure was a test-methodology artifact (don't run browser verification while actively
+  saving the file being tested), not an app bug.
+- **Separately noticed while testing**: `Emily_C_AB1_game2.mp4` is a real ~1080p/30fps, ~7:45
+  (465s) video - far longer than a single pitch - which is both why it's slow to process (full
+  pose3d inference over ~14k frames) and may be why it previously failed with `metrics.json has no
+  "phases" key` (the phase detectors likely assume a single swing, not a multi-swing/long
+  recording). Not investigated further or fixed this round - flagged for the user, since it may
+  simply be the wrong file (untrimmed footage instead of a single at-bat clip).
 
 ## Interactive camera rotation for the 3D skeleton view (2026-07-30)
 

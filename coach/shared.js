@@ -66,6 +66,18 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
   });
+  // Without this, a new sw.js (new CACHE_NAME) only takes over AFTER every
+  // open tab is closed and reopened - skipWaiting()/clients.claim() in sw.js
+  // make the new worker take control of already-open tabs immediately, but
+  // those tabs are still rendering whatever the OLD worker served them; this
+  // reloads once, automatically, the moment control actually changes hands,
+  // so a coach never has to manually close/reopen the app to get a fix.
+  let reloadedForNewWorker = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloadedForNewWorker) return;
+    reloadedForNewWorker = true;
+    window.location.reload();
+  });
 }
 
 /** Same three states as the public report's .review-badge (ai-draft /

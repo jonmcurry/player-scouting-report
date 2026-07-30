@@ -2,7 +2,7 @@
 // only - Supabase API calls and GCS-hosted video are never cached here, so
 // "offline" means the shell loads instantly and shows cached data, not that
 // live coach edits work with no connection.
-const CACHE_NAME = "barreliq-coach-v1";
+const CACHE_NAME = "barreliq-coach-v2";
 const ASSETS = [
   "./index.html",
   "./team.html",
@@ -23,12 +23,22 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (evt) => {
+  // skipWaiting() so a new deploy takes over on the coach's very next reload
+  // instead of staying "waiting" until every open tab/PWA window is closed -
+  // the CACHE_NAME bump above was silently ignored all session because the
+  // old worker kept controlling already-open clients (see
+  // [[polling_microrefresh_fix]] - this is what made the targeted-refresh
+  // fix look like it hadn't landed).
+  self.skipWaiting();
   evt.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
 });
 
 self.addEventListener("activate", (evt) => {
   evt.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))),
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim()),
   );
 });
 

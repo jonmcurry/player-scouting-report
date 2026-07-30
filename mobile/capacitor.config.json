@@ -1,0 +1,8 @@
+{
+  "appId": "com.barreliq.coach",
+  "appName": "BarrelIQ",
+  "webDir": "../coach",
+  "android": {
+    "allowMixedContent": true
+  }
+}

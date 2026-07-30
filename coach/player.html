@@ -82,6 +82,16 @@
   // clip_slug/position) so switching tabs re-renders from memory instead of
   // a fresh Supabase round trip - refreshed whenever loadGameLog() re-runs.
   const clipsByEntry = new Map();
+  // clip id -> its game_log_entry_id, for every clip currently pending/
+  // processing (populated in loadClipsForEntry for ALL of an entry's
+  // clips, not just the active tab, so a background clip's tab dot still
+  // updates live even when a different tab is showing). Read by
+  // startStatusPolling() to re-check ONLY these specific clips instead of
+  // reloading the whole game log every tick - reloading everything on every
+  // poll was a real, reported problem (a visible full-page "microrefresh"
+  // every 10s, tearing down and rebuilding every card/canvas on the page
+  // even when only one clip anywhere was actually still processing).
+  const inFlightClips = new Map();
 
   async function main() {
     const session = await requireSession();
@@ -130,6 +140,7 @@
     await renderStats();
     wireGameLogDelegation();
     startStatusPolling();
+    startElapsedTicker();
 
     if (qs("openLog") === "1") {
       openLogAbModal();
@@ -378,10 +389,6 @@
     await Promise.all((logs ?? []).map((g) => loadClipsForEntry(g.id, currentExtensionScore)));
   }
 
-  // Tracks whether any card is currently pending/processing, read by
-  // startStatusPolling() to decide whether the next tick needs to refresh.
-  let hasInFlightClips = false;
-
   /** A game_log_entries row can have >1 physical clip (e.g. 4 separate
    * pitches filmed as separate files for one at-bat, per this project's own
    * real data - see emily_c.html's AB1 note). Fetches ALL clips for the
@@ -393,7 +400,7 @@
 
     const { data: clips, error } = await supabase
       .from("video_clips")
-      .select("id, status, error_message, clip_slug, position")
+      .select("id, status, error_message, clip_slug, position, created_at")
       .eq("game_log_entry_id", gameLogEntryId)
       .order("position");
     if (error) {
@@ -401,6 +408,15 @@
       return;
     }
     clipsByEntry.set(gameLogEntryId, clips ?? []);
+
+    // Register EVERY pending/processing clip for this entry, not just
+    // whichever one ends up active - a clip on a tab the coach isn't
+    // currently viewing still needs its status dot to update live.
+    for (const c of clips ?? []) {
+      if (c.status === "pending" || c.status === "processing") {
+        inFlightClips.set(c.id, gameLogEntryId);
+      }
+    }
 
     if (!clips || clips.length === 0) {
       mount.innerHTML = `
@@ -453,8 +469,20 @@
    * need to round-trip it through the row). */
   async function renderActiveClip(clipMount, gameLogEntryId, clip, extensionScore) {
     if (clip.status === "pending" || clip.status === "processing") {
-      hasInFlightClips = true;
-      clipMount.innerHTML = `<p class="hint">⏳ Processing video… this can take a minute or more.</p>`;
+      // Real elapsed time (since the clip was actually created/uploaded),
+      // not a fabricated percentage - there's no real progress fraction
+      // available from the pipeline, only pending/processing/ready/failed,
+      // so a numeric progress bar would be inventing precision that
+      // doesn't exist. The elapsed counter itself ticks client-side only
+      // (startElapsedTicker(), no network calls) - it's not what tells this
+      // page a clip finished, just visual reassurance that it's alive.
+      const since = clip.created_at ? new Date(clip.created_at).getTime() : Date.now();
+      clipMount.innerHTML = `
+        <p class="hint processing-indicator" data-processing-since="${since}">
+          <span class="processing-spinner"></span>
+          <span>⏳ Processing video… <span data-elapsed>this can take a minute or more.</span></span>
+        </p>
+      `;
       return;
     }
 
@@ -471,7 +499,7 @@
           <div class="drawer-body"><pre style="white-space:pre-wrap;font-size:11px;">${fullMessage}</pre></div>
         </details>
         <div style="display:flex;gap:8px;margin-top:8px;">
-          <button class="tap-target" data-retry-clip="${clip.id}">Retry</button>
+          <button class="tap-target" data-retry-clip="${clip.id}" data-game-log-entry="${gameLogEntryId}">Retry</button>
           <button class="tap-target btn-danger" data-delete-clip="${clip.id}" data-game-log-entry="${gameLogEntryId}">Delete Pitch</button>
         </div>
       `;
@@ -574,7 +602,7 @@
         attachBtn.textContent = "Uploading…";
         try {
           await uploadRawClip(gameLogEntryId, file);
-          await loadGameLog();
+          await loadClipsForEntry(gameLogEntryId, currentExtensionScore);
         } catch (err) {
           alert(`Couldn't upload video: ${err.message}`);
           attachBtn.disabled = false;
@@ -586,6 +614,7 @@
       const retryBtn = e.target.closest("[data-retry-clip]");
       if (retryBtn) {
         retryBtn.disabled = true;
+        const gameLogEntryId = retryBtn.dataset.gameLogEntry;
         const { error } = await supabase
           .from("video_clips")
           .update({ status: "pending", error_message: null })
@@ -595,7 +624,7 @@
           retryBtn.disabled = false;
           return;
         }
-        await loadGameLog();
+        await loadClipsForEntry(gameLogEntryId, currentExtensionScore);
         return;
       }
 
@@ -614,7 +643,7 @@
         if (activeClipIdByEntry.get(gameLogEntryId) === clipId) {
           activeClipIdByEntry.delete(gameLogEntryId);
         }
-        await loadGameLog();
+        await loadClipsForEntry(gameLogEntryId, currentExtensionScore);
         return;
       }
 
@@ -642,7 +671,10 @@
         }
         activeClipIdByEntry.delete(gameLogEntryId);
         clipsByEntry.delete(gameLogEntryId);
-        await loadGameLog();
+        for (const [clipId, entryId] of inFlightClips) {
+          if (entryId === gameLogEntryId) inFlightClips.delete(clipId);
+        }
+        deleteAtBatBtn.closest(".card")?.remove();
       }
     });
 
@@ -661,7 +693,7 @@
       }
       try {
         await uploadRawClip(gameLogEntryId, file);
-        await loadGameLog();
+        await loadClipsForEntry(gameLogEntryId, currentExtensionScore);
       } catch (err) {
         alert(`Couldn't upload video: ${err.message}`);
         if (addBtn) {
@@ -673,14 +705,66 @@
   }
 
   /** Poll-based refresh (no Supabase Realtime this pass - see the approved
-   * plan's deferred-scope note) - only re-fetches while at least one card
-   * is pending/processing, and stops polling once none remain. */
+   * plan's deferred-scope note). Real, reported bug this replaces: the
+   * previous version called the full loadGameLog() on every tick, which
+   * tears down and rebuilds EVERY card/canvas on the page (a visible
+   * full-page "microrefresh" every 10s) even when only one clip anywhere
+   * was still processing. Now only the specific in-flight clip ids get
+   * re-checked, and only a clip whose status actually changed gets any DOM
+   * touched at all - a tab dot updates in place, and the visible panel only
+   * re-renders if that clip happens to be the one currently active. */
   function startStatusPolling() {
     setInterval(async () => {
-      if (!hasInFlightClips) return;
-      hasInFlightClips = false;
-      await loadGameLog();
+      if (inFlightClips.size === 0) return;
+      const clipIds = [...inFlightClips.keys()];
+      const { data: freshClips } = await supabase
+        .from("video_clips")
+        .select("id, status, error_message, clip_slug, position, created_at")
+        .in("id", clipIds);
+
+      for (const clip of freshClips ?? []) {
+        if (clip.status === "pending" || clip.status === "processing") continue; // still in-flight, nothing changed
+
+        const gameLogEntryId = inFlightClips.get(clip.id);
+        inFlightClips.delete(clip.id);
+
+        // Keep the cached clips list (used by tab switching) in sync too.
+        const cachedClips = clipsByEntry.get(gameLogEntryId);
+        const cachedClip = cachedClips?.find((c) => c.id === clip.id);
+        if (cachedClip) Object.assign(cachedClip, clip);
+
+        const mount = document.querySelector(`.scrubber-mount[data-game-log-entry="${gameLogEntryId}"]`);
+        if (!mount) continue;
+
+        const tabBtn = mount.querySelector(`.clip-tab-btn[data-clip-id="${clip.id}"]`);
+        if (tabBtn) tabBtn.className = tabBtn.className.replace(/status-\S+/, `status-${clip.status}`);
+
+        if (activeClipIdByEntry.get(gameLogEntryId) === clip.id) {
+          const activeClipMount = mount.querySelector(`[data-active-clip-mount="${gameLogEntryId}"]`);
+          if (activeClipMount) {
+            activeClipMount.innerHTML = "";
+            await renderActiveClip(activeClipMount, gameLogEntryId, clip, currentExtensionScore);
+          }
+        }
+      }
     }, 10000);
+  }
+
+  /** Ticks the "N:NN elapsed" label on every currently-rendered processing
+   * indicator, purely client-side (no network call) - separate from
+   * startStatusPolling()'s actual status re-check above. Runs constantly;
+   * a no-op when nothing on the page is processing. */
+  function startElapsedTicker() {
+    setInterval(() => {
+      document.querySelectorAll("[data-processing-since]").forEach((el) => {
+        const since = Number(el.dataset.processingSince);
+        const elapsedSec = Math.max(0, Math.floor((Date.now() - since) / 1000));
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const label = el.querySelector("[data-elapsed]");
+        if (label) label.textContent = `${mins}:${String(secs).padStart(2, "0")} elapsed - this can take a minute or more.`;
+      });
+    }, 1000);
   }
 
   /** Log AB (ux.md Step 2/3B) - opened from the bottom nav's "+" button

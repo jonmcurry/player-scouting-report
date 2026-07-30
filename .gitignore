@@ -33,3 +33,14 @@ supabase/.temp/
 # OS/editor cruft
 .DS_Store
 Thumbs.db
+
+# Capacitor mobile shell (mobile/) - own dependency tree, kept separate from
+# the root Node CLI's node_modules/. Platform folders (mobile/android/,
+# mobile/ios/) ARE committed per Capacitor convention - build artifacts
+# inside them are covered by the nested .gitignore files `cap add` generates.
+mobile/node_modules/
+
+# Android/iOS release-signing material - never commit these.
+mobile/android/*.keystore
+mobile/android/*.jks
+mobile/android/keystore.properties
