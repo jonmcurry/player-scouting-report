@@ -56,6 +56,21 @@ POSE_MODEL = MODELS_DIR / "yolo11m-pose.pt"
 DET_MODEL = MODELS_DIR / "yolov8m.pt"
 BAT_CLASS_ID = 34  # COCO: "baseball bat"
 
+# Ultralytics' own default (DEFAULT_CFG.batch) - measured directly on a real
+# 899-frame/1080p slice of an actual coach upload: batch=1 -> 46.5fps,
+# batch=16 -> 83.8fps (1.8x). Verified this is NOT free-lunch bit-identical -
+# batched GPU inference showed up to ~19px keypoint drift vs batch=1 on a
+# small number of already-low-confidence phantom detections (conf<0.25,
+# background people/occluded limbs the pipeline already discards via its own
+# confidence gating and batter-track selection). Across every keypoint
+# measured, median drift was 0.008px and the worst-case drift on a
+# high-confidence (>0.99) keypoint was ~5px - well inside the raw per-frame
+# jitter this pipeline's rigid-FK smoothing (see one_euro_filter.py /
+# metrics.py's skeleton rigidification) already corrects for. Not raised
+# further (e.g. to 32) - the measured speedup past 16 was marginal (1.92x)
+# for no meaningful additional gain.
+BATCH_SIZE = 16
+
 # COCO-17 keypoint indices (Ultralytics' pose output order - same as VideoPose3D's
 # expected 2D input order for the detectron_coco checkpoint, confirmed against
 # VideoPose3D_src/data/prepare_data_2d_custom.py: raw COCO order, no reordering).
@@ -91,11 +106,42 @@ def centroid(box):
     return ((x0 + x1) / 2, (y0 + y1) / 2)
 
 
-MIN_TRACK_LEN = 15  # frames - ignore very short spurious tracks when picking the batter
+# Originally raw frame counts (MIN_TRACK_LEN=15, an inline gap tolerance of
+# 8) - converted to real-time spans, resolved to a frame count via each
+# clip's own fps at the point of use, same reasoning as metrics.py's
+# ROTATION_WINDOW_S etc.: a fixed frame-count window covers 8x less real time
+# at 240fps than at ~30fps, which would make these track-continuity
+# tolerances far too strict for high-frame-rate input.
+MIN_TRACK_DURATION_S = 15 / 30
+TRACK_GAP_TOLERANCE_S = 8 / 30
 BAT_HOLD_GATE_FRAC = 0.15  # wrist-to-bat-centroid distance, as a fraction of frame width
 
+# --- Quick pre-check, before committing to the two full per-frame passes ---
+# Real coach uploads can be several minutes long (see run_pipeline.py's
+# Stage 0 docstring), and this stage's two full YOLO passes over every frame
+# is what actually costs those minutes. Confirmed on real data: a 7.8-minute
+# clip where only 0.62% of ALL frames had a tracked batter still took ~13
+# minutes to grind through both full passes before failing. Sampling a
+# handful of frames up front and running the same pose model on just those
+# catches that same hopeless case in seconds, not minutes.
+QUALITY_CHECK_SAMPLE_FRAMES = 30
+QUALITY_CHECK_MIN_RESOLVABLE_FRACTION = 0.15  # real clips seen so far are
+    # either ~99%+ trackable or under 1% - this sits comfortably in that gap,
+    # not a fragile/tight cutoff.
+QUALITY_CHECK_MIN_BBOX_HEIGHT_FRAC = 0.08  # a detected person's bbox must be
+    # at least this tall (as a fraction of frame height) to count as
+    # "clearly resolvable" - filters out a speck-sized, low-confidence guess
+    # that technically passes bbox_from_kps's point-count check.
 
-def build_person_tracks(frames_people, frame_w):
+
+class LowQualityFootageError(Exception):
+    """Raised by quick_trackability_check when nobody is clearly resolvable
+    in a sample of frames - before the expensive full passes ever run. See
+    that function's docstring for exactly what this does and doesn't
+    guarantee."""
+
+
+def build_person_tracks(frames_people, frame_w, fps):
     """Greedy multi-object tracking across the whole clip: every detected
     person in every frame gets assigned to a persistent track by
     nearest-centroid match (gated), or starts a new track if nothing matches.
@@ -108,6 +154,7 @@ def build_person_tracks(frames_people, frame_w):
     Returns a dict: track_id -> {frame_idx: (kps, conf)}.
     """
     gate = TRACK_GATE_FRAC * frame_w
+    gap_tolerance = max(1, round(TRACK_GAP_TOLERANCE_S * fps))
     tracks = {}
     active = {}  # track_id -> (last_frame_idx, last_centroid)
     next_id = 0
@@ -127,7 +174,7 @@ def build_person_tracks(frames_people, frame_w):
             c = centroid(b)
             best_tid, best_d = None, None
             for tid, (last_i, last_c) in active.items():
-                if tid in used_tracks or i - last_i > 8:
+                if tid in used_tracks or i - last_i > gap_tolerance:
                     continue
                 d = np.hypot(c[0] - last_c[0], c[1] - last_c[1])
                 if d <= gate and (best_d is None or d < best_d):
@@ -143,7 +190,7 @@ def build_person_tracks(frames_people, frame_w):
     return tracks
 
 
-def build_batter_track(tracks, bat_frames, frame_w):
+def build_batter_track(tracks, bat_frames, frame_w, fps):
     """Pick whichever track has the strongest cumulative evidence of holding
     the bat - a wrist within BAT_HOLD_GATE_FRAC of a bat detection - across
     the WHOLE clip, not just one seed frame.
@@ -160,9 +207,10 @@ def build_batter_track(tracks, bat_frames, frame_w):
     like the bat-holder consistently, not just once.
     """
     gate = BAT_HOLD_GATE_FRAC * frame_w
+    min_track_len = max(1, round(MIN_TRACK_DURATION_S * fps))
     scores = {tid: 0 for tid in tracks}
     for tid, frames in tracks.items():
-        if len(frames) < MIN_TRACK_LEN:
+        if len(frames) < min_track_len:
             continue
         for i, (kps, conf) in frames.items():
             bats_here = bat_frames[i] if i < len(bat_frames) else []
@@ -177,41 +225,58 @@ def build_batter_track(tracks, bat_frames, frame_w):
                     scores[tid] += 1
                     break
 
-    eligible = {tid: s for tid, s in scores.items() if len(tracks[tid]) >= MIN_TRACK_LEN}
+    eligible = {tid: s for tid, s in scores.items() if len(tracks[tid]) >= min_track_len}
     if not eligible or max(eligible.values()) == 0:
         # No track shows consistent bat-holding evidence at all - fall back to
         # the single longest track (most-consistently-detected person is a
         # reasonable last resort, clearly logged rather than silently trusted).
+        # Reported back to run() (not just printed) so a downstream "cannot
+        # locate contact" failure can distinguish THIS specific cause - clean
+        # person-tracking but essentially no bat evidence anywhere - from a
+        # generic tracking failure. A real clip traced this to a camera
+        # positioned along the baseline instead of behind the backstop: the
+        # batter is small/distant in every frame, so the bat rarely resolves
+        # to enough pixels for the detector, while the person themselves
+        # tracks fine (they're not small, just their bat is).
         print("[detect_2d] WARNING: no track shows consistent bat-holding evidence - "
               "falling back to the longest-tracked person (may not be the batter)")
-        return max(tracks, key=lambda tid: len(tracks[tid]))
+        best_tid = max(tracks, key=lambda tid: len(tracks[tid]))
+        return best_tid, 0, True
 
     best_tid = max(eligible, key=eligible.get)
     print(f"[detect_2d] batter track selected: id={best_tid}, "
           f"{len(tracks[best_tid])} frames tracked, "
           f"bat-holding evidence in {scores[best_tid]} frames")
-    return best_tid
+    return best_tid, scores[best_tid], False
 
 
-def select_batter_track(frames_people, frame_w, frame_h, bat_frames=None):
+def select_batter_track(frames_people, frame_w, frame_h, fps, bat_frames=None):
     """frames_people[i] = list of (kps[17,2], conf[17]) detections in frame i.
     bat_frames[i] = list of (box, conf, track_id) bat detections in frame i.
 
-    Returns a list, one entry per frame, of the chosen person's (kps, conf) or
-    None if nobody plausible was found in that frame. See build_batter_track
-    for how the batter identity is picked.
+    Returns (chosen, bat_evidence_stats) - chosen is a list, one entry per
+    frame, of the chosen person's (kps, conf) or None if nobody plausible was
+    found in that frame; bat_evidence_stats is
+    {"track_frames", "bat_evidence_frames", "used_fallback"} - see
+    build_batter_track for how the batter identity is picked and why this is
+    tracked.
     """
-    tracks = build_person_tracks(frames_people, frame_w)
+    tracks = build_person_tracks(frames_people, frame_w, fps)
     if not tracks:
-        return [None] * len(frames_people)
+        return [None] * len(frames_people), {"track_frames": 0, "bat_evidence_frames": 0, "used_fallback": False}
 
-    batter_tid = build_batter_track(tracks, bat_frames or [], frame_w)
+    batter_tid, bat_evidence_frames, used_fallback = build_batter_track(tracks, bat_frames or [], frame_w, fps)
     batter_frames = tracks[batter_tid]
 
     chosen = [None] * len(frames_people)
     for i, entry in batter_frames.items():
         chosen[i] = entry
-    return chosen
+    stats = {
+        "track_frames": len(batter_frames),
+        "bat_evidence_frames": bat_evidence_frames,
+        "used_fallback": used_fallback,
+    }
+    return chosen, stats
 
 
 def batter_hand_positions(chosen_frame):
@@ -288,6 +353,49 @@ def bat_tip_and_knob(box, hand_pts):
     return tip, knob
 
 
+def quick_trackability_check(video_path, pose_model, frame_w, frame_h, n_frames):
+    """Samples QUALITY_CHECK_SAMPLE_FRAMES evenly-spaced frames (not the
+    whole clip) and runs the already-loaded pose model on just those, to
+    cheaply estimate whether anyone is clearly resolvable in this footage at
+    all. This is a fast, honest early warning, NOT a replacement for the
+    real batter-selection logic below (select_batter_track needs
+    frame-to-frame track continuity a sparse sample can't provide, and only
+    counts a track that also shows bat-holding evidence - a stricter bar
+    than "some person is visible"). If this check passes, the full analysis
+    still runs exactly as before and remains the authoritative answer; this
+    only exists to bail out fast on the obviously-hopeless case.
+
+    Returns (resolvable_fraction, sampled_count)."""
+    cap = cv2.VideoCapture(str(video_path))
+    n_samples = min(QUALITY_CHECK_SAMPLE_FRAMES, n_frames)
+    sample_indices = np.linspace(0, max(n_frames - 1, 0), n_samples, dtype=int)
+    min_bbox_h = QUALITY_CHECK_MIN_BBOX_HEIGHT_FRAC * frame_h
+    device = 0 if _cuda_available() else "cpu"
+
+    resolvable = 0
+    checked = 0
+    for idx in sample_indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
+        ok, frame = cap.read()
+        if not ok:
+            continue
+        checked += 1
+        result = pose_model.predict(frame, conf=0.25, verbose=False, device=device)
+        r = result[0]
+        if r.keypoints is None or r.keypoints.xy is None:
+            continue
+        xy = r.keypoints.xy.cpu().numpy()
+        cf = r.keypoints.conf
+        cf = cf.cpu().numpy() if cf is not None else np.ones(xy.shape[:2])
+        for i in range(xy.shape[0]):
+            box = bbox_from_kps(xy[i], cf[i])
+            if box is not None and (box[3] - box[1]) >= min_bbox_h:
+                resolvable += 1
+                break
+    cap.release()
+    return (resolvable / checked if checked else 0.0), checked
+
+
 def run(video_path, out_dir):
     video_path = pathlib.Path(video_path)
     out_dir = pathlib.Path(out_dir)
@@ -303,6 +411,7 @@ def run(video_path, out_dir):
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    n_frames_hint = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.release()
 
     print(f"[detect_2d] {video_path.name}  {frame_w}x{frame_h}  {fps:.2f}fps")
@@ -310,11 +419,39 @@ def run(video_path, out_dir):
     pose_model = YOLO(str(POSE_MODEL))
     bat_model = YOLO(str(DET_MODEL))
 
+    if n_frames_hint > QUALITY_CHECK_SAMPLE_FRAMES:
+        tracked_frac, sampled = quick_trackability_check(
+            video_path, pose_model, frame_w, frame_h, n_frames_hint)
+        print(f"[detect_2d] quick quality check: {tracked_frac * 100:.0f}% of "
+              f"{sampled} sampled frames had a clearly-resolvable person")
+        if tracked_frac < QUALITY_CHECK_MIN_RESOLVABLE_FRACTION:
+            meta = {
+                "video": str(video_path), "fps": fps, "width": frame_w, "height": frame_h,
+                "n_frames": n_frames_hint, "keypoint_order": "coco17",
+                "keypoint_names": ["nose", "l_eye", "r_eye", "l_ear", "r_ear",
+                                   "l_shoulder", "r_shoulder", "l_elbow", "r_elbow",
+                                   "l_wrist", "r_wrist", "l_hip", "r_hip",
+                                   "l_knee", "r_knee", "l_ankle", "r_ankle"],
+            }
+            # Written now (not left to run_pipeline.py) so pose_2d.json/
+            # bat_path.json exist as valid JSON regardless of outcome -
+            # ingestPhases.ts reads pose_2d.json unconditionally before ever
+            # checking metrics.json's phases/error fields.
+            (out_dir / "pose_2d.json").write_text(json.dumps({"meta": meta, "frames": []}, indent=2))
+            (out_dir / "bat_path.json").write_text(json.dumps({"meta": meta, "frames": []}, indent=2))
+            raise LowQualityFootageError(
+                f"Couldn't reliably detect a batter in this video (only "
+                f"{tracked_frac * 100:.0f}% of a {sampled}-frame quick sample had a "
+                f"clearly resolvable person) - try filming closer to home plate or "
+                f"with the camera in better focus."
+            )
+
     # --- Pass 1: pose, all people, every frame ---
     frames_people = []
     pose_results = pose_model.predict(
         source=str(video_path), stream=True, verbose=False,
         conf=0.25, device=0 if _cuda_available() else "cpu",
+        batch=BATCH_SIZE if _cuda_available() else 1,
     )
     for r in pose_results:
         people = []
@@ -335,6 +472,7 @@ def run(video_path, out_dir):
         source=str(video_path), stream=True, verbose=False,
         conf=0.15, classes=[BAT_CLASS_ID], tracker="bytetrack.yaml",
         persist=True, device=0 if _cuda_available() else "cpu",
+        batch=BATCH_SIZE if _cuda_available() else 1,
     )
     for r in bat_results:
         dets = []
@@ -349,7 +487,7 @@ def run(video_path, out_dir):
     n_bat = sum(1 for d in bat_frames if d)
     print(f"[detect_2d] bat: {n_bat}/{n_frames} frames with >=1 bat detection")
 
-    chosen = select_batter_track(frames_people, frame_w, frame_h, bat_frames)
+    chosen, bat_evidence_stats = select_batter_track(frames_people, frame_w, frame_h, fps, bat_frames)
     n_found = sum(1 for c in chosen if c is not None)
     print(f"[detect_2d] pose: {n_found}/{n_frames} frames with a tracked batter")
 
@@ -402,6 +540,14 @@ def run(video_path, out_dir):
                            "l_shoulder", "r_shoulder", "l_elbow", "r_elbow",
                            "l_wrist", "r_wrist", "l_hip", "r_hip",
                            "l_knee", "r_knee", "l_ankle", "r_ankle"],
+        # Persisted (not just printed) so a downstream "cannot locate
+        # contact" failure can tell "clean person tracking, but almost no
+        # real bat evidence anywhere" (a real clip traced this to a camera
+        # positioned along the baseline instead of behind the backstop - the
+        # batter tracks fine, but is too small/distant for the bat itself to
+        # resolve) apart from a generic tracking failure - see metrics.py's
+        # own use of this field.
+        "bat_evidence": bat_evidence_stats,
     }
     (out_dir / "pose_2d.json").write_text(json.dumps({"meta": meta, "frames": pose_2d}, indent=2))
     (out_dir / "bat_path.json").write_text(json.dumps({"meta": meta, "frames": bat_path}, indent=2))

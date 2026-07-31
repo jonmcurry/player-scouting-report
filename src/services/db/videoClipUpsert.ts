@@ -195,3 +195,50 @@ export async function upsertSwingPhase(input: PhaseUpsertInput): Promise<void> {
   );
   if (error) throw new Error(`Upserting swing_phases row: ${error.message}`);
 }
+
+export interface MetricsUpsertInput {
+  videoClipId: string;
+  /** Parsed metrics.json - loosely typed like SmoothedFrame above, since
+   * this just maps metrics.py's own already-documented top-level fields
+   * onto video_clip_metrics' columns. */
+  metrics: Record<string, any>;
+}
+
+/** Surfaces metrics.json's summary fields (bat speed, attack angle,
+ * hip-shoulder separation, torso/pelvis tilt, elbow/knee angles, stride) and
+ * the new automated movement_flags - previously computed but never ingested
+ * anywhere (only the `phases` sub-object was, via upsertSwingPhase above).
+ * Skips entirely when there's no contact (no summary metrics exist to
+ * report), same guard ingestPhases.ts already applies for phases. */
+export async function upsertVideoClipMetrics(input: MetricsUpsertInput): Promise<void> {
+  const m = input.metrics;
+  if (!m.contact) return;
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from("video_clip_metrics").upsert(
+    {
+      video_clip_id: input.videoClipId,
+      max_bat_speed_value: m.max_bat_speed?.value ?? null,
+      max_bat_speed_unit: m.max_bat_speed?.unit ?? null,
+      max_bat_speed_search_window_s: m.max_bat_speed?.search_window_s ?? null,
+      max_bat_speed_frame: m.max_bat_speed?.frame ?? null,
+      max_bat_speed_full_rate_value: m.max_bat_speed_full_rate?.value ?? null,
+      max_bat_speed_full_rate_source_fps: m.max_bat_speed_full_rate?.source_fps ?? null,
+      attack_angle_at_contact_deg: m.attack_angle_at_contact_deg ?? null,
+      hip_shoulder_separation_at_contact_deg: m.hip_shoulder_separation_at_contact_deg ?? null,
+      torso_tilt_at_contact_deg: m.torso_tilt_at_contact_deg ?? null,
+      pelvis_tilt_at_contact_deg: m.pelvis_tilt_at_contact_deg ?? null,
+      lead_side: m.lead_side_guess ?? null,
+      lead_side_method: m.lead_side_method ?? null,
+      lead_elbow_angle_at_contact_deg: m.lead_elbow_angle_at_contact_deg ?? null,
+      front_knee_angle_at_contact_deg: m.front_knee_angle_at_contact_deg ?? null,
+      l_elbow_angle_at_contact_deg: m.l_elbow_angle_at_contact_deg ?? null,
+      r_elbow_angle_at_contact_deg: m.r_elbow_angle_at_contact_deg ?? null,
+      stride_length_hip_widths: m.stride?.length_hip_widths ?? null,
+      stride_direction_deg: m.stride?.direction_deg ?? null,
+      stride_note: m.stride?.note ?? null,
+      movement_flags: m.movement_flags ?? {},
+    },
+    { onConflict: "video_clip_id" },
+  );
+  if (error) throw new Error(`Upserting video_clip_metrics row: ${error.message}`);
+}

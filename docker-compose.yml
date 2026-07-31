@@ -26,5 +26,29 @@ services:
   gcs-emulator:
     image: fsouza/fake-gcs-server:latest
     command: ["-scheme", "http", "-public-host", "gcs-emulator:4443"]
+    # No host port publish here - fake-gcs-server is missing
+    # Access-Control-Allow-Methods on its CORS preflight response, which real
+    # browsers require (unlike curl, which ignores CORS entirely). Everything
+    # external goes through gcs-cors-proxy below instead, which adds the
+    # missing header; GCS_EMULATOR_HOST/port 4443 stays the same from every
+    # caller's perspective.
+    volumes:
+      # Without a persistent volume, fake-gcs-server's filesystem backend
+      # (its default) lives only in the container's writable layer - any
+      # `docker compose up`/recreate wipes every bucket that was ever
+      # created, including softball-scouting-media, causing a real 404
+      # on the very next upload (hit this directly while adding
+      # gcs-cors-proxy above).
+      - gcs-emulator-data:/storage
+
+  gcs-cors-proxy:
+    image: nginx:alpine
+    volumes:
+      - ./docker/gcs-cors-proxy.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
       - "4443:4443"
+    depends_on:
+      - gcs-emulator
+
+volumes:
+  gcs-emulator-data:

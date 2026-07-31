@@ -33,6 +33,7 @@ import {
   findOrCreateVideoClip,
   loadPhaseTypeSlugToId,
   upsertSwingPhase,
+  upsertVideoClipMetrics,
 } from "../services/db/videoClipUpsert.js";
 
 const PHASE_SLUGS = ["stance", "load", "stride", "contact", "extension", "follow_through"] as const;
@@ -82,6 +83,17 @@ export async function ingestPhases(
   const metrics = JSON.parse(fs.readFileSync(path.join(clipDir, "metrics.json"), "utf-8"));
 
   if (!metrics.phases) {
+    // metrics.py itself already writes a specific, honest reason to
+    // metrics.error whenever it can't compute phases (bad footage quality,
+    // no swing found, etc. - see metrics.py's and detect_2d.py's own
+    // LowQualityFootageError) - surface that directly rather than the
+    // generic message below, which was written assuming a missing "phases"
+    // key could only mean a stale pre-migration file. That's no longer the
+    // common case; a real, specific reason is almost always already sitting
+    // right here.
+    if (metrics.error) {
+      throw new Error(metrics.error);
+    }
     throw new Error(
       `${clipDir}/metrics.json has no "phases" key - was this generated before the phase ` +
         `detectors were added? Re-run: python scripts/pose3d/metrics.py "${clipDir}"`,
@@ -120,6 +132,13 @@ export async function ingestPhases(
     await upsertSwingPhase({ videoClipId, phaseTypeId, ...normalized });
     written++;
   }
+
+  // Surfaces metrics.json's summary fields (bat speed, attack angle, etc.)
+  // and the new movement_flags - previously computed but never ingested
+  // anywhere (see videoClipUpsert.ts's upsertVideoClipMetrics for the full
+  // field mapping). Rides along here rather than a separate CLI command,
+  // since this function already has metrics loaded and videoClipId resolved.
+  await upsertVideoClipMetrics({ videoClipId, metrics });
 
   console.log(
     `Ingested ${written} phase(s) for ${playerSlug}'s clip "${clipSlug}" ` +

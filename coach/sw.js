@@ -2,7 +2,7 @@
 // only - Supabase API calls and GCS-hosted video are never cached here, so
 // "offline" means the shell loads instantly and shows cached data, not that
 // live coach edits work with no connection.
-const CACHE_NAME = "barreliq-coach-v2";
+const CACHE_NAME = "barreliq-coach-v4";
 const ASSETS = [
   "./index.html",
   "./team.html",
@@ -20,6 +20,7 @@ const ASSETS = [
   "./components/h36mSkeleton.js",
   "./components/videoUpload.js",
   "./components/pitchZonePicker.js",
+  "./components/swingMetricsPanel.js",
 ];
 
 self.addEventListener("install", (evt) => {

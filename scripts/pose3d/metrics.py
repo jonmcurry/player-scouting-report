@@ -60,6 +60,21 @@ import pathlib
 ALIGNMENT_TOLERANCE_S = 0.5
 ROTATION_MIN_DEG = 3.0
 
+# All of these were originally raw frame-count windows (e.g. window=2,
+# half_window=2, a 10-frame lookback) - implicitly tuned against this
+# pipeline's real reference footage, which runs ~29.4-30fps (confirmed
+# against 3 real clips: 30.005/29.360/29.827fps - round(2/30 * fps) == 2 for
+# all three, so this conversion reproduces today's exact behavior, not an
+# approximation). Converting to a fixed TIME span, resolved to a frame count
+# via each clip's own real fps at the point of use, keeps their meaning
+# consistent regardless of a clip's actual frame rate - a fixed frame-count
+# window covers 8x LESS real time at 240fps than at 30fps, which would make
+# rotation-activity-style degree thresholds read ~8x smaller for the same
+# real motion and likely never clear their gates.
+ROTATION_WINDOW_S = 2 / 30
+ATTACK_ANGLE_WINDOW_S = 2 / 30
+FRONT_SIDE_LOOKBACK_S = 10 / 30
+
 L_ANKLE_2D, R_ANKLE_2D = 15, 16
 L_HIP_2D, R_HIP_2D = 11, 12
 L_SHOULDER_2D, R_SHOULDER_2D = 5, 6
@@ -81,7 +96,13 @@ EXTENSION_HIGH_CONF_DEG = 155.0
 # (2-4.5 hip-widths/s) - a 6 hip-widths/s floor cleanly separates the two
 # without being tuned to one single clip's exact numbers.
 STRIDE_SPEED_MIN_HIP_WIDTHS_PER_S = 6.0
-STRIDE_SUSTAIN_FRAMES = 3
+STRIDE_SUSTAIN_S = 3 / 30
+
+# Movement-pattern flags (new) - margin in normalized [0,1] percentile units.
+KNEE_DOMINANT_MARGIN = 0.15
+# Reuses find_load_frame's own 2.5s backward-window default for the wrist-
+# lead comparison, rather than a new, separately-tuned value.
+WRIST_LEAD_SEARCH_S = 2.5
 
 
 def dist(a, b):
@@ -138,19 +159,22 @@ def knee_extension_series(pose_3d_frames):
     return out
 
 
-def rotation_activity_series(pose_3d_frames, window=2):
+def rotation_activity_series(pose_3d_frames, fps, window_s=ROTATION_WINDOW_S):
     """Per-frame body-rotation angular speed: |shoulder_line_deg change| over
-    a small centered window. Added after a real false positive was caught by
-    watching the overlay video: a pre-pitch bat WAGGLE produced a bat-tip
-    speed spike (a real, fast, single-frame wrist motion) at a moment
-    verified (by reading the actual angle values, not guessing) to have
-    completely static hip/shoulder line angles for 15+ surrounding frames -
-    the batter's whole body wasn't rotating, only her wrist was. A real
-    swing's hip/shoulder angles change rapidly and continuously through the
-    same window (verified the same way against a real contact instant).
-    Bat speed and knee extension alone can't tell a waggle from a swing;
-    requiring the body to actually be rotating can."""
+    a small centered window (fixed real-time span, resolved to a frame count
+    via this clip's own fps - see ROTATION_WINDOW_S's comment for why this
+    must be time-based, not a raw frame count). Added after a real false
+    positive was caught by watching the overlay video: a pre-pitch bat
+    WAGGLE produced a bat-tip speed spike (a real, fast, single-frame wrist
+    motion) at a moment verified (by reading the actual angle values, not
+    guessing) to have completely static hip/shoulder line angles for 15+
+    surrounding frames - the batter's whole body wasn't rotating, only her
+    wrist was. A real swing's hip/shoulder angles change rapidly and
+    continuously through the same window (verified the same way against a
+    real contact instant). Bat speed and knee extension alone can't tell a
+    waggle from a swing; requiring the body to actually be rotating can."""
     n = len(pose_3d_frames)
+    window = max(1, round(window_s * fps))
     out = [None] * n
     for i in range(window, n - window):
         a = pose_3d_frames[i - window]["angles"]["shoulder_line_deg"]
@@ -209,10 +233,12 @@ def find_contact_frame(speeds, knee_series, rotation_series):
     return best_i, best_score, speed_norm, knee_norm, rot_norm
 
 
-def front_side_at(pose_2d_frames, idx):
+def front_side_at(pose_2d_frames, fps, idx):
     """'l' or 'r' - whichever ankle sits lower in frame (closer to camera) at
-    the given frame index, falling back to nearby frames if untracked."""
-    for j in range(idx, max(idx - 10, -1), -1):
+    the given frame index, falling back to nearby frames (fixed real-time
+    lookback, resolved via fps) if untracked."""
+    lookback = max(1, round(FRONT_SIDE_LOOKBACK_S * fps))
+    for j in range(idx, max(idx - lookback, -1), -1):
         kp = pose_2d_frames[j]["keypoints"]
         if kp is None:
             continue
@@ -222,10 +248,12 @@ def front_side_at(pose_2d_frames, idx):
     return None
 
 
-def attack_angle_at(bat_frames, fps, idx, half_window=2):
+def attack_angle_at(bat_frames, fps, idx, half_window_s=ATTACK_ANGLE_WINDOW_S):
     """Degrees, +up/-down, of the bat tip's velocity direction averaged over a
-    small window centered on idx. Image y grows downward, so dy is negated to
-    report "upward swing" as positive, matching normal attack-angle convention."""
+    small window (fixed real-time span, resolved via fps) centered on idx.
+    Image y grows downward, so dy is negated to report "upward swing" as
+    positive, matching normal attack-angle convention."""
+    half_window = max(1, round(half_window_s * fps))
     i0 = max(idx - half_window, 0)
     i1 = min(idx + half_window, len(bat_frames) - 1)
     a, b = bat_frames[i0]["tip"], bat_frames[i1]["tip"]
@@ -250,17 +278,20 @@ def phase_search_window(contact_frame, fps, n, pre_s=0.0, post_s=0.0):
     return i0, i1
 
 
-def ankle_speed_series(pose_2d_frames, fps, ankle_idx):
-    """Per-frame front-ankle speed in px/s (centered finite difference, same
-    method as bat_speeds), None where either neighbor frame lacks a confident
-    keypoint. Raw signal for find_stride_frame - never fabricated."""
+def keypoint_speed_series(pose_2d_frames, fps, keypoint_idx):
+    """Per-frame speed of a given 2D keypoint index, in px/s (centered finite
+    difference, same method as bat_speeds), None where either neighbor frame
+    lacks a confident keypoint. Generic over which keypoint (originally
+    ankle-only - renamed since the body already worked for any index; used
+    for front-ankle speed in find_stride_frame and lead-wrist speed in
+    wrist_lead_ms). Raw signal only - never fabricated."""
     n = len(pose_2d_frames)
     speeds = [None] * n
     for i in range(1, n - 1):
         kp_a, kp_b = pose_2d_frames[i - 1]["keypoints"], pose_2d_frames[i + 1]["keypoints"]
         if kp_a is None or kp_b is None:
             continue
-        a, b = kp_a[ankle_idx], kp_b[ankle_idx]
+        a, b = kp_a[keypoint_idx], kp_b[keypoint_idx]
         if a[2] <= 0.15 or b[2] <= 0.15:
             continue
         speeds[i] = dist(a[:2], b[:2]) / (2.0 / fps)
@@ -300,7 +331,7 @@ def find_extension_frame(knee_series, contact_frame, fps, n, search_s=2.0):
 def find_stride_frame(pose_2d_frames, fps, front_side, hip_px, contact_frame, n, search_s=2.5):
     """Stride/plant = last frame in a backward-only window from contact where
     front-ankle speed was sustained above STRIDE_SPEED_MIN_HIP_WIDTHS_PER_S
-    for STRIDE_SUSTAIN_FRAMES consecutive frames (a single-frame spike isn't
+    for STRIDE_SUSTAIN_S worth of consecutive frames (a single-frame spike isn't
     trusted, same "don't trust one noisy signal frame" lesson find_contact_
     frame's own docstring already documents for the bat-waggle false
     positive). Threshold empirically set from real data across all 7 emily_c
@@ -314,16 +345,17 @@ def find_stride_frame(pose_2d_frames, fps, front_side, hip_px, contact_frame, n,
                 "method": "front-ankle speed over a backward window from contact",
                 "confidence": None, "detail": {"reason": "no lead-side/hip-scale reading"}}
     ankle_idx = L_ANKLE_2D if front_side == "l" else R_ANKLE_2D
-    speeds_px = ankle_speed_series(pose_2d_frames, fps, ankle_idx)
+    speeds_px = keypoint_speed_series(pose_2d_frames, fps, ankle_idx)
     i0, i1 = phase_search_window(contact_frame, fps, n, pre_s=search_s)[0], contact_frame
 
+    sustain_frames = max(1, round(STRIDE_SUSTAIN_S * fps))
     threshold_px_s = STRIDE_SPEED_MIN_HIP_WIDTHS_PER_S * hip_px
     sustained_frames = []
     for i in range(i0, i1 + 1):
         if speeds_px[i] is not None and speeds_px[i] >= threshold_px_s:
             sustained_frames.append(i)
-    # Keep only frames that are part of a run of >= STRIDE_SUSTAIN_FRAMES
-    # consecutive above-threshold frames - rejects an isolated jitter spike.
+    # Keep only frames that are part of a run of >= sustain_frames consecutive
+    # above-threshold frames - rejects an isolated jitter spike.
     plant_frame = None
     run_start = None
     for i in range(i0, i1 + 1):
@@ -331,14 +363,14 @@ def find_stride_frame(pose_2d_frames, fps, front_side, hip_px, contact_frame, n,
         if above:
             if run_start is None:
                 run_start = i
-            if i - run_start + 1 >= STRIDE_SUSTAIN_FRAMES:
+            if i - run_start + 1 >= sustain_frames:
                 plant_frame = i
         else:
             run_start = None
     if plant_frame is None:
         return {
             "frame": None, "time_s": None,
-            "method": f"last frame of a >= {STRIDE_SUSTAIN_FRAMES}-frame sustained run of "
+            "method": f"last frame of a >= {sustain_frames}-frame sustained run of "
                       f"front-ankle speed >= {STRIDE_SPEED_MIN_HIP_WIDTHS_PER_S} hip-widths/s, "
                       f"in a {search_s}s backward window from contact",
             "confidence": None,
@@ -348,7 +380,7 @@ def find_stride_frame(pose_2d_frames, fps, front_side, hip_px, contact_frame, n,
         }
     return {
         "frame": plant_frame, "time_s": None,
-        "method": f"last frame of a >= {STRIDE_SUSTAIN_FRAMES}-frame sustained run of "
+        "method": f"last frame of a >= {sustain_frames}-frame sustained run of "
                   f"front-ankle speed >= {STRIDE_SPEED_MIN_HIP_WIDTHS_PER_S} hip-widths/s, "
                   f"in a {search_s}s backward window from contact",
         "confidence": "low",  # never "high" - a real plant instant this pipeline can't verify
@@ -358,7 +390,7 @@ def find_stride_frame(pose_2d_frames, fps, front_side, hip_px, contact_frame, n,
 
 
 def find_follow_through_frame(rotation_series, contact_frame, fps, n, search_s=3.0,
-                               decay_sustain_frames=5):
+                               decay_sustain_s=5 / 30):
     """Follow-through start = first frame of a >= decay_sustain_frames
     sustained run of body-rotation activity under ROTATION_MIN_DEG, after
     contact, having been elevated first - the weakest-grounded of the 5 new
@@ -376,6 +408,7 @@ def find_follow_through_frame(rotation_series, contact_frame, fps, n, search_s=3
     sustainably decays within the window (confirmed this happens on real
     data - e.g. Emily_C_AB1 (2) and (3) both stayed elevated or untracked
     through the full 3s window)."""
+    decay_sustain_frames = max(1, round(decay_sustain_s * fps))
     i1 = phase_search_window(contact_frame, fps, n, post_s=search_s)[1]
     was_elevated = False
     decay_run_start = None
@@ -475,7 +508,7 @@ def find_load_frame(pose_2d_frames, front_side, contact_frame, fps, n, search_s=
 
 
 def find_stance_frame(rotation_series, load_frame, stride_frame, contact_frame, fps, n,
-                       search_s=3.0, quiet_run_frames=5):
+                       search_s=3.0, quiet_run_s=5 / 30):
     """Stance = last frame of a sustained quiet run (rotation activity under
     ROTATION_MIN_DEG for >= quiet_run_frames consecutive frames) immediately
     before whichever of Load/Stride starts the swing, in a backward window
@@ -494,6 +527,7 @@ def find_stance_frame(rotation_series, load_frame, stride_frame, contact_frame, 
     "a brief lull between two rapid rotations," which is exactly why this
     stays capped at "low" unconditionally rather than ever being trusted as
     "high" - a coach-facing UI must not present this as a reliable marker."""
+    quiet_run_frames = max(1, round(quiet_run_s * fps))
     swing_start = min([f for f in (load_frame, stride_frame) if f is not None], default=contact_frame)
     i0 = phase_search_window(contact_frame, fps, n, pre_s=search_s)[0]
     run_len = 0
@@ -528,6 +562,115 @@ def find_stance_frame(rotation_series, load_frame, stride_frame, contact_frame, 
     }
 
 
+# --- Movement-pattern flags (new) - each reuses signals already computed
+# above rather than adding new pose/video processing. All are single-number
+# snapshots at or around contact, not validated kinematic-sequence
+# measurements - each carries its own honest confidence/limitation note,
+# same bar as the phase detectors above. ---
+
+def hip_midpoint_series(pose_2d_frames):
+    """Per-frame 2D pixel midpoint of L/R hip keypoints (same 0.15 confidence
+    floor body_scale_px already uses), None where either side is untracked."""
+    out = []
+    for f in pose_2d_frames:
+        kp = f["keypoints"]
+        if kp is None:
+            out.append(None)
+            continue
+        lh, rh = kp[L_HIP_2D], kp[R_HIP_2D]
+        out.append(((lh[0] + rh[0]) / 2, (lh[1] + rh[1]) / 2) if lh[2] > 0.15 and rh[2] > 0.15 else None)
+    return out
+
+
+def lateral_sway_hip_widths(pose_2d_frames, hip_px, stance_frame, contact_frame):
+    """Net 2D image-plane-x drift of the hip midpoint from stance to contact,
+    in hip-widths - how far the pelvis drifted sideways during load/stride
+    instead of staying put, a real fault coaches look for ('sway'). CAUTION:
+    2D image-plane x only - conflates true lateral sway with any toward/away-
+    from-camera depth change for a non-side-on camera angle (same single-
+    camera, no-stereo-calibration caveat every other body-relative number in
+    this file already carries). Returns None if stance_frame is unknown
+    (common - stance is the least reliable of the 5 phase detectors, see
+    find_stance_frame's own docstring) rather than falling back to the clip's
+    first tracked frame, which risks being an EARLIER pitch's stance in a
+    full at-bat clip (same caution the legacy `stride` field's own note
+    already documents)."""
+    if not hip_px or stance_frame is None:
+        return None
+    mids = hip_midpoint_series(pose_2d_frames)
+    a, b = mids[stance_frame], mids[contact_frame]
+    if a is None or b is None:
+        return None
+    return round((b[0] - a[0]) / hip_px, 3)
+
+
+def classify_rotation_pattern(knee_pct, rot_pct):
+    """Compares each signal's OWN clip-relative percentile AT THE CONTACT
+    INSTANT (already computed by find_contact_frame for its own argmax score
+    - not raw units, which aren't comparable). 'knee-dominant' if front-knee
+    extension sits much closer to its own clip-peak than body rotation does
+    to its own; 'hip-rotation-dominant' the reverse; 'balanced' within
+    KNEE_DOMINANT_MARGIN. A relative-emphasis snapshot AT CONTACT ONLY, not a
+    whole-swing sequencing analysis."""
+    if knee_pct is None or rot_pct is None:
+        return None, {"reason": "missing knee or rotation percentile at contact"}
+    diff = knee_pct - rot_pct
+    if abs(diff) < KNEE_DOMINANT_MARGIN:
+        pattern = "balanced"
+    elif diff > 0:
+        pattern = "knee-dominant"
+    else:
+        pattern = "hip-rotation-dominant"
+    return pattern, {
+        "knee_extension_percentile_at_contact": round(knee_pct, 3),
+        "rotation_activity_percentile_at_contact": round(rot_pct, 3),
+        "margin": KNEE_DOMINANT_MARGIN,
+    }
+
+
+def find_onset_frame(series, i0, i1, frac=0.5):
+    """First frame in [i0,i1] at which `series`'s own min-max-normalized
+    value, normalized WITHIN this window only (a fair self-relative floor,
+    not a new unvalidated absolute magnitude threshold), first reaches
+    >= frac."""
+    window = series[i0:i1 + 1]
+    norm = _minmax_norm(window)
+    for j, v in enumerate(norm):
+        if v is not None and v >= frac:
+            return i0 + j
+    return None
+
+
+def wrist_lead_ms(pose_2d_frames, fps, front_side, contact_frame, n, rotation_series):
+    """Compares onset timing of lead-wrist speed vs. body-rotation activity,
+    in the same bounded backward window find_load_frame already uses (2.5s -
+    see WRIST_LEAD_SEARCH_S). Positive = lead-wrist speed crossed its own
+    onset threshold before body rotation did ('hands start the swing');
+    negative = rotation led ('hips/trunk start the swing'). A coarse
+    single-number proxy, NOT a validated kinematic-sequence measurement (real
+    biomechanics research tracks angular velocity peaks across pelvis->
+    trunk->arm->bat; this pipeline only has 2D wrist position and a 2D
+    shoulder-line rotation proxy). No independent cross-check exists -
+    confidence always "low", same as find_load_frame's own wrist signal
+    whose window this reuses."""
+    if front_side is None:
+        return None, {"reason": "no lead-side reading"}
+    wrist_idx = L_WRIST_2D if front_side == "l" else R_WRIST_2D
+    i0 = phase_search_window(contact_frame, fps, n, pre_s=WRIST_LEAD_SEARCH_S)[0]
+    i1 = contact_frame
+    wrist_speed = keypoint_speed_series(pose_2d_frames, fps, wrist_idx)
+    wrist_onset = find_onset_frame(wrist_speed, i0, i1)
+    rotation_onset = find_onset_frame(rotation_series, i0, i1)
+    if wrist_onset is None or rotation_onset is None:
+        return None, {"reason": "no confident onset for wrist speed and/or rotation activity "
+                                 "in window"}
+    return round((rotation_onset - wrist_onset) / fps * 1000, 1), {
+        "wrist_onset_frame": wrist_onset,
+        "rotation_onset_frame": rotation_onset,
+        "search_window_s": WRIST_LEAD_SEARCH_S,
+    }
+
+
 def run(clip_dir):
     clip_dir = pathlib.Path(clip_dir)
     pose_2d = json.loads((clip_dir / "pose_2d.json").read_text())
@@ -543,15 +686,42 @@ def run(clip_dir):
     shoulder_px, hip_px = body_scale_px(p2_frames)
     speeds = bat_speeds(bat_frames, fps)
     knee_series = knee_extension_series(p3_frames)
-    rotation_series = rotation_activity_series(p3_frames)
+    rotation_series = rotation_activity_series(p3_frames, fps)
     contact_frame, joint_score, speed_norm, knee_norm, rot_norm = find_contact_frame(
         speeds, knee_series, rotation_series)
 
     result = {"clip": clip_dir.name, "n_frames": n, "fps": fps}
 
     if contact_frame is None:
-        result["error"] = ("No frame has a tracked bat-speed reading, a knee-angle reading, "
-                            "AND a body-rotation reading all at once - cannot locate contact.")
+        # detect_2d.py's own bat_evidence stat (see its build_batter_track)
+        # distinguishes two very different reasons contact can't be found: a
+        # generically hard/untrackable clip, vs. a person who tracks CLEANLY
+        # but whose bat almost never resolves - confirmed on a real clip to
+        # mean the camera was positioned along the baseline instead of
+        # behind the backstop (the batter is small/distant in every frame,
+        # so the bat rarely has enough pixels to detect, even though the
+        # person themselves tracks fine). Worth a specific, actionable
+        # message rather than the generic one, since this is a filming
+        # problem a coach can actually fix on the next upload.
+        bat_evidence = bat_path.get("meta", {}).get("bat_evidence") or {}
+        track_frames = bat_evidence.get("track_frames", 0)
+        bat_evidence_frames = bat_evidence.get("bat_evidence_frames", 0)
+        likely_framing_issue = (
+            n > 0 and track_frames / n >= 0.5
+            and bat_evidence_frames <= max(5, round(0.02 * track_frames))
+        )
+        if likely_framing_issue:
+            result["error"] = (
+                f"A batter tracked cleanly through this clip ({track_frames}/{n} frames), but the "
+                f"bat itself was almost never confidently detected ({bat_evidence_frames} frame(s) "
+                "with real bat-holding evidence) - cannot locate contact. This usually means the "
+                "camera wasn't positioned behind the backstop, facing the batter (e.g. filmed from "
+                "along the baseline instead) - the batter is visible, but too small/distant for the "
+                "bat itself to be reliably detected. Try re-filming from directly behind home plate."
+            )
+        else:
+            result["error"] = ("No frame has a tracked bat-speed reading, a knee-angle reading, "
+                                "AND a body-rotation reading all at once - cannot locate contact.")
         (clip_dir / "metrics.json").write_text(json.dumps(result, indent=2))
         print(f"[metrics] {result['error']}")
         return result
@@ -615,8 +785,14 @@ def run(clip_dir):
     contact_angles = p3_frames[contact_frame]["angles"]
     result["hip_shoulder_separation_at_contact_deg"] = contact_angles["hip_shoulder_separation_deg"]
     result["torso_tilt_at_contact_deg"] = contact_angles["torso_tilt_from_vertical_deg"]
+    # .get(), not direct indexing: pelvis_tilt_from_level_deg is a new
+    # lift_3d.py field - already-processed clips' pose_3d.json won't have it
+    # until the backfill script re-derives angles from their already-stored
+    # joints (no VideoPose3D re-run needed), so this must degrade to None
+    # rather than KeyError on old data.
+    result["pelvis_tilt_at_contact_deg"] = contact_angles.get("pelvis_tilt_from_level_deg")
 
-    front = front_side_at(p2_frames, contact_frame)
+    front = front_side_at(p2_frames, fps, contact_frame)
     # Lead (front) arm = same side as the front leg for a normal open/closed
     # stance swing (front arm is the one nearer the pitcher, same side as the
     # front foot) - documented heuristic, not a certainty.
@@ -698,6 +874,45 @@ def run(clip_dir):
         "contact": result["contact"],
         "extension": extension,
         "follow_through": follow_through,
+    }
+
+    # Automated movement-pattern flags - each reuses signals already computed
+    # above, none add new pose/video processing. See each function's own
+    # docstring for method + honest confidence ceiling.
+    sway = lateral_sway_hip_widths(p2_frames, hip_px, stance["frame"], contact_frame)
+    sway_detail = {} if sway is not None else {"reason": "stance frame not found"}
+    rotation_pattern, rotation_pattern_detail = classify_rotation_pattern(
+        result["contact"]["knee_extension_percentile_at_contact"],
+        result["contact"]["rotation_activity_percentile_at_contact"],
+    )
+    wrist_ms, wrist_detail = wrist_lead_ms(p2_frames, fps, front, contact_frame, n, rotation_series)
+
+    result["movement_flags"] = {
+        "lateral_sway": {
+            "value": sway,
+            "unit": "hip-widths (2D image-plane x, not stereo-calibrated - see "
+                    "lateral_sway_hip_widths docstring)",
+            "confidence": stance["confidence"] if sway is not None else None,
+            "method": "net 2D hip-midpoint x-drift from stance to contact, in hip-widths",
+            "detail": sway_detail,
+        },
+        "rotation_pattern": {
+            "value": rotation_pattern,
+            "confidence": result["contact"]["confidence"] if rotation_pattern is not None else None,
+            "method": f"compares knee-extension and body-rotation percentiles at contact (each "
+                      f"clip-relative, own min-max norm) - within {KNEE_DOMINANT_MARGIN} counts "
+                      "as balanced",
+            "detail": rotation_pattern_detail,
+        },
+        "wrist_lead_ms": {
+            "value": wrist_ms,
+            "unit": "milliseconds (positive = hands led rotation onset, negative = rotation led)",
+            "confidence": "low" if wrist_ms is not None else None,
+            "method": "compares onset frame (first crossing 50% of its own window-local range) "
+                      "of lead-wrist speed vs. body-rotation activity, in the same backward "
+                      "window find_load_frame uses",
+            "detail": wrist_detail,
+        },
     }
 
     out_path = clip_dir / "metrics.json"

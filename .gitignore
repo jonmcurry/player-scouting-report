@@ -11,6 +11,13 @@ frames/*
 scripts/pose_out/
 scripts/models/
 
+# pose3d pipeline's own YOLO weights (yolo11m-pose.pt, yolov8m.pt) - same
+# large-binary-fetched-on-demand policy as scripts/models/ above (see
+# scripts/pose3d/README.md's own setup instructions) - scripts/models/ above
+# does NOT cover this separate path, confirmed missing here rather than
+# assumed covered.
+scripts/pose3d/models/
+
 # Isolated venv + cloned model repos + checkpoints for the pose3d pipeline -
 # multi-GB, machine-specific, reproducible from scripts/pose3d/README.md.
 # (frames/* below already covers all pipeline output under frames/.)
@@ -44,3 +51,11 @@ mobile/node_modules/
 mobile/android/*.keystore
 mobile/android/*.jks
 mobile/android/keystore.properties
+
+# Per-dev-machine LAN override for the coach app's native-shell config (see
+# coach/config.js) - same .env/.env.example pattern as above: this file is
+# specific to one dev's home network, coach/config.local.example.js is the
+# tracked template. webDir points straight at coach/ (see
+# mobile/capacitor.config.json), so this genuinely ships into a native build
+# if committed - never commit it.
+coach/config.local.js

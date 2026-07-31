@@ -40,6 +40,8 @@
 
 <nav class="bottom-nav" id="bottomNav"></nav>
 
+<!-- Dev-only, gitignored, silently absent in a real deploy - see coach/config.js -->
+<script src="./config.local.js"></script>
 <script type="module">
   import { supabase, requireSession, CHECKPOINTS, qs } from "./shared.js";
   import { renderTeamAppBar, renderBottomNav, getLastPlayerSlug } from "./components/appShell.js";

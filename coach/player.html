@@ -45,11 +45,14 @@
 
 <nav class="bottom-nav" id="bottomNav"></nav>
 
+<!-- Dev-only, gitignored, silently absent in a real deploy - see coach/config.js -->
+<script src="./config.local.js"></script>
 <script type="module">
   import { supabase, requireSession, getMyDisplayName, CHECKPOINTS, qs, renderReviewBadge } from "./shared.js";
   import { renderStepper } from "./components/stepper.js";
   import { openCompModal } from "./components/compModal.js";
   import { loadClipSkeletonData, loadExtensionScore, buildExtensionCorrectedFrames, renderSkeletonComparison } from "./components/skeletonComparison.js";
+  import { loadSwingMetrics, renderSwingMetricsPanel } from "./components/swingMetricsPanel.js";
   import { uploadRawClip } from "./components/videoUpload.js";
   import { renderPlayerAppBar, renderBottomNav, loadRosterWithProgress, setLastPlayerSlug } from "./components/appShell.js";
   import { renderZonePicker, zoneLabel, outcomeLabel } from "./components/pitchZonePicker.js";
@@ -400,7 +403,7 @@
 
     const { data: clips, error } = await supabase
       .from("video_clips")
-      .select("id, status, error_message, clip_slug, position, created_at")
+      .select("id, status, error_message, clip_slug, position, created_at, claimed_at")
       .eq("game_log_entry_id", gameLogEntryId)
       .order("position");
     if (error) {
@@ -424,6 +427,8 @@
           <input type="file" accept="video/*" class="tap-target">
           <button class="tap-target" data-attach-video>Attach Video</button>
         </div>
+        <p class="hint">Film from directly behind home plate, facing the batter — a camera along the
+          baseline or outfield can't reliably pick out the bat.</p>
       `;
       return;
     }
@@ -451,7 +456,8 @@
       <div class="clip-tabs-container">
         <div class="clip-tabs">
           ${tabsHtml}
-          <button class="clip-tab-btn tap-target add-clip-btn" data-add-clip-for-entry="${gameLogEntryId}">➕ Add Pitch</button>
+          <button class="clip-tab-btn tap-target add-clip-btn" data-add-clip-for-entry="${gameLogEntryId}"
+                  title="Film from directly behind home plate, facing the batter">➕ Add Pitch</button>
         </div>
         <input type="file" accept="video/*" class="add-clip-input" data-game-log-entry="${gameLogEntryId}" style="display:none;">
       </div>
@@ -469,14 +475,26 @@
    * need to round-trip it through the row). */
   async function renderActiveClip(clipMount, gameLogEntryId, clip, extensionScore) {
     if (clip.status === "pending" || clip.status === "processing") {
-      // Real elapsed time (since the clip was actually created/uploaded),
-      // not a fabricated percentage - there's no real progress fraction
-      // available from the pipeline, only pending/processing/ready/failed,
-      // so a numeric progress bar would be inventing precision that
-      // doesn't exist. The elapsed counter itself ticks client-side only
-      // (startElapsedTicker(), no network calls) - it's not what tells this
-      // page a clip finished, just visual reassurance that it's alive.
-      const since = clip.created_at ? new Date(clip.created_at).getTime() : Date.now();
+      // Real elapsed time since the worker actually claimed this clip
+      // (claimed_at) - NOT clip.created_at, which is the original
+      // upload time and never changes on a Retry (uploadQueue.ts's
+      // claimClip() resets claimed_at to now() on every claim, including a
+      // post-Retry re-claim, but created_at is only ever set once at insert).
+      // Using created_at here made a Retry's elapsed counter silently keep
+      // counting from the ORIGINAL upload instead of resetting - confirmed
+      // directly against a real stuck-looking clip (30+ min shown, only ~19
+      // actually reprocessing) before this fix. Not a fabricated percentage
+      // either way - there's no real progress fraction available from the
+      // pipeline, only pending/processing/ready/failed, so a numeric
+      // progress bar would be inventing precision that doesn't exist. The
+      // elapsed counter itself ticks client-side only (startElapsedTicker(),
+      // no network calls) - it's not what tells this page a clip finished,
+      // just visual reassurance that it's alive.
+      const since = clip.claimed_at
+        ? new Date(clip.claimed_at).getTime()
+        : clip.created_at
+          ? new Date(clip.created_at).getTime()
+          : Date.now();
       clipMount.innerHTML = `
         <p class="hint processing-indicator" data-processing-since="${since}">
           <span class="processing-spinner"></span>
@@ -540,6 +558,13 @@
     const canvasContainer = document.createElement("div");
     clipMount.appendChild(canvasContainer);
     renderSkeletonComparison(canvasContainer, { realFrames: pose3dData.frames, correctedFrames, phases, note });
+
+    const metricsRow = await loadSwingMetrics(clip.id);
+    if (metricsRow) {
+      const metricsMount = document.createElement("div");
+      clipMount.appendChild(metricsMount);
+      renderSwingMetricsPanel(metricsMount, metricsRow);
+    }
 
     const actionRow = document.createElement("div");
     actionRow.style.cssText = "display:flex;justify-content:flex-end;margin-top:8px;";
@@ -786,7 +811,9 @@
           <input type="text" id="newAb" placeholder="AB #">
           <input type="text" id="newPitch" placeholder="Pitch type/context (optional, e.g. &quot;Rise ball&quot;)">
           <input type="text" id="newResult" placeholder="Result">
-          <label class="hint" for="newVideo">Video (optional) — processing starts automatically after upload</label>
+          <label class="hint" for="newVideo">Video (optional) — processing starts automatically after upload.
+            Film from directly behind home plate, facing the batter — a camera along the baseline or
+            outfield can't reliably pick out the bat.</label>
           <input type="file" id="newVideo" accept="video/*">
           <button class="primary tap-target" id="addAtBatBtn">Add At-Bat</button>
           <p class="hint" id="addAtBatStatus"></p>

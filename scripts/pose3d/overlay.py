@@ -26,7 +26,9 @@ SKELETON_EDGES = [
     (5, 7), (7, 9), (6, 8), (8, 10),
     (11, 13), (13, 15), (12, 14), (14, 16),
 ]
-TRAIL_LEN = 12
+TRAIL_LEN_S = 12 / 30  # was a raw frame count - see metrics.py's ROTATION_WINDOW_S
+    # comment for why this needs to be time-based: a fixed frame count covers
+    # 8x less real time at 240fps, showing 8x less real bat motion in the trail.
 
 
 def run(clip_dir, video_path):
@@ -50,7 +52,7 @@ def run(clip_dir, video_path):
     out_path = clip_dir / "overlay.mp4"
     writer = cv2.VideoWriter(str(out_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
 
-    trail = deque(maxlen=TRAIL_LEN)
+    trail = deque(maxlen=max(1, round(TRAIL_LEN_S * fps)))
     i = 0
     while True:
         ok, frame = cap.read()

@@ -135,6 +135,18 @@ def frame_angles(joints):
     l_knee = joint_angle_3d(joints[L_HIP], joints[L_KNEE], joints[L_ANKLE])
     r_knee = joint_angle_3d(joints[R_HIP], joints[R_KNEE], joints[R_ANKLE])
     torso_tilt = tilt_from_vertical(joints[HIP], joints[THORAX])
+    # Same tilt_from_vertical() helper used for torso_tilt above, applied to
+    # the L_HIP->R_HIP line instead of HIP->THORAX. That line is normally
+    # near-horizontal (not vertical) in a standing pose, so its deviation
+    # from LEVEL is what a coach means by "pelvis tilt" - the complement of
+    # its tilt-from-vertical reading (90deg = perfectly level -> 0deg
+    # deviation). Sign-agnostic (0-90, no left/right-higher indication),
+    # same convention torso_tilt_from_vertical_deg already uses - not
+    # anatomically validated against a known-tilt reference (no ground truth
+    # exists for this ad-hoc footage, same caveat every angle here carries).
+    hip_line_tilt_from_vertical = tilt_from_vertical(joints[L_HIP], joints[R_HIP])
+    pelvis_tilt_from_level = (90.0 - hip_line_tilt_from_vertical
+                               if hip_line_tilt_from_vertical is not None else None)
 
     def r1(v):
         return round(float(v), 2) if v is not None else None
@@ -144,6 +156,7 @@ def frame_angles(joints):
         "shoulder_line_deg": r1(shoulder_line),
         "hip_line_deg": r1(hip_line),
         "torso_tilt_from_vertical_deg": r1(torso_tilt),
+        "pelvis_tilt_from_level_deg": r1(pelvis_tilt_from_level),
         "l_elbow_angle_deg": r1(l_elbow),
         "r_elbow_angle_deg": r1(r_elbow),
         "l_knee_angle_deg": r1(l_knee),

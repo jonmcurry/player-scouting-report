@@ -97,6 +97,19 @@ CSV format, not this pipeline's JSON contract.
    if the full-resolution model can't track a small/blurry batter, a lighter
    model over the same footage has no reason to do better at finding the
    window either, whereas audio doesn't depend on visual resolution at all.
+0.5. **`decimate.py`** - for uploads over 120fps (240fps slow-mo and
+   similar), subsamples down to ~30fps before the expensive stages run - a
+   pure no-op for every clip below that threshold (every real clip processed
+   so far is ~24-30fps). `lift_3d.py`'s VideoPose3D model has a FIXED
+   243-frame receptive field baked into its pretrained weights (not a
+   tunable constant) - at 240fps that's ~1.0s of real-time context instead
+   of the ~8.1s it was informally validated against at ~30fps, since the
+   model has no idea frames are arriving faster, it just sees 243 of them.
+   Filming guidance: many phones' 240fps modes cap resolution (1080p/720p
+   depending on model), trading temporal for spatial resolution - this can
+   worsen small/blurry-subject tracking (the same real failure mode
+   `detect_2d.py`'s quality gate above exists to catch fast) unless filmed
+   tighter/closer to compensate.
 1. **`detect_2d.py`** - YOLO11-pose (all people, COCO-17 keypoints) + YOLOv8
    bat detection/tracking on every frame, then:
    - **Batter identity**: builds a persistent track per detected person for
@@ -122,8 +135,20 @@ CSV format, not this pipeline's JSON contract.
    arbitrary one, and how it was confirmed rather than assumed). Computes
    per-frame coaching angles: hip-shoulder separation, torso tilt, l/r elbow
    angle, l/r knee angle.
-3. **`metrics.py`** - contact-instant detection + summary metrics. See "Why
-   contact detection needed two iterations" below.
+3. **`metrics.py`** - contact-instant detection + summary metrics, plus
+   automated movement-pattern flags (lateral sway, knee-dominant vs.
+   hip-rotation-dominant, wrist-lead timing) layered on signals it already
+   computes - no new pose/video processing. See "Why contact detection
+   needed two iterations" below.
+3.5. **`refine_bat_speed.py`** - only runs when Stage 0.5 decimated the
+   input. Re-measures peak bat speed at the TRUE original frame rate in a
+   short (~1s) window around the already-found contact instant, from the
+   ORIGINAL undecimated video - a cheap, bat-only pass (no full pose/3D-lift)
+   over just that short window, since that's specifically what a high frame
+   rate is good for (a decimated-to-30fps cadence can under-sample a fast
+   bat's true peak between sampled frames). Purely additive to metrics.json
+   (`max_bat_speed_full_rate`) - never replaces the decimated-cadence
+   reading.
 4. **`overlay.py`** - renders skeleton + bat trail + contact-frame highlight
    back onto the source video for visual QA.
 

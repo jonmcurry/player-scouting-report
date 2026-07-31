@@ -18,16 +18,26 @@ lighter model run over the same footage has no reason to do better at finding
 the window in the first place. Audio doesn't depend on visual
 resolution/focus at all, so it isn't subject to that same blind spot.
 
-Honesty stance (same as metrics.py's contact/phase detectors): never guess a
-wrong window. Every condition below that isn't a clean, confident, isolated
-onset falls back to handing the ORIGINAL unmodified video path back to the
-caller - identical to today's existing full-clip behavior - rather than risk
-silently trimming away the real swing. A confidently-wrong trim is far worse
-than no speedup at all.
+Speed stance: a raw upload becoming a SHORT analysis window is the entire
+point of this stage - Stages 1-4 are the genuinely expensive ones (two full
+per-frame YOLO passes + a 3D lift), and their cost scales directly with
+however many frames Stage 0 hands them. A real 1GB/27,647-frame/921s clip
+took ~15-22 minutes end to end specifically BECAUSE ambiguous audio (multiple
+similarly-loud onsets - a noisy recording, not just one foul ball near the
+real swing) used to fall all the way back to analyzing the entire clip rather
+than commit to a guess. Fixed: any peak clearing the absolute height
+threshold gets used - ambiguous just downgrades `confidence` to "low"
+(surfaced in stage0.json), it no longer blocks the trim. This trades a small
+chance of centering the window on the wrong transient for guaranteed speed;
+metrics.py's OWN independent, multi-signal contact detection still runs for
+real within whatever window this picks and is the actual place a bad guess
+here would get caught (a low bat-speed-normalized-product confidence, same
+as today). Only a clip with literally zero audio signal at all (no audio
+stream, silent/muted track, or extraction failure) still falls back to the
+full clip - see _fallback() callers below.
 
 Usage: python locate_swing.py <video_path> <out_dir>
-  (writes out_dir/stage0.json and, if a confident trim is made,
-  out_dir/_trimmed_input.mp4)
+  (writes out_dir/stage0.json and, if a trim is made, out_dir/_trimmed_input.mp4)
 """
 import sys
 import json
@@ -72,9 +82,21 @@ PEAK_HEIGHT = 0.5          # must reach at least half this clip's own dynamic ra
 PEAK_PROMINENCE = 0.3      # must stand out from its local baseline
 PEAK_MIN_DISTANCE_S = 1.0  # candidate onsets must be at least this far apart
 AMBIGUITY_MARGIN = 0.15    # top vs. second-best normalized height must
-                           # differ by at least this much, or treat as
-                           # ambiguous (e.g. a foul ball plus the real
-                           # contact) and fall back rather than guess.
+                           # differ by at least this much, or the top peak
+                           # is still used but confidence downgrades to "low"
+                           # (see find_confident_peak) - never blocks the trim.
+
+MAX_AMBIGUOUS_CANDIDATES = 4  # cap on how many candidate windows get a real
+                               # motion-energy check when ambiguous - each one
+                               # costs an ffmpeg trim + a cheap OpenCV decode,
+                               # so this bounds that work regardless of how
+                               # many peaks the audio produced (a real clip
+                               # produced 10).
+MOTION_DOWNSCALE_WIDTH = 160  # pixels - motion_energy_score only needs a
+                               # coarse "did something big just move" signal,
+                               # not real detail; small enough that decoding
+                               # a ~12-20s window is fast regardless of the
+                               # source resolution/frame count.
 
 
 def _fallback(reason, video_path):
@@ -158,11 +180,22 @@ def onset_strength_series(wav_path):
 
 
 def find_confident_peak(onset_norm, hop, sr):
-    """Returns (contact_s, reason_if_none). Deliberately conservative - zero
-    peaks clearing the thresholds, or multiple peaks too close in strength
-    to separate confidently, both return None rather than guess."""
+    """Returns (contact_s, confidence, note, ambiguous_candidates_s).
+    contact_s is None ONLY when zero peaks clear the absolute height
+    threshold at all - an ambiguous multi-candidate case still returns a
+    best-guess instant (the single strongest peak, in case the caller wants
+    a fast path without motion-scoring), PLUS up to MAX_AMBIGUOUS_CANDIDATES
+    candidate times (by descending height) for run() to disambiguate among
+    with a cheap real signal (motion energy) instead of blindly trusting
+    "loudest = real contact" - a real 1GB clip proved that assumption wrong:
+    the loudest of 10 candidates trimmed to a window with no bat-holding
+    evidence at all, and contact detection failed outright. A short analysis
+    window is still the entire point of Stage 0 (Stages 1-4 are the genuinely
+    expensive ones), but "short and wrong" produces nothing usable - not an
+    acceptable tradeoff, so this earns its keep by checking a handful of
+    candidates for real before commiting to one."""
     if len(onset_norm) == 0:
-        return None, "empty onset series"
+        return None, None, "empty onset series", []
 
     min_distance = max(1, round(PEAK_MIN_DISTANCE_S / (hop / sr)))
     peaks, props = find_peaks(
@@ -170,20 +203,36 @@ def find_confident_peak(onset_norm, hop, sr):
     )
     if len(peaks) == 0:
         top = onset_norm.max() if len(onset_norm) else 0.0
-        return None, f"no onset peak cleared confidence threshold (top height={top:.2f} < {PEAK_HEIGHT})"
+        return None, None, f"no onset peak cleared confidence threshold (top height={top:.2f} < {PEAK_HEIGHT})", []
 
     heights = props["peak_heights"]
     order = np.argsort(heights)[::-1]
     top_i = peaks[order[0]]
     top_h = heights[order[0]]
+    confidence = "high"
+    note = None
+    ambiguous_candidates_s = []  # only populated when ambiguous - see below
     if len(peaks) > 1:
         second_h = heights[order[1]]
         if top_h - second_h < AMBIGUITY_MARGIN:
-            return None, (f"ambiguous - {len(peaks)} candidate peaks within margin "
-                          f"(top={top_h:.2f}, runner-up={second_h:.2f})")
+            confidence = "low"
+            # Once ambiguous, take the top MAX_AMBIGUOUS_CANDIDATES peaks by
+            # height outright - NOT just the ones within AMBIGUITY_MARGIN of
+            # the loudest. On a real clip, restricting to that tight margin
+            # only admitted 2 of 10 real peaks (the other 8, including
+            # several at 0.77-0.83 height, were excluded outright) - and
+            # BOTH admitted candidates turned out to have no real swing in
+            # them. A peak's exact loudness relative to the single loudest
+            # one isn't a reliable signal for "definitely not real contact";
+            # every peak that cleared the base PEAK_HEIGHT/PROMINENCE
+            # thresholds already earned a real shot at being tried.
+            top_idx = order[:MAX_AMBIGUOUS_CANDIDATES]
+            ambiguous_candidates_s = [peaks[i] * hop / sr for i in top_idx]
+            note = (f"ambiguous - {len(peaks)} candidate peaks within margin "
+                     f"(top={top_h:.2f}, runner-up={second_h:.2f})")
 
     contact_s = top_i * hop / sr
-    return contact_s, None
+    return contact_s, confidence, note, ambiguous_candidates_s
 
 
 def trim_video(video_path, start_s, duration_s, out_path):
@@ -201,6 +250,68 @@ def trim_video(video_path, start_s, duration_s, out_path):
     except (ValueError, subprocess.SubprocessError):
         return False
     return trimmed_duration > 0.5  # sanity floor, not a tight tolerance
+
+
+def motion_energy_score(video_path):
+    """Cheap, non-ML disambiguator between a handful of already-short
+    (~12-20s) candidate windows: the single biggest frame-to-frame pixel
+    change, on downscaled grayscale frames. A real bat swing is a fast,
+    large-amplitude movement; a false audio trigger (dugout noise, a foul
+    tip's echo, someone hitting the backstop) usually isn't paired with one
+    in the SAME short window. This only ever runs on an already-trimmed
+    handful-of-seconds clip, never the original upload - decoding a few
+    hundred downscaled frames is fast regardless of source resolution/frame
+    count, nothing like the cost of the real per-frame YOLO passes this
+    exists specifically to avoid running on the wrong window."""
+    import cv2
+    cap = cv2.VideoCapture(str(video_path))
+    prev_gray = None
+    max_diff = 0.0
+    try:
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            h, w = frame.shape[:2]
+            scale = MOTION_DOWNSCALE_WIDTH / w
+            small = cv2.resize(frame, (MOTION_DOWNSCALE_WIDTH, max(1, round(h * scale))))
+            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32)
+            if prev_gray is not None:
+                max_diff = max(max_diff, float(np.mean(np.abs(gray - prev_gray))))
+            prev_gray = gray
+    finally:
+        cap.release()
+    return max_diff
+
+
+def rank_ambiguous_windows(video_path, candidates_s, duration_s, out_dir):
+    """Trims a short candidate window per audio candidate (bounded by
+    MAX_AMBIGUOUS_CANDIDATES) and scores each with motion_energy_score - a
+    cheap proxy for "does something swing-like happen here," used only to
+    ORDER candidates for run_pipeline.py to try with the real detector
+    (metrics.py's own contact/phase detection), not to pick a final winner
+    unilaterally. Motion energy is a proxy, not ground truth: a real clip
+    proved that even the highest-motion candidate can still have no real bat
+    activity. Returns a list of dicts sorted best-first (by motion score),
+    each with the ALREADY-TRIMMED video path - nothing is deleted here, so
+    every candidate stays available for a caller to actually try."""
+    scored = []
+    for i, cand_s in enumerate(candidates_s):
+        start = max(0.0, cand_s - PRE_MARGIN_S)
+        end = min(duration_s, cand_s + POST_MARGIN_S)
+        cand_path = out_dir / f"_candidate_{i}.mp4"
+        if not trim_video(video_path, start, end - start, cand_path):
+            print(f"[locate_swing] candidate {i} (t={cand_s:.2f}s): trim failed, skipping")
+            continue
+        score = motion_energy_score(cand_path)
+        print(f"[locate_swing] candidate {i} (t={cand_s:.2f}s, window [{start:.2f}s, {end:.2f}s]): "
+              f"motion score={score:.2f}")
+        scored.append({
+            "index": i, "score": score, "contact_estimate_s": cand_s,
+            "trim_start_s": start, "trim_end_s": end, "video_path_for_pipeline": str(cand_path),
+        })
+    scored.sort(key=lambda d: d["score"], reverse=True)
+    return scored
 
 
 def run(video_path, out_dir):
@@ -241,25 +352,52 @@ def run(video_path, out_dir):
         (out_dir / "stage0.json").write_text(json.dumps(result, indent=2))
         return result
 
-    contact_s, reason = find_confident_peak(onset_norm, hop, sr)
+    contact_s, confidence, note, ambiguous_candidates_s = find_confident_peak(onset_norm, hop, sr)
     if contact_s is None:
-        result = _fallback(reason, video_path)
+        # Truly zero signal to work with - no peak anywhere cleared even the
+        # absolute height threshold. Still the only remaining full-clip-
+        # fallback path left in this file.
+        result = _fallback(note, video_path)
         (out_dir / "stage0.json").write_text(json.dumps(result, indent=2))
         return result
 
-    trim_start = max(0.0, contact_s - PRE_MARGIN_S)
-    trim_end = min(duration_s, contact_s + POST_MARGIN_S)
+    candidate_windows = None  # only set when ambiguous - see below
+
+    if len(ambiguous_candidates_s) > 1:
+        # Loudest onset is NOT reliably the real swing - confirmed on a real
+        # clip where the loudest of 10 candidates had no bat-holding evidence
+        # at all and contact detection failed outright, AND the runner-up (by
+        # motion energy too) also failed. Motion energy is ALSO just a proxy,
+        # not ground truth - this function no longer picks a final winner
+        # itself. It ranks every candidate and hands the full ranked list
+        # back; run_pipeline.py tries them in order against the REAL detector
+        # (metrics.py's own contact/phase logic) and keeps the first one that
+        # actually finds something, rather than committing to any single
+        # cheap proxy's guess.
+        print(f"[locate_swing] {note} - ranking {len(ambiguous_candidates_s)} candidates by motion energy "
+              f"for run_pipeline.py to try in order (neither loudest audio nor most motion is reliably "
+              f"the real swing on its own)")
+        candidate_windows = rank_ambiguous_windows(video_path, ambiguous_candidates_s, duration_s, out_dir)
+        if not candidate_windows:
+            result = _fallback("all ambiguous-candidate trims failed", video_path)
+            (out_dir / "stage0.json").write_text(json.dumps(result, indent=2))
+            return result
+        best = candidate_windows[0]
+        trimmed_path = pathlib.Path(best["video_path_for_pipeline"])
+        trim_start, trim_end, contact_s = best["trim_start_s"], best["trim_end_s"], best["contact_estimate_s"]
+        reason = f"{note} - {len(candidate_windows)} candidates ranked by motion energy, trying in order"
+    else:
+        trimmed_path = out_dir / "_trimmed_input.mp4"
+        trim_start = max(0.0, contact_s - PRE_MARGIN_S)
+        trim_end = min(duration_s, contact_s + POST_MARGIN_S)
+        reason = note or f"confident onset at {contact_s:.2f}s"
+        print(f"[locate_swing] {reason} -> trimming [{trim_start:.2f}s, {trim_end:.2f}s] ({trim_end - trim_start:.1f}s)")
+        if not trim_video(video_path, trim_start, trim_end - trim_start, trimmed_path):
+            result = _fallback("trim ffmpeg failed or output verification failed", video_path)
+            (out_dir / "stage0.json").write_text(json.dumps(result, indent=2))
+            return result
+
     trim_duration = trim_end - trim_start
-    trimmed_path = out_dir / "_trimmed_input.mp4"
-
-    print(f"[locate_swing] confident onset at t={contact_s:.2f}s -> "
-          f"trimming [{trim_start:.2f}s, {trim_end:.2f}s] ({trim_duration:.1f}s)")
-
-    if not trim_video(video_path, trim_start, trim_duration, trimmed_path):
-        result = _fallback("trim ffmpeg failed or output verification failed", video_path)
-        (out_dir / "stage0.json").write_text(json.dumps(result, indent=2))
-        return result
-
     fps_guess = None
     try:
         import cv2
@@ -278,7 +416,11 @@ def run(video_path, out_dir):
     result = {
         "ran": True,
         "trimmed": True,
-        "reason": f"confident onset at {contact_s:.2f}s",
+        "reason": reason,
+        "confidence": confidence,  # "high" (clean single peak) or "low" (ambiguous - see candidate_windows)
+        # Full ranked list (best motion score first), only set when ambiguous - run_pipeline.py tries
+        # these in order against the real detector instead of trusting this file's own best guess.
+        "candidate_windows": candidate_windows,
         "video_path_for_pipeline": str(trimmed_path),
         "contact_estimate_s": contact_s,
         "trim_start_s": trim_start,

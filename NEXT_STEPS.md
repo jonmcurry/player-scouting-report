@@ -1,12 +1,315 @@
 # Open Items, To-Dos, and Future Considerations
 
-Snapshot as of 2026-07-30 (updated after the mobile UX rebuild, Latham/Emily C's Supabase
+Snapshot as of 2026-07-31 (updated after the mobile UX rebuild, Latham/Emily C's Supabase
 migration, the BarrelIQ rebrand, a performance/scale review, a skeleton bone-length rigidity fix,
 an untracked-frame rendering bug fix, a multi-clip switcher, delete-at-bat, interactive camera
-rotation, a processing-status polling/microrefresh fix, a Capacitor Android wrap, and a
-swing-locating pre-pass for the pose3d pipeline - see below). This file is a working status doc,
-not permanent documentation — prune or rewrite sections as they get resolved rather than letting
-it accumulate stale entries.
+rotation, a processing-status polling/microrefresh fix, a Capacitor Android wrap, a
+swing-locating pre-pass, a fast footage-quality gate, a post-completion-crash tolerance fix, a
+push toward Uplift.ai feature parity (surfaced summary metrics + movement-pattern flags, 240fps
+support) for the pose3d pipeline, an architecture review that led to a Stage 0 ambiguous-audio fix,
+an explicit Node/Python status contract, per-environment coach app config, and an orphaned-upload
+reconciliation tool, and a same-day follow-up push (real user testing of the Stage 0 fix uncovered
+it wasn't sufficient on its own, leading to a retry-across-candidates redesign, and separately a
+real camera-angle diagnosis + a smarter failure message + upload-time filming guidance - see
+below). This file is a working status doc, not permanent documentation — prune or rewrite sections
+as they get resolved rather than letting it accumulate stale entries.
+
+## Stage 0 fix wasn't enough on its own; camera-angle diagnosis; smarter failures (2026-07-31)
+
+Same-day follow-up to the "Architecture review follow-through" entry below, after actually testing
+the Stage 0 fix against real uploads (both direct pipeline runs and a real browser upload through
+the coach app on a rebuilt Android emulator build) surfaced two more real, distinct problems the
+first pass didn't catch.
+
+- [x] **The "always commit to the single loudest peak" Stage 0 fix was fast but frequently wrong.**
+      Verified directly: on `Emily_C_AB2_game2.mp4` (the real 1GB/921s clip), the loudest of 10
+      audio candidates trimmed to a 12s window with essentially no bat-holding evidence and
+      contact detection failed outright - fast (22.3s) but useless. A second "pick by motion energy
+      instead of loudness" attempt also failed on the same clip. **Root cause redesign**:
+      `find_confident_peak` now returns ALL top candidates (not just the single loudest, and not
+      filtered to a tight margin-of-the-loudest - that filter alone excluded 6 of 10 real peaks,
+      including the one that turned out to be the real swing), `rank_ambiguous_windows` scores them
+      by motion energy for ORDERING only, and `run_pipeline.py` tries them in rank order against the
+      REAL detector (metrics.py's own contact/phase logic), keeping the first one that actually
+      succeeds, capped at `MAX_CANDIDATE_ATTEMPTS=3` to bound worst-case time. Verified for real: a
+      clean, unambiguous clip (`Emily_C_AB2.mp4`) still processes in 23.1s and lands on the same real
+      contact instant (222.24s vs. the old full-clip method's 222.36s) the slow method found -
+      confirms this isn't just faster, it's still correct on clips with real signal to work with.
+- **`Emily_C_AB2_game2.mp4` specifically never succeeds, and that's correctly NOT a pipeline bug.**
+  User identified a real swing at ~13:00 (785.17s) via direct knowledge of the footage - confirmed
+  by pulling and visually inspecting actual frames (not assumed): that instant is a real live
+  at-bat (ball in flight, batter mid-swing, catcher/umpire in position), but it's only the 6th-
+  loudest of 10 audio peaks - the three loudest were umpire/coach foot traffic near the camera
+  during dead time (mound visit, walking the baseline), visually confirmed frame-by-frame. Even
+  directly testing the REAL, correct 12s window around the real swing, `detect_2d.py` still only
+  found bat-holding evidence in 2/360 frames and metrics.py still failed to locate contact. **Root
+  cause, confirmed by inspecting actual frames**: this specific clip was filmed from a camera
+  positioned parallel to first base/along the baseline (wide shot of the whole infield), not from
+  behind the backstop facing the batter as this whole pipeline's design assumes (see
+  `scripts/pose3d/README.md`'s own opening line). The batter is real, visible, and correctly
+  person-tracked (100% of sampled frames), but small/distant enough that the bat itself rarely
+  resolves to enough pixels for YOLOv8 to detect, regardless of which window is analyzed. Not
+  something Stage 0 (or any localization/ranking logic) can fix - a filming-angle problem, not a
+  software one. No code change chases this further; see the two UX mitigations below instead.
+- [x] **Smarter failure message**: `detect_2d.py`'s `build_batter_track` now returns (and persists
+      to `pose_2d.json`/`bat_path.json`'s shared `meta.bat_evidence`) how many frames actually showed
+      real bat-holding evidence for the chosen track, not just prints it. `metrics.py`'s "cannot
+      locate contact" failure now checks this: clean person-tracking (≥50% of frames) combined with
+      near-zero bat evidence (≤5 frames or ≤2%) triggers a specific, actionable message pointing at
+      a likely camera-angle problem and suggesting re-filming from behind the plate, instead of the
+      generic technical string. Verified for real against the confirmed-bad clip's actual window -
+      triggers correctly.
+- [x] **Upload-time filming guidance**: added a one-line hint ("Film from directly behind home
+      plate, facing the batter — a camera along the baseline or outfield can't reliably pick out the
+      bat") to all three places a coach can start an upload in `player.html` (the "Log New At-Bat"
+      modal, the empty-state "Attach Video" control, and a `title` tooltip on "Add Pitch") - proactive
+      insurance for coaches who don't already film this way by instinct, not a blocking requirement
+      (camera angle can't be detected before processing anyway). Verified no JS errors introduced
+      (static file-server load test) and confirmed present in a real rebuilt Android emulator
+      install; didn't get a visual on-device screenshot of the modal itself (in-app navigation via
+      raw ADB taps didn't land on the right control - not investigated further, low risk given the
+      change is simple additive markup in already-working template functions).
+- [ ] **To do: scope and add a "batting lesson" upload type.** On the batting-lesson question — my
+      recommendation, not yet acted on: add it as an additional upload type, don't scrap game
+      footage. Game-at-bat filming was a deliberate earlier product decision (the Game Log feature
+      is built around it), and today's failures traced to one clip's bad camera angle, not a
+      systemic flaw — several other real game clips process correctly. Lesson/BP footage would be
+      technically easier (closer camera, isolated swings, controlled background — sidesteps today's
+      whole class of problem) and worth having, but as a second option, not a replacement. If you
+      want to move on that, it needs its own scoping pass (data model, report format) — happy to
+      start whenever.
+
+## Architecture review follow-through (2026-07-31)
+
+A Principal-Software-Architect-style review (structural coupling, scalability, reliability, security)
+turned up a specific, evidence-backed cause of slow large-clip processing plus three smaller
+reliability/config gaps. All four were implemented and verified for real against the live local
+stack, not just typechecked - see below.
+
+- [x] **Stage 0's ambiguous-audio fallback discarded partial locality info.** The real
+      1GB/27,647-frame `Emily_C_AB2_game2` clip (~15min end to end) hit this: ambiguous audio
+      (multiple similarly-loud onset candidates, ~15min end to end) meant `locate_swing.py` gave up
+      entirely and analyzed the FULL clip instead of a trimmed window, even though the audio signal
+      genuinely narrowed things down to a handful of candidates - it just couldn't say which ONE was
+      real contact. Fixed: when ambiguous, trim to a single window spanning every candidate peak
+      (same margins as a confident single-peak trim), but only when that window is both ≤90s and
+      under half the clip's own duration - never guesses WHICH candidate is real (still Stage 1-4's
+      job), only bounds the search space using signal already in hand. See `AMBIGUOUS_WINDOW_MAX_S`/
+      `AMBIGUOUS_WINDOW_MAX_FRACTION` in `locate_swing.py`.
+      **Verified for real, honest result**: full end-to-end re-run of `Emily_C_AB2_game2.mp4`
+      through `run_pipeline.py` (1303.3s total, 27,647 frames). This clip's audio turned out to have
+      **10** candidate peaks within margin, not 2-3 - a genuinely noisy track, not just one foul ball
+      near the real swing. The new guard correctly recognized that a window spanning all 10
+      candidates (307.5s) is too wide relative to the 921.7s clip to bound usefully, and fell back to
+      the full clip exactly as before - the safety net did its job (no false-confidence trim that
+      might have missed the real swing), but it does NOT speed up THIS particular clip; that requires
+      either a tighter clustering of candidates or a different fix entirely for genuinely noisy audio.
+      Contact was still found (frame 522, 17.4s, confidence=low) and `pipeline_status.json` was
+      written correctly (`{"status":"complete","detail":{"outcome":"ok"}}`) - the #6 contract holds
+      for a real full run. Net effect on THIS clip: unchanged from before the fix (same full-clip
+      path, same output) - the fix helps the "one clear foul ball plus the real swing" case
+      specifically, not every ambiguous clip. Total time (1303.3s) is somewhat higher than the
+      ~15min/900s this same clip previously took per the entry below - not attributed to today's
+      changes (Stage 0's own added work here is negligible; Stages 1-4 ran the identical full-clip
+      path either way), more likely a cold-start/model-load difference on this run; not investigated
+      further.
+- [x] **`processUploadQueue.ts` guessed pipeline success/failure from a raw exit code** (needed
+      because some Windows/CUDA-driver combinations crash during Python's own interpreter teardown
+      AFTER a real successful run - see the "Real clip lost to a post-completion crash" entry below).
+      Replaced the metrics.json-mtime inference with an explicit contract: `run_pipeline.py` now
+      writes `pipeline_status.json` atomically (temp file + `os.replace`) as the LAST action of every
+      terminal path - full success, the low-quality-footage early return, and a wrapped top-level
+      exception all write it - and Node trusts only that file, never the exit code. Verified the
+      atomic-write mechanism directly and confirmed the full module (with all its torch/ultralytics
+      deps) still imports cleanly; `npx tsc --noEmit` clean.
+- [x] **`coach/config.js` hardcoded one dev's personal LAN IP** in a tracked source file - the exact
+      config-masquerading-as-source risk that ships-by-forgetting into a real build (Capacitor's
+      `webDir` points straight at `coach/`, so this genuinely would have shipped). Replaced with a
+      3-tier resolution: real `PROD_SUPABASE_URL`/`PROD_SUPABASE_ANON_KEY` (blank for now, ready to
+      fill in once a hosted Supabase project exists) → regular-browser `window.location.hostname`
+      derivation (unchanged, zero config) → native-shell-only `coach/config.local.js` (gitignored,
+      templated by the new `coach/config.local.example.js`, same `.env`/`.env.example` pattern
+      already used elsewhere in this repo). Throws a clear, actionable error if none apply, instead
+      of silently pointing a real device at some other dev's home network.
+      **Verified**: all 5 resolution branches tested synthetically; real browser load via Playwright
+      against a static file server showed zero console/page errors.
+- [x] **No visibility into GCS bytes with no matching `video_clips` row.** `videoUpload.js` uploads
+      raw bytes to GCS, then inserts the DB row as a separate step - a dropped connection between the
+      two leaves real, billed-for bytes nothing ever references again (the processing worker only
+      ever scans `video_clips` rows, never the bucket). New `npm run reconcile-uploads` CLI
+      (`src/cli/reconcileUploads.ts`) diffs GCS `raw/` objects against `video_clips.raw_gcs_path` and
+      reports orphans; report-only by default, `--delete-older-than-days N` opts into actual deletion
+      (never automatic). (Failed-clip visibility/retry, the other half of this gap, turned out to
+      already be fully built in `player.html` - nothing needed there.)
+      **Verified for real**: found and deleted one genuine 965MB orphaned upload sitting in the local
+      dev GCS emulator (`latham-lady-bison-white-10u/emily_c/raw/1000000019-1785517226030.mp4`,
+      byte-identical in size to `videos/Emily_C_AB2_game2.mp4` - a redundant duplicate from earlier
+      browser-upload testing, not unique data). Local GCS emulator bucket is now empty.
+- **Not done, deliberately out of scope this pass**: testing the real (non-emulator) signed-GCS-URL
+  path (needs real GCP credentials, not available while testing internally), actually running the
+  worker on a second machine (the atomic-claim design in `uploadQueue.ts` already supports this with
+  zero code changes - untested in practice, not a code gap), a read-side cache (not needed at current
+  scale), and real stage-by-stage progress reporting from inside the Python pipeline (still just an
+  elapsed-time indicator during multi-minute runs).
+- **Also found, not yet cleaned up**: five identical 508MB leftover local copies of
+  `Emily_C_AB1_game2` sit in `videos/_uploads/` (~2.4GB total) - `processUploadQueue.ts` is supposed
+  to delete its local raw download after a clip reaches `status='ready'`, so their presence means
+  those attempts never reached that point. Not deleted here since this was scoped to the GCS
+  emulator specifically, not local disk - flag for a follow-up pass.
+
+## Push toward Uplift.ai feature parity, single-camera only (2026-07-31)
+
+User wants the swing analysis to feel more like https://www.uplift.ai/sports/softball (two-camera
+stereo 3D at 240fps, real calibrated units, automated movement flags, auto-segmented phases) while
+staying single-camera by choice. Confirmed via AskUserQuestion: build surfacing+flags and 240fps
+support now; real single-camera calibrated units (a bat-length reference) is designed but
+deliberately not built this pass.
+
+- [x] **Nearly all of metrics.py's rich per-frame biomechanics (bat speed, attack angle,
+      hip-shoulder separation, torso tilt, elbow/knee angles, stride) never reached the coach UI**
+      - only phase timestamps + a confidence badge did (confirmed by tracing the actual query
+      `player.html` ran, and grepping `src/` for every other field - zero hits outside metrics.py
+      itself). New `video_clip_metrics` table (migration 00014) + `upsertVideoClipMetrics` (rides
+      along inside `ingestPhases`, no separate CLI) + new `coach/components/swingMetricsPanel.js`
+      (a collapsed-by-default "Swing Metrics" drawer, same visual conventions as the rest of this
+      page) now surfaces all of it.
+- [x] **New automated movement-pattern flags** in `metrics.py`, each built on signals already
+      computed (no new pose/video processing): lateral sway (2D hip-midpoint drift from stance to
+      contact), knee-dominant vs. hip-rotation-dominant (compares the same percentiles
+      `find_contact_frame` already computes), wrist-lead timing (onset-crossing comparison, reuses
+      `find_load_frame`'s window). Plus a new `pelvis_tilt_from_level_deg` field in `lift_3d.py`
+      (same `tilt_from_vertical()` helper already used for torso tilt, applied to the hip line).
+      Each carries its own honest confidence/limitation note, same bar as the existing phase
+      detectors - rendered in the UI as `.badge.ai-draft` rows with the caveat text always visible
+      next to the number, never a bare figure.
+- [x] **Backfilled all 13 already-processed real clips** with the new `pelvis_tilt_from_level_deg`
+      field (recomputed from already-stored 3D joints, no VideoPose3D re-run needed) - verified
+      every clip's contact frame/phases/confidence stayed byte-identical (only trivial ~0.01deg
+      float-rounding noise from the JSON round-trip, confirmed clip-by-clip).
+- [x] **240fps correctness fixes**: found a real bug waiting to happen -
+      `rotation_activity_series` didn't take `fps` at all, measuring degrees-changed over a fixed
+      2-frame window; at 240fps the same real rotation would read ~8x smaller and likely never
+      clear `ROTATION_MIN_DEG`, silently breaking contact-confidence and 3 of 5 phase detectors.
+      Converted this and 5 other frame-count constants (`attack_angle_at`, `front_side_at`,
+      stride/follow-through/stance sustain thresholds, `detect_2d.py`'s track-continuity
+      constants, `overlay.py`'s bat trail length) to time-based, resolved via each clip's own real
+      fps - verified analytically and via a direct old-vs-new comparison that this reproduces
+      today's exact behavior at ~30fps, zero regression.
+- [x] **New Stage 0.5 (`decimate.py`) + Stage 3.5 (`refine_bat_speed.py`)** for genuinely
+      high-frame-rate uploads (>120fps): `lift_3d.py`'s VideoPose3D model has a fixed 243-frame
+      receptive field baked into its pretrained weights (not tunable) - at 240fps that's ~1s of
+      context instead of the ~8.1s it was validated against. Stage 0.5 decimates to ~30fps before
+      the expensive stages run (pure no-op below the threshold - every real clip so far is
+      ~24-30fps); Stage 3.5 separately re-measures peak bat speed at the TRUE original frame rate
+      in a short window near contact, from the undecimated original - the actual thing a high
+      frame rate is good for. Purely additive to metrics.json, never replaces the decimated
+      reading.
+- [x] **Verified end-to-end**: a real already-processed clip's data flows correctly into the new
+      DB table and renders in the coach UI (tested via a disposable Maddie R test at-bat, borrowing
+      Emily's already-computed local metrics.json content as test data - never touching her real,
+      deliberately-deleted DB records). A synthetic 240fps smoke test (frame-duplicated real
+      footage) confirmed the full Stage 0.5→3.5 chain runs correctly end-to-end with no crashes,
+      and that decimation preserves real timing accurately (contact time reconciled to within 6ms
+      of ground truth). Honestly flagged: the synthetic test's full-rate bat-speed number itself is
+      inflated (a known artifact of frame-duplication, not real motion) - genuine 240fps footage is
+      still needed to validate real accuracy, not built/faked here.
+- **Workstream C (design only, not built)**: real calibrated units (mph, inches) from a single
+  camera via a bat-length reference (`detect_2d.py`'s `bat_tip_and_knob()` already computes
+  tip/knob per frame - `dist()` away from a usable scale reference, median-aggregated across
+  confident frames same as `body_scale_px()` already does). Explicitly NOT the same as Uplift's
+  actual stereo-3D accuracy - closes the "what unit" gap, not the "true depth accuracy" gap. Needs
+  its own pass if picked up later; not scoped into this one.
+
+## Real clip lost to a post-completion process crash - now tolerated (2026-07-31)
+
+A real 1GB/27,647-frame upload (`Emily_C_AB2_game2`) fully completed the entire Python pipeline -
+Stage 0 fell back (ambiguous audio, same as the earlier clip), the quick quality gate correctly
+passed this time (this at-bat's framing was fine), and `metrics.py` found a genuine contact frame
+with real phases computed. But the Python process then crashed during its own teardown, exit code
+`3221225794` (`0xC0000142` = `STATUS_DLL_INIT_FAILED`, a known Windows/CUDA-driver-level crash) with
+empty stderr - and since `runPipeline()` treated ANY non-zero exit as total failure, the worker
+discarded ~15 minutes of already-correct, already-written work and marked the clip failed.
+
+**Recovered the specific clip manually**: since `pose_2d.json`/`bat_path.json`/`pose_3d.json`/
+`metrics.json`/`overlay.mp4` were all already valid on disk, ran the remaining ingest steps
+(`ingestPhases` + smoothing/rigidifying/storing pose3d frames + `markClipReady`) directly against
+the known `video_clip_id`, without re-running the expensive pipeline. Confirmed ready with real
+data (6 phases, 1,742 stored pose3d frames).
+
+**Fixed the underlying gap so this doesn't need manual recovery again**: `runPipeline()`'s exit
+handler now checks, before giving up on a non-zero exit, whether `metrics.json` already has a
+`"phases"` or `"error"` key (the only two states `metrics.py` writes once it's genuinely finished)
+AND was written during THIS run (`mtime >= processStartTime`, guarding against "Retry" reusing the
+same output directory and finding a stale leftover from an earlier attempt). If so, treats it as a
+real completion despite the crash rather than discarding the work.
+
+- [x] **Verified for real**: directly tested the fallback logic's exact branching (not just read
+      it) against the real clip's actual `metrics.json` for all four cases - a genuinely-completed
+      file from before the run started (trust), the same file but with a run that started AFTER
+      its mtime (stale, correctly NOT trusted), a nonexistent file, and a file with neither
+      `phases` nor `error` - all four behaved correctly.
+- **Root cause of the crash itself not investigated** - a native Windows/CUDA driver teardown
+  issue is a real rabbit hole with uncertain, possibly non-reproducible payoff; tolerating its
+  symptom (a crash after real work is done) was the practical fix here, not chasing the native bug.
+
+## Fast footage-quality gate before the expensive detect_2d passes (2026-07-31)
+
+Even with the swing-locate pre-pass, a clip whose audio is ambiguous (falls back to full-clip
+analysis) still meant a coach waiting the FULL run before finding out the footage wasn't trackable
+at all - confirmed on the real diagnosed clip: 765 seconds (12.75 minutes) before the "cannot
+locate contact" message. User was explicit: don't make someone wait 5+ minutes just to be told the
+video was bad.
+
+New `quick_trackability_check()` in `detect_2d.py`, called at the very start of `run()` (using the
+pose model it already loads, before either of the two expensive full per-frame passes): samples 30
+evenly-spaced frames across the whole clip, runs single-frame pose detection on just those, and
+checks whether at least one clearly-resolvable person (real bounding-box size, not a speck-sized
+low-confidence guess) shows up in enough of them (>=15%). Below that, raises
+`LowQualityFootageError` with a friendly, actionable message ("try filming closer to home plate or
+with the camera in better focus") - `run_pipeline.py` catches it, writes a normal-shaped
+`metrics.json` with that message in the `error` field, and stops immediately, skipping stages 2-4
+entirely (no 3D lift, no metrics, no overlay - nothing downstream can do anything useful with zero
+trackable frames anyway).
+
+Also fixed the last mile of actually getting that message to the coach: `ingestPhases.ts` was
+throwing a generic, misleading "was this generated before the phase detectors were added?" message
+for ANY missing-phases case, even though `metrics.py` (and now `detect_2d.py`) already compute a
+specific, honest reason and store it in `metrics.error` - it just was never being read. Now checks
+`metrics.error` first and surfaces that directly; the generic message is now only shown for the
+genuinely-stale-file case it was originally written for.
+
+- [x] **Verified for real**: the real diagnosed clip now bails in **4.2 seconds** (was 765s/12.75
+      min) with the friendly message, confirmed reaching `ingestPhases`'s new error-surfacing logic
+      directly (not just metrics.json's raw content). A known-good clip's quick check correctly
+      passed at 100% and proceeded through the full pipeline unchanged (identical contact
+      frame/time to every prior baseline run) - no false-positive early bail.
+- **Threshold note**: the quick check's 13% resolvable-frame reading on the bad clip is
+  intentionally coarser/higher than the full run's actual 0.62% batter-track rate - the quick
+  check counts ANY clearly-resolvable person (umpire, catcher, etc.), not specifically a track with
+  bat-holding evidence like the real batter-selection logic requires. That's fine for its purpose
+  (a fast, honest "is anyone even resolvable here at all" early filter) - it isn't meant to
+  replace the full analysis, only to skip the expensive path on the obviously-hopeless case.
+
+## Python stdout buffering bug in process-upload-queue (2026-07-31)
+
+The stdout-forwarding fix from the swing-locate pre-pass work (2026-07-30) didn't actually work in
+practice: Python fully block-buffers stdout whenever it isn't a real TTY (always true when spawned
+as a Node child process), so none of the `[locate_swing]`/`[detect_2d]`/`[metrics]`/`[overlay]`
+prints ever reached the worker's log during a real run - confirmed directly: a real clip fully
+processed and failed with zero stage output visible the whole time. Fixed by setting
+`PYTHONUNBUFFERED=1` in the spawned process's env in `processUploadQueue.ts`. Verified for real:
+re-ran the same known-good clip with the fix and watched stage-by-stage output appear live within
+seconds, with identical final output (same contact frame/time) to the unfixed baseline - the fix
+only affects when output appears, not what the pipeline computes.
+
+Also found and fixed separately, real production issue: a clip got stuck in `status='processing'`
+forever because the worker process that claimed it had died mid-run (crashed during the final
+overlay-rendering step, confirmed by an empty `overlay.mp4` left on disk) - nothing was left running
+to ever mark it done or failed, and the existing stale-claim recovery only kicks in after 15
+minutes. Manually reset that one clip back to `pending` and restarted the worker rather than make
+the user wait out the timeout. Worth watching for: this is exactly the "video-queue stale-claim
+recovery" scenario the earlier performance review meant to cover - the 15-minute window is a real,
+if rare, source of "why is nothing happening" reports if a worker dies mid-run.
 
 ## Pose3D pipeline: swing-locating pre-pass (Stage 0) (2026-07-30)
 

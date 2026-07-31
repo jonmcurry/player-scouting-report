@@ -62,7 +62,19 @@ function runPipeline(videoPath: string, outDir: string): Promise<void> {
     // parentheses (e.g. "Emily_C_AB1 (4).mp4"), which a shell-interpreted
     // command would mis-tokenize; spawn() with an args array passes each
     // argument through verbatim regardless of its contents.
-    const child = spawn(VENV_PYTHON, [PIPELINE_SCRIPT, videoPath, outDir]);
+    //
+    // PYTHONUNBUFFERED=1: without this, Python fully block-buffers stdout
+    // whenever it isn't a TTY (i.e. always, when spawned as a child process
+    // here) - every [locate_swing]/[detect_2d]/[metrics]/[overlay] print()
+    // sits in Python's own internal buffer and never reaches the
+    // stdout.on("data") forwarding below in practice, defeating the whole
+    // point of forwarding it. This forces line-buffered (well, unbuffered)
+    // output instead, confirmed by direct testing - without it, a real run
+    // produced zero stage output in this worker's log despite completing.
+    const startedAt = Date.now();
+    const child = spawn(VENV_PYTHON, [PIPELINE_SCRIPT, videoPath, outDir], {
+      env: { ...process.env, PYTHONUNBUFFERED: "1" },
+    });
     let stderr = "";
     // Forward the pipeline's own [locate_swing]/[detect_2d]/[metrics]/
     // [overlay]-tagged progress prints live to this worker's console -
@@ -77,8 +89,62 @@ function runPipeline(videoPath: string, outDir: string): Promise<void> {
     });
     child.on("error", (err) => reject(err));
     child.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`pose3d pipeline exited with code ${code}:\n${stderr}`));
+      // Trust run_pipeline.py's own pipeline_status.json over the raw exit
+      // code - it's an explicit contract (see run_pipeline.py's write_status
+      // docstring) rather than inference, added after some Windows/CUDA-
+      // driver combinations were found to crash during the Python process's
+      // OWN teardown AFTER the pipeline had already finished and written all
+      // its real output (confirmed for real: a 27,647-frame clip completed
+      // with a genuine contact detection, then exited 3221225794 /
+      // 0xC0000142 STATUS_DLL_INIT_FAILED with empty stderr). Guessing that
+      // from metrics.json's presence/content used to work but meant re-
+      // deriving "did this really finish" logic for every new file the
+      // pipeline happens to write; pipeline_status.json is the one file
+      // written for exactly this purpose, last, atomically, in every
+      // terminal path (success, low-quality-footage early return, and a
+      // real in-pipeline exception all write it - see run_pipeline.py).
+      //
+      // "Retry" reuses the same outDir/clip_slug, so a status file could
+      // already exist from an earlier attempt before this run even starts -
+      // only trust one written DURING this run (mtime >= startedAt), never a
+      // stale leftover that would otherwise look like a false completion.
+      const statusPath = path.join(outDir, "pipeline_status.json");
+      let status: { status?: string; detail?: unknown } | null = null;
+      if (fs.existsSync(statusPath) && fs.statSync(statusPath).mtimeMs >= startedAt) {
+        try {
+          status = JSON.parse(fs.readFileSync(statusPath, "utf-8"));
+        } catch {
+          status = null; // read mid-write despite the atomic rename - status file take precedence gone, fall through
+        }
+      }
+
+      if (status?.status === "complete") {
+        if (code !== 0) {
+          console.warn(
+            `[process-upload-queue] pose3d pipeline exited with code ${code}, but its own ` +
+              `pipeline_status.json says "complete" (${JSON.stringify(status.detail)}) - treating as a ` +
+              `post-completion crash (e.g. a CUDA/driver teardown issue), not a real failure. Proceeding.`,
+          );
+        }
+        resolve();
+        return;
+      }
+      if (status?.status === "crashed") {
+        reject(new Error(`pose3d pipeline reported a real failure: ${JSON.stringify(status.detail)}\nstderr:\n${stderr}`));
+        return;
+      }
+
+      // No usable status file (e.g. the venv python itself failed to start,
+      // before run_pipeline.py's own code ever ran) - fall back to the exit
+      // code as a last resort rather than hang forever undecided.
+      if (code === 0) {
+        console.warn(
+          `[process-upload-queue] pose3d pipeline exited 0 but wrote no pipeline_status.json - proceeding anyway.`,
+        );
+        resolve();
+        return;
+      }
+      reject(new Error(`pose3d pipeline exited with code ${code} and wrote no pipeline_status.json:\n${stderr}`));
     });
   });
 }

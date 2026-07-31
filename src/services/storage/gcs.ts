@@ -72,3 +72,38 @@ export async function downloadFile(gcsPath: string, localDestPath: string): Prom
   await fs.promises.mkdir(path.dirname(localDestPath), { recursive: true });
   await storage.bucket(bucketName).file(objectPath).download({ destination: localDestPath });
 }
+
+export interface RawUploadObject {
+  gcsPath: string; // gs://bucket/object, same shape as video_clips.raw_gcs_path
+  sizeBytes: number;
+  updatedAt: string;
+}
+
+/** Lists every object under `<team>/<player>/raw/` anywhere in the bucket -
+ * reconcileUploads.ts's own need: finding GCS objects with no matching
+ * video_clips row (get-upload-url.ts writes the object, videoUpload.js's
+ * follow-up INSERT is what would normally reference it - a dropped
+ * connection between those two steps leaves bytes with nothing pointing at
+ * them). Filters to the "raw/" segment specifically so this never touches
+ * scripts/pose3d's local frames/ output or anything else this bucket might
+ * one day hold - only the one path shape get-upload-url.ts ever writes to. */
+export async function listRawUploadObjects(): Promise<RawUploadObject[]> {
+  const bucketName = getBucketName();
+  const storage = getStorageClient();
+  const [files] = await storage.bucket(bucketName).getFiles();
+  return files
+    .filter((f) => f.name.includes("/raw/"))
+    .map((f) => ({
+      gcsPath: `gs://${bucketName}/${f.name}`,
+      sizeBytes: Number(f.metadata.size ?? 0),
+      updatedAt: f.metadata.updated ?? f.metadata.timeCreated ?? "",
+    }));
+}
+
+/** Deletes one gs:// object - only ever called by reconcileUploads.ts's
+ * explicit --delete-older-than-days opt-in, never automatically. */
+export async function deleteObject(gcsPath: string): Promise<void> {
+  const { bucketName, objectPath } = parseGcsPath(gcsPath);
+  const storage = getStorageClient();
+  await storage.bucket(bucketName).file(objectPath).delete();
+}
