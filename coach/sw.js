@@ -2,12 +2,21 @@
 // only - Supabase API calls and GCS-hosted video are never cached here, so
 // "offline" means the shell loads instantly and shows cached data, not that
 // live coach edits work with no connection.
-const CACHE_NAME = "barreliq-coach-v4";
+//
+// EVERY time coach.css changes, bump BOTH the "?v=N" query string below AND
+// in the <link> tag of every coach/*.html page, AND bump CACHE_NAME. Missing
+// either one means the fetch handler's caches.match() keeps matching the
+// SAME request URL, silently serving the OLD cached content forever - a real
+// CSS fix (2026-08-01, bottom-nav alignment) looked like it hadn't landed at
+// all for exactly this reason, on an already-installed app, even after a
+// full rebuild+reinstall. Confirmed the fix was correct all along; only the
+// cache-bust was missing.
+const CACHE_NAME = "barreliq-coach-v8";
 const ASSETS = [
   "./index.html",
   "./team.html",
   "./player.html",
-  "./coach.css?v=6",
+  "./coach.css?v=8",
   "./shared.js",
   "./config.js",
   "./manifest.json",

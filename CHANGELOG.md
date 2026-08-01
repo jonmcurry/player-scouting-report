@@ -4,6 +4,28 @@ All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file starts 2026-08-01 — see
 `NEXT_STEPS.md` (and its own git history) for the detailed narrative of everything before that.
 
+## [0.3.0] - 2026-08-01
+
+### Added
+- Batting Practice/Lesson as a distinct upload type alongside real game at-bats. Reuses
+  `game_log_entries` (a new `session_type` column) rather than a parallel table, so the entire
+  existing upload/processing pipeline, checklist scoring, and skeleton comparison work unchanged -
+  but every query that computes a real-game stat (Logged ABs, Early Read status, the public
+  report's at-bat-outcome correlation) was audited and filtered to `session_type='game'` so
+  practice reps can never silently pollute them. Practice sessions get their own "Practice Log"
+  section, separate from the real Game Log, with a simplified form (date, rep #, optional note,
+  video - no opponent/pitch/result fields, which don't apply without a live pitcher).
+- `CACHE_NAME`/cache-busting discipline note in `sw.js` after a real fix (bottom-nav alignment)
+  looked like it hadn't landed for a full rebuild+reinstall cycle, purely because the PWA service
+  worker was still serving a stale cached `coach.css`.
+
+### Fixed
+- The 0.2.0 bottom-nav alignment fix corrected the text baseline but left the "Log AB" FAB icon
+  visibly larger than, and floating above, the Roster/Report icons - a real user report after the
+  stale-cache issue above was resolved. Both icon types now share the same 26px box (no more
+  raised-circle treatment) so they're the same size and sit at the same position, not just the
+  same baseline.
+
 ## [0.2.0] - 2026-08-01
 
 ### Added

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=6">
+<link rel="stylesheet" href="./coach.css?v=8">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -41,6 +41,10 @@
 
   <h2>Game Log</h2>
   <div id="gameLogList"></div>
+
+  <h2>Practice Log</h2>
+  <p class="hint">Batting practice/lesson sessions - kept separate from real game at-bats above.</p>
+  <div id="practiceLogList"></div>
 </div>
 
 <nav class="bottom-nav" id="bottomNav"></nav>
@@ -140,6 +144,7 @@
     await loadCompsAndDrills();
     renderFollowUp(player.refilm_by, player.what_to_check_next);
     await loadGameLog();
+    await loadPracticeLog();
     await renderStats();
     wireGameLogDelegation();
     startStatusPolling();
@@ -196,10 +201,14 @@
   }
 
   async function renderStats() {
+    // session_type='game' - "Logged ABs"/"Early Read" status are real-game
+    // performance concepts; a practice rep isn't an at-bat and shouldn't
+    // count toward either (see 00015_practice_sessions.sql).
     const { count: abCount } = await supabase
       .from("game_log_entries")
       .select("id", { count: "exact", head: true })
-      .eq("player_id", playerId);
+      .eq("player_id", playerId)
+      .eq("session_type", "game");
 
     const { data: teamStats } = await supabase.from("team_summary_stats").select("avg_score").eq("team_id", teamId);
     const scores = (teamStats ?? []).map((r) => Number(r.avg_score)).filter((n) => !Number.isNaN(n));
@@ -356,11 +365,17 @@
     `;
   }
 
+  // session_type='game' - a practice session has no opponent/pitch/result
+  // to show here, and (more importantly) mixing session types into this
+  // query would desync `position`'s use elsewhere as a contiguous per-player
+  // GAME ordinal (see openLogAbModal's insert and generate.ts's at-bat
+  // outcome correlation) - see 00015_practice_sessions.sql.
   async function loadGameLog() {
     const { data: logs } = await supabase
       .from("game_log_entries")
       .select("id, date, opponent, ab, pitch, result, pitch_zone, pitch_outcome")
       .eq("player_id", playerId)
+      .eq("session_type", "game")
       .order("position");
     const el = document.getElementById("gameLogList");
     el.innerHTML = (logs ?? [])
@@ -384,11 +399,48 @@
     // fetch it once here instead of once per clip inside the loop below (a
     // real N+1: a full season's worth of logged at-bats meant re-fetching
     // this identical value dozens of times to render one page). Skip the
-    // query entirely when there's nothing to render it for.
-    currentExtensionScore = logs && logs.length > 0 ? await loadExtensionScore(playerId) : null;
+    // query entirely when there's nothing to render it for. loadPracticeLog
+    // shares this same cached value (and independently covers the case
+    // where a player has practice clips but zero game at-bats).
+    if (currentExtensionScore === null && logs && logs.length > 0) {
+      currentExtensionScore = await loadExtensionScore(playerId);
+    }
 
     // Each entry's clip lookup is independent (writes to its own DOM mount),
     // so run them concurrently rather than one at a time.
+    await Promise.all((logs ?? []).map((g) => loadClipsForEntry(g.id, currentExtensionScore)));
+  }
+
+  /** Same clip-rendering plumbing as loadGameLog() (scrubber-mount,
+   * loadClipsForEntry, delete) but for session_type='practice' rows, in
+   * their own "Practice Log" section rather than interleaved into the real
+   * Game Log - practice reps aren't game performance and a coach shouldn't
+   * have to mentally filter them back out of a real at-bat history. */
+  async function loadPracticeLog() {
+    const { data: logs } = await supabase
+      .from("game_log_entries")
+      .select("id, date, ab, session_note")
+      .eq("player_id", playerId)
+      .eq("session_type", "practice")
+      .order("position");
+    const el = document.getElementById("practiceLogList");
+    el.innerHTML = (logs ?? [])
+      .map(
+        (g) => `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <b>${g.date}${g.session_note ? ` — ${g.session_note}` : ""}, Rep ${g.ab}</b>
+          <button class="tap-target btn-danger" style="font-size:12px;padding:6px 10px;flex:none;" data-delete-at-bat="${g.id}">🗑 Delete</button>
+        </div>
+        <div class="scrubber-mount" data-game-log-entry="${g.id}"></div>
+      </div>
+    `,
+      )
+      .join("");
+
+    if (currentExtensionScore === null && logs && logs.length > 0) {
+      currentExtensionScore = await loadExtensionScore(playerId);
+    }
     await Promise.all((logs ?? []).map((g) => loadClipsForEntry(g.id, currentExtensionScore)));
   }
 
@@ -576,12 +628,17 @@
     firstClipContext = { realFrames: pose3dData.frames, phases, leadSide: pose3dData.lead_side, extensionScore };
   }
 
-  /** One delegated listener on the container, attached once - #gameLogList's
-   * innerHTML is fully replaced on every loadGameLog() call (including the
-   * periodic status-poll refresh below), so per-card listeners would pile
-   * up duplicates across refreshes if attached the naive way. */
+  /** One delegated listener per container, attached once each - #gameLogList/
+   * #practiceLogList's innerHTML is fully replaced on every
+   * loadGameLog()/loadPracticeLog() call (including the periodic status-poll
+   * refresh below), so per-card listeners would pile up duplicates across
+   * refreshes if attached the naive way. Both containers share the exact
+   * same handler logic (every lookup inside is keyed off data-* attributes
+   * via a global document.querySelector, never scoped to one container), so
+   * the SAME two functions are attached to both rather than duplicating the
+   * logic - see the loop at the bottom of this function. */
   function wireGameLogDelegation() {
-    document.getElementById("gameLogList").addEventListener("click", async (e) => {
+    const handleClick = async (e) => {
       // Switch tab: re-render from the already-cached clips list (no fresh
       // Supabase round trip, no extensionScore re-fetch) rather than
       // calling loadClipsForEntry() again.
@@ -701,9 +758,9 @@
         }
         deleteAtBatBtn.closest(".card")?.remove();
       }
-    });
+    };
 
-    document.getElementById("gameLogList").addEventListener("change", async (e) => {
+    const handleChange = async (e) => {
       const fileInput = e.target.closest(".add-clip-input");
       if (!fileInput) return;
       const gameLogEntryId = fileInput.dataset.gameLogEntry;
@@ -726,7 +783,13 @@
           addBtn.innerHTML = "➕ Add Pitch";
         }
       }
-    });
+    };
+
+    for (const containerId of ["gameLogList", "practiceLogList"]) {
+      const container = document.getElementById(containerId);
+      container.addEventListener("click", handleClick);
+      container.addEventListener("change", handleChange);
+    }
   }
 
   /** Poll-based refresh (no Supabase Realtime this pass - see the approved
@@ -794,21 +857,33 @@
 
   /** Log AB (ux.md Step 2/3B) - opened from the bottom nav's "+" button
    * instead of living inline in the page, so logging a new at-bat doesn't
-   * push the whole checklist/game-log down every time it's not in use. */
+   * push the whole checklist/game-log down every time it's not in use.
+   * Also covers logging a batting-practice/lesson session (2026-08-01) -
+   * same underlying game_log_entries row (session_type='practice'), same
+   * upload/processing pipeline, but the opponent/pitch/result/zone fields
+   * (which don't mean anything without a live pitcher) are hidden entirely
+   * rather than shown-but-optional, per real user direction. */
   function openLogAbModal() {
     const backdrop = document.createElement("div");
     backdrop.className = "modal-backdrop";
     backdrop.innerHTML = `
       <div class="modal">
         <button type="button" class="close-btn tap-target">✕</button>
-        <h2 style="margin-top:0;">Log New At-Bat</h2>
-        <p class="hint">Tap a zone for the pitch location, then an outcome - both save as real structured fields.
-          The pitch field below stays freeform for anything a fixed grid can't capture (pitch type, count, etc).</p>
-        <div class="zone-picker-mount"></div>
+        <h2 style="margin-top:0;" id="logModalTitle">Log New At-Bat</h2>
+        <div class="chip-row">
+          <button type="button" class="chip" data-session-type="game" data-active="true">Game At-Bat</button>
+          <button type="button" class="chip" data-session-type="practice" data-active="false">Batting Practice</button>
+        </div>
+        <div id="gameFields">
+          <p class="hint">Tap a zone for the pitch location, then an outcome - both save as real structured fields.
+            The pitch field below stays freeform for anything a fixed grid can't capture (pitch type, count, etc).</p>
+          <div class="zone-picker-mount"></div>
+        </div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px;">
-          <input type="text" id="newDate" placeholder="Date (YYYY-MM-DD)">
+          <input type="date" id="newDate">
           <input type="text" id="newOpponent" placeholder="Opponent">
           <input type="text" id="newAb" placeholder="AB #">
+          <input type="text" id="newSessionNote" placeholder="Session note (optional, e.g. &quot;tee work&quot;, &quot;front toss&quot;)" style="display:none;">
           <input type="text" id="newPitch" placeholder="Pitch type/context (optional, e.g. &quot;Rise ball&quot;)">
           <input type="text" id="newResult" placeholder="Result">
           <label class="hint" for="newVideo">Video (optional) — processing starts automatically after upload.
@@ -826,6 +901,14 @@
       if (e.target === backdrop) backdrop.remove();
     });
 
+    // Default to today (device-LOCAL date, not UTC - a coach filming a late
+    // evening at-bat in a US timezone would otherwise see tomorrow's date by
+    // the time toISOString() rolls to UTC midnight). Still fully editable -
+    // this is a default, not the only date a coach can ever log.
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    backdrop.querySelector("#newDate").value = todayStr;
+
     let pitchState = { zone: null, outcome: null };
     renderZonePicker(backdrop.querySelector(".zone-picker-mount"), {
       onChange: (s) => {
@@ -833,40 +916,78 @@
       },
     });
 
-    backdrop.querySelector("#addAtBatBtn").addEventListener("click", async () => {
-      const date = backdrop.querySelector("#newDate").value.trim();
-      const opponent = backdrop.querySelector("#newOpponent").value.trim();
-      const ab = Number(backdrop.querySelector("#newAb").value);
-      const pitch = backdrop.querySelector("#newPitch").value.trim() || null;
-      const result = backdrop.querySelector("#newResult").value.trim();
+    let sessionType = "game";
+    const gameFields = backdrop.querySelector("#gameFields");
+    const opponentInput = backdrop.querySelector("#newOpponent");
+    const abInput = backdrop.querySelector("#newAb");
+    const sessionNoteInput = backdrop.querySelector("#newSessionNote");
+    const pitchInput = backdrop.querySelector("#newPitch");
+    const resultInput = backdrop.querySelector("#newResult");
 
-      if (!date || !opponent || !ab || !result) {
+    backdrop.querySelectorAll("[data-session-type]").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        sessionType = chip.dataset.sessionType;
+        backdrop.querySelectorAll("[data-session-type]").forEach((c) => c.setAttribute("data-active", c === chip));
+        const isGame = sessionType === "game";
+        backdrop.querySelector("#logModalTitle").textContent = isGame ? "Log New At-Bat" : "Log Batting Practice";
+        gameFields.style.display = isGame ? "" : "none";
+        opponentInput.style.display = isGame ? "" : "none";
+        pitchInput.style.display = isGame ? "" : "none";
+        resultInput.style.display = isGame ? "" : "none";
+        sessionNoteInput.style.display = isGame ? "none" : "";
+        abInput.placeholder = isGame ? "AB #" : "Rep #";
+        backdrop.querySelector("#addAtBatBtn").textContent = isGame ? "Add At-Bat" : "Add Practice Session";
+      });
+    });
+
+    backdrop.querySelector("#addAtBatBtn").addEventListener("click", async () => {
+      const isGame = sessionType === "game";
+      const date = backdrop.querySelector("#newDate").value.trim();
+      const opponent = opponentInput.value.trim();
+      const ab = Number(abInput.value);
+      const sessionNote = sessionNoteInput.value.trim() || null;
+      const pitch = pitchInput.value.trim() || null;
+      const result = resultInput.value.trim();
+
+      if (isGame && (!date || !opponent || !ab || !result)) {
         alert("Date, opponent, AB #, and result are required.");
         return;
       }
+      if (!isGame && (!date || !ab)) {
+        alert("Date and rep # are required.");
+        return;
+      }
 
+      // position is scoped to THIS session type, not counted across both -
+      // the public report's at-bat-outcome correlation (generate.ts) relies
+      // on position being a contiguous GAME-only ordinal per player; a
+      // shared counter would desync it the moment a practice row landed
+      // between two game rows.
       const { count } = await supabase
         .from("game_log_entries")
         .select("id", { count: "exact", head: true })
-        .eq("player_id", playerId);
+        .eq("player_id", playerId)
+        .eq("session_type", sessionType);
 
       const { data: newEntry, error } = await supabase
         .from("game_log_entries")
         .insert({
           player_id: playerId,
+          session_type: sessionType,
           date,
-          opponent,
+          opponent: isGame ? opponent : null,
           ab,
-          pitch,
-          result,
-          pitch_zone: pitchState.zone,
-          pitch_outcome: pitchState.outcome,
+          session_note: isGame ? null : sessionNote,
+          pitch: isGame ? pitch : null,
+          result: isGame ? result : null,
+          pitch_zone: isGame ? pitchState.zone : null,
+          pitch_outcome: isGame ? pitchState.outcome : null,
           position: count ?? 0,
         })
         .select("id")
         .single();
       if (error || !newEntry) {
-        alert(`Couldn't save at-bat: ${error?.message}`);
+        alert(`Couldn't save ${isGame ? "at-bat" : "practice session"}: ${error?.message}`);
         return;
       }
 
@@ -880,11 +1001,12 @@
           await uploadRawClip(newEntry.id, videoFile);
           statusEl.textContent = "Video uploaded - processing will start automatically.";
         } catch (err) {
-          statusEl.textContent = `⚠ At-bat saved, but video upload failed: ${err.message}`;
+          statusEl.textContent = `⚠ Saved, but video upload failed: ${err.message}`;
         }
       }
 
       await loadGameLog();
+      await loadPracticeLog();
       await renderStats();
       setTimeout(() => backdrop.remove(), closeDelay);
     });

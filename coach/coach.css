@@ -597,35 +597,36 @@ details.drawer .drawer-body { padding: 0 16px 16px; }
   font-weight: 600;
   padding: 6px 4px;
 }
-/* Both icon types share the same 34px flow height so every label lands on
-   the same baseline regardless of icon style - .nav-fab used to get there
-   via margin-top:-8px, which shrinks its OWN box's contribution to the
-   column's height without .nav-icon following suit, throwing "Log AB" out
-   of line with "Roster"/"Report" (confirmed visually, not assumed). The
-   fab's "raised circle" look now comes from transform (purely visual,
-   doesn't change the space it reserves in flow) instead of a negative
-   margin (which does). */
+/* Both icon types share the same 26px box (height for .nav-icon, width AND
+   height for .nav-fab, since a circle needs equal dimensions) so every icon
+   is the same visual size AND every label lands on the same baseline - a
+   first attempt kept .nav-fab at a full 34px (vs. .nav-icon's emoji glyph
+   only visually filling ~19-24px of its own 34px box) plus a
+   transform:translateY(-8px) "raised circle" treatment, which fixed the
+   text-baseline problem but left the fab looking oversized and floating
+   above the row compared to Roster/Report (confirmed from a real screenshot,
+   not assumed) - removed the raised treatment entirely rather than trying to
+   tune it further. */
 .bottom-nav .nav-icon {
   font-size: 19px;
   line-height: 1;
-  height: 34px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .bottom-nav [data-active="true"] { color: var(--clay); }
 .bottom-nav .nav-fab {
-  width: 34px;
-  height: 34px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: var(--clay);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
-  transform: translateY(-8px);
-  border: 2px solid var(--page);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  border: 1.5px solid var(--page);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
 }

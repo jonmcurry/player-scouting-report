@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Team View</title>
-<link rel="stylesheet" href="./coach.css?v=6">
+<link rel="stylesheet" href="./coach.css?v=8">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -145,7 +145,9 @@
         .select("player_id, score, reviewed_by, checkpoints!inner(slug, sort_order)")
         .in("player_id", playerIds)
         .order("sort_order", { referencedTable: "checkpoints" }),
-      supabase.from("game_log_entries").select("player_id").in("player_id", playerIds),
+      // session_type='game' - "Early Read (<3 ABs)" is a real-game concept;
+      // a batting-practice rep isn't an at-bat (see 00015_practice_sessions.sql).
+      supabase.from("game_log_entries").select("player_id").eq("session_type", "game").in("player_id", playerIds),
     ]);
 
     const scoresByPlayer = new Map();

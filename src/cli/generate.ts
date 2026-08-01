@@ -237,10 +237,15 @@ export async function generateReport(reportPath: string): Promise<void> {
   }
 
   const [gameLogRes, checklistRes, issuesRes, compsRes, notesRes, drillsRes] = await Promise.all([
+    // session_type='game' - the public report's game log and at-bat-outcome
+    // correlation (which relies on `position` being a contiguous per-player
+    // GAME ordinal) would both be corrupted by a batting-practice rep mixed
+    // in - see supabase/migrations/00015_practice_sessions.sql.
     supabase
       .from("game_log_entries")
       .select("date, opponent, ab, pitch, result, clip_gcs_path, outcome")
       .eq("player_id", player.id)
+      .eq("session_type", "game")
       .order("position"),
     supabase
       .from("checklist_scores")

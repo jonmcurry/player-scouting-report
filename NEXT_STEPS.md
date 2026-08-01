@@ -69,15 +69,28 @@ first pass didn't catch.
       install; didn't get a visual on-device screenshot of the modal itself (in-app navigation via
       raw ADB taps didn't land on the right control - not investigated further, low risk given the
       change is simple additive markup in already-working template functions).
-- [ ] **To do: scope and add a "batting lesson" upload type.** On the batting-lesson question — my
-      recommendation, not yet acted on: add it as an additional upload type, don't scrap game
-      footage. Game-at-bat filming was a deliberate earlier product decision (the Game Log feature
-      is built around it), and today's failures traced to one clip's bad camera angle, not a
-      systemic flaw — several other real game clips process correctly. Lesson/BP footage would be
-      technically easier (closer camera, isolated swings, controlled background — sidesteps today's
-      whole class of problem) and worth having, but as a second option, not a replacement. If you
-      want to move on that, it needs its own scoping pass (data model, report format) — happy to
-      start whenever.
+- [x] **Added a "batting lesson" upload type (2026-08-01).** As an additional type alongside game
+      at-bats, not a replacement (see the original reasoning below - still applies). New
+      `session_type` column on `game_log_entries` (`00015_practice_sessions.sql`), a own partial
+      unique index for practice rows (no `opponent` to key off), and `session_note` as opponent's
+      practice-mode equivalent. Game-only fields (Opponent/Result/Pitch/pitch-zone) are hidden
+      entirely in Practice mode, not shown-disabled, per direct user preference. Practice sessions
+      render in their own "Practice Log" section, never interleaved with real game at-bats.
+      **Real correctness risk found and fixed while building this**: `position` is used elsewhere as
+      a contiguous per-player GAME ordinal (the public report's at-bat-outcome correlation keys off
+      it) - every insert and every stats query now scopes `position`'s counting query and its own
+      reads to `session_type` explicitly, audited across `player.html` (renderStats, loadGameLog),
+      `team.html` (roster ab-count/Early Read chip), and `generate.ts` (the static report's game log
+      query), not just the new upload form itself.
+      **Verified end-to-end for real** (not just typechecked): a full Playwright run against the
+      live local Supabase - signed in, added a practice session with a note, confirmed it landed in
+      Practice Log and NOT Game Log, and confirmed "Logged ABs" stayed unchanged (1 before and
+      after) - not assumed from reading the filter code.
+      Original reasoning (2026-07-31, still the operating decision): don't scrap real game-at-bat
+      footage - a deliberate earlier product decision (the Game Log feature is built around it), and
+      the camera-angle failures that prompted this question traced to one clip's bad framing, not a
+      systemic flaw in the game-footage approach. Lesson/BP footage is easier for the pipeline
+      (closer camera, isolated swings, controlled background) and worth having as a second option.
 
 ## Architecture review follow-through (2026-07-31)
 
