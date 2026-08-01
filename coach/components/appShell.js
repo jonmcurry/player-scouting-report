@@ -62,6 +62,7 @@ function confirmedPillHtml(confirmedCount, totalCount) {
 export function renderTeamAppBar(container, { teamName, confirmedCount, totalCount }) {
   container.innerHTML = `
     <div class="app-bar-left">
+      <a href="./index.html" class="app-bar-back tap-target" aria-label="Back to My Teams">‹</a>
       <div class="jersey-badge">⚾</div>
       <div class="app-bar-titles">
         <div class="app-bar-title-row"><h1>${teamName}</h1></div>
@@ -81,6 +82,7 @@ export function renderTeamAppBar(container, { teamName, confirmedCount, totalCou
 export function renderPlayerAppBar(container, { player, teamName, teamSlug, roster, confirmedCount, totalCount }) {
   container.innerHTML = `
     <div class="app-bar-left player-switcher">
+      <a href="./index.html" class="app-bar-back tap-target" aria-label="Back to My Teams">‹</a>
       <div class="jersey-badge">${player.jersey_number}</div>
       <div class="app-bar-titles">
         <div class="app-bar-title-row">
