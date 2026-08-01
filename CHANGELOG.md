@@ -4,6 +4,28 @@ All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file starts 2026-08-01 — see
 `NEXT_STEPS.md` (and its own git history) for the detailed narrative of everything before that.
 
+## [0.3.1] - 2026-08-01
+
+### Fixed
+- "View 3D Skeleton" investigated after a real user report ("seems to be a placeholder for all
+  areas"). Root cause traced (not assumed): this dev database currently has exactly one real
+  processed video clip anywhere, belonging to a disposable test fixture - not Emily C, the player
+  being viewed - so her real at-bat correctly, but confusingly, fell back to illustration-only for
+  all 11 checkpoints (working as documented, not a code bug).
+- Separately, a full audit of all 11 checkpoints' reference-comp illustrations (prompted by the same
+  report) found 6 that didn't accurately depict what they're paired with: "Head/eyes" and "Swing
+  decisions" shared a generic batting-stance silhouette that showed neither eye-tracking nor pitch
+  recognition; "Stance & setup", "Load", "Stride", and "Hand path to ball" shared that same
+  mid-swing silhouette despite being four different, earlier phases of the swing; "Follow-through"
+  reused the Extension diagram even though a finish position (bat wrapped high, weight forward) is
+  visually a different pose than extension-at-contact; "Contact point" reused it too with no
+  ball/plate reference to actually show what "deep vs. early" means. Built 6 new purpose-specific
+  diagrams (`stance-setup.svg`, `load.svg`, `stride.svg`, `hand-path.svg`, `follow-through.svg`,
+  `contact-point.svg`) alongside the 2 above - every checkpoint now has its own accurate
+  illustration; `extension.svg`, `bat-path.svg`, and `hip-shoulder-separation.svg` were already
+  correct and unchanged. Verified via a real Playwright run clicking through all 11: zero remaining
+  on the generic fallback.
+
 ## [0.3.0] - 2026-08-01
 
 ### Added

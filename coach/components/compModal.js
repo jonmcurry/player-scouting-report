@@ -18,7 +18,7 @@ const COMP_BY_CHECKPOINT = {
     cue: "Documented hips→torso→shoulders→barrel sequencing - hips lead, shoulders follow a beat later.",
   },
   "swing-decisions": {
-    illustration: "generic-swing.svg",
+    illustration: "swing-decisions.svg",
     comp: "Haylie McCleney",
     cue: "Same sequencing discipline extended to pitch selection - swinging at strikes, taking balls.",
   },
@@ -28,7 +28,7 @@ const COMP_BY_CHECKPOINT = {
     cue: 'Lets the ball travel deep before releasing the barrel - the "let it travel" cue.',
   },
   "contact-point": {
-    illustration: "extension.svg",
+    illustration: "contact-point.svg",
     comp: "Sierra Romero",
     cue: "Deeper contact point, same 'let it travel' principle as her extension cue.",
   },
@@ -38,32 +38,32 @@ const COMP_BY_CHECKPOINT = {
     cue: "Keeps the barrel through the zone longer for lift, instead of a short chop.",
   },
   "stance-setup": {
-    illustration: "generic-swing.svg",
+    illustration: "stance-setup.svg",
     comp: "Amanda Chidester",
     cue: "Swings at ~85% effort deliberately from a balanced setup, trading power for consistency.",
   },
   load: {
-    illustration: "generic-swing.svg",
+    illustration: "load.svg",
     comp: "Jocelyn Alo",
     cue: "Keeps the load compact and controlled to stay in the zone under pressure.",
   },
   stride: {
-    illustration: "generic-swing.svg",
+    illustration: "stride.svg",
     comp: "Natasha Watley",
     cue: "Documented footwork discipline through the stride - controlled, not lunging.",
   },
   "hand-path": {
-    illustration: "generic-swing.svg",
+    illustration: "hand-path.svg",
     comp: "Natasha Watley",
     cue: "Documented hand-path efficiency to the ball.",
   },
   "head-eyes": {
-    illustration: "generic-swing.svg",
+    illustration: "head-eyes.svg",
     comp: "Amanda Chidester",
     cue: "Consistent head position through contact supports her zone-wide consistency.",
   },
   "follow-through": {
-    illustration: "extension.svg",
+    illustration: "follow-through.svg",
     comp: "Sierra Romero",
     cue: "Full finish following the same extension the ball-travel cue produces.",
   },

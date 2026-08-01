@@ -11,7 +11,7 @@
 // all for exactly this reason, on an already-installed app, even after a
 // full rebuild+reinstall. Confirmed the fix was correct all along; only the
 // cache-bust was missing.
-const CACHE_NAME = "barreliq-coach-v8";
+const CACHE_NAME = "barreliq-coach-v10";
 const ASSETS = [
   "./index.html",
   "./team.html",

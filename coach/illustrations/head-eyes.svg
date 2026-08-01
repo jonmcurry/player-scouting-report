@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100%" height="100%">
+  <!-- Generic, non-identifying stick-figure diagram illustrating "eyes track
+       the ball into the zone" - a highlighted head/eye-line and a dashed
+       gaze path to an incoming pitch, not a photo of any real person, never
+       intended to be. Replaces generic-swing.svg here specifically because a
+       plain batting-stance silhouette doesn't visually communicate anything
+       about head/eye discipline - this diagram is actually about gaze. -->
+  <circle cx="90" cy="45" r="14" fill="#9ca3af"/>
+  <line x1="90" y1="59" x2="90" y2="120" stroke="#9ca3af" stroke-width="6" stroke-linecap="round"/>
+  <line x1="60" y1="75" x2="120" y2="75" stroke="#1d4ed8" stroke-width="6" stroke-linecap="round"/>
+  <line x1="120" y1="75" x2="140" y2="45" stroke="#1d4ed8" stroke-width="5" stroke-linecap="round"/>
+  <line x1="140" y1="45" x2="140" y2="20" stroke="#b08d57" stroke-width="6" stroke-linecap="round"/>
+  <line x1="90" y1="120" x2="65" y2="175" stroke="#9ca3af" stroke-width="6" stroke-linecap="round"/>
+  <line x1="90" y1="120" x2="115" y2="175" stroke="#9ca3af" stroke-width="6" stroke-linecap="round"/>
+  <!-- eyes: highlighted -->
+  <circle cx="86" cy="42" r="1.8" fill="#d97706"/>
+  <circle cx="94" cy="42" r="1.8" fill="#d97706"/>
+  <circle cx="90" cy="45" r="16" fill="none" stroke="#d97706" stroke-width="1.5" stroke-dasharray="2,2"/>
+  <!-- gaze path to the incoming ball -->
+  <path d="M 100 40 Q 130 30 165 55" fill="none" stroke="#d97706" stroke-width="2" stroke-dasharray="3,2"/>
+  <circle cx="170" cy="58" r="8" fill="#fff" stroke="#dc2626" stroke-width="2"/>
+  <text x="196" y="20" font-size="9" fill="#d97706" text-anchor="end">eyes on the ball</text>
+</svg>
