@@ -273,15 +273,26 @@ input[type="text"], input[type="email"], input[type="password"] {
 /* Lineup/roster card: team.html's player rows. A vertical list of rows, not
    drop-shadow cards - reads as a lineup card/scorebook page, not a generic
    dashboard widget list. */
+/* .lineup-row is the card shell (a div, not a link, so the delete button
+   below can sit outside the tappable link area - a <button> nested inside
+   an <a> is invalid HTML5 and behaves inconsistently across browsers/screen
+   readers). .lineup-link is the actual tap-to-open-player-page target. */
 .lineup-row {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
+  gap: 8px;
+  align-items: stretch;
   background: var(--surface-1);
   border: 1px solid var(--gridline);
   border-radius: 10px;
   padding: 12px 14px;
   margin-bottom: 8px;
+}
+.lineup-row .lineup-link {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  flex: 1;
+  min-width: 0;
   text-decoration: none;
   color: inherit;
 }

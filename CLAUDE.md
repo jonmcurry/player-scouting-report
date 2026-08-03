@@ -1,9 +1,10 @@
 # CLAUDE.md
 
-Project-specific instructions for Claude Code sessions in this repo. These are scoped to three
-things: changelog discipline, versioning, and git commit/push conventions. For everything else
-(architecture, conventions, who the user is) rely on the auto-memory system and NEXT_STEPS.md, not
-this file — keep this file narrow rather than letting it become a second, competing source of truth.
+Project-specific instructions for Claude Code sessions in this repo. These are scoped to four
+things: changelog discipline, versioning, git commit/push conventions, and emulator deployment. For
+everything else (architecture, conventions, who the user is) rely on the auto-memory system and
+NEXT_STEPS.md, not this file — keep this file narrow rather than letting it become a second,
+competing source of truth.
 
 ## Changelog
 
@@ -61,3 +62,27 @@ without the user explicitly asking each time**, which this project does not over
   project change. Check `git diff .claude/settings.json` before including it in `git add`.
 - Push to `origin master` only — this is a public repo
   (`jonmcurry/player-scouting-report`), and there's no other branch convention in use.
+
+## Emulator deployment
+
+After finishing a change to the coach app (`coach/`, `mobile/`) — not mid-edit, but once it's ready
+to be looked at — rebuild and install the latest build onto the Android emulator, if one is already
+running, without waiting to be asked:
+
+```powershell
+cd mobile && npx cap sync android
+cd android && .\gradlew.bat assembleDebug
+& "C:\Android\platform-tools\adb.exe" -s emulator-5554 install -r app\build\outputs\apk\debug\app-debug.apk
+& "C:\Android\platform-tools\adb.exe" -s emulator-5554 shell am start -n com.barreliq.coach/.MainActivity
+```
+
+- `npx cap run android` does not reliably work in this Windows/Git Bash setup (a `gradlew` spawn
+  resolution issue) — drive `gradlew.bat` + `adb install` directly instead, per the pattern above,
+  not `cap run`.
+- Only do this if an emulator is already running (`adb devices` shows a `device`, not empty) — don't
+  boot one just to deploy to it.
+- Real SDK path on this machine is `C:\Android` (`mobile/android/local.properties`'s `sdk.dir`), not
+  the more typical `%LOCALAPPDATA%\Android\Sdk` — confirm before assuming platform-tools/emulator
+  live somewhere else.
+- Skip this for changes that don't touch `coach/`/`mobile/` (e.g. the Python pose3d pipeline, root
+  CLI scripts, database migrations with no frontend change) — there's nothing new to deploy.

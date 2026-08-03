@@ -4,6 +4,19 @@ All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file starts 2026-08-01 — see
 `NEXT_STEPS.md` (and its own git history) for the detailed narrative of everything before that.
 
+## [0.6.0] - 2026-08-03
+
+### Added
+- A coach can now delete a player from their roster (`coach/team.html`) - a 🗑 button on each
+  roster row, with a confirm dialog that honestly warns it removes every logged at-bat, score, and
+  clip too (existing `on delete cascade` foreign keys, no new migration needed - the same RLS
+  policy that already permits insert/update covers delete).
+
+### Changed
+- `.lineup-row` restructured into a card shell (`div`) wrapping a separate `.lineup-link` (the
+  tap-to-open-player anchor) so the new delete button can sit outside the link - a `<button>`
+  nested inside an `<a>` is invalid HTML5 and behaves inconsistently across browsers/screen readers.
+
 ## [0.5.0] - 2026-08-03
 
 ### Added

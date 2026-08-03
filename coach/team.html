@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Team View</title>
-<link rel="stylesheet" href="./coach.css?v=38081fb207">
+<link rel="stylesheet" href="./coach.css?v=178e3bdd59">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -259,21 +259,47 @@
           return `<div class="block ${cls}" title="${cp.label}: ${row?.score ?? "—"}"></div>`;
         }).join("");
         return `
-          <a class="lineup-row tap-target" href="./player.html?team=${teamSlug}&player=${p.slug}">
-            <div class="jersey-badge">${p.jersey_number}</div>
-            <div class="lineup-main">
-              <div class="lineup-head">
-                <span class="lineup-name">${p.name}</span>
-                <span class="hint">${p.reviewedCount}/${p.scoredCount} confirmed</span>
+          <div class="lineup-row">
+            <a class="lineup-link tap-target" href="./player.html?team=${teamSlug}&player=${p.slug}">
+              <div class="jersey-badge">${p.jersey_number}</div>
+              <div class="lineup-main">
+                <div class="lineup-head">
+                  <span class="lineup-name">${p.name}</span>
+                  <span class="hint">${p.reviewedCount}/${p.scoredCount} confirmed</span>
+                </div>
+                <div class="mini-heatmap">${blocks}</div>
+                ${p.abCount < MIN_ATBATS_FOR_PATTERN ? `<p class="hint" style="margin:6px 0 0;">⚠ Only ${p.abCount} at-bat(s) logged</p>` : ""}
               </div>
-              <div class="mini-heatmap">${blocks}</div>
-              ${p.abCount < MIN_ATBATS_FOR_PATTERN ? `<p class="hint" style="margin:6px 0 0;">⚠ Only ${p.abCount} at-bat(s) logged</p>` : ""}
-            </div>
-          </a>
+            </a>
+            <button class="tap-target btn-danger" style="flex:none;" data-delete-player="${p.id}" data-player-name="${p.name}" title="Delete player">🗑</button>
+          </div>
         `;
       })
       .join("");
   }
+
+  document.getElementById("playerCards").addEventListener("click", async (e) => {
+    const deleteBtn = e.target.closest("[data-delete-player]");
+    if (!deleteBtn) return;
+    const playerId = deleteBtn.dataset.deletePlayer;
+    const playerName = deleteBtn.dataset.playerName;
+    if (
+      !confirm(
+        `Delete ${playerName} entirely, including every logged at-bat, score, and clip? This can't be undone.`,
+      )
+    ) {
+      return;
+    }
+    deleteBtn.disabled = true;
+    const { error } = await supabase.from("players").delete().eq("id", playerId);
+    if (error) {
+      alert(`Couldn't delete player: ${error.message}`);
+      deleteBtn.disabled = false;
+      return;
+    }
+    currentPlayers = currentPlayers.filter((p) => p.id !== playerId);
+    renderPlayerCards(currentPlayers, currentFilter);
+  });
 
   main();
 </script>
