@@ -1,5 +1,30 @@
 # Open Items, To-Dos, and Future Considerations
 
+## Coach-app UI polish pass, three rounds from real screenshot feedback (2026-08-03)
+
+- [x] Reviewed and implemented a real UX checklist against `team.html`'s roster view, correcting
+      one item along the way rather than implementing it as literally proposed: the suggested
+      "8/11 Confirmed" wording would have misrepresented not-yet-scored checkpoints as
+      reviewed-and-failed; shipped "N/M scored confirmed" instead, which fixes the actual
+      confusion without the factual error. Also: muted delete-button contrast, toolbar spacing
+      (chips + Add Player share one row), confirmed-pill contrast.
+- [x] Second round: replaced the roster row's inline delete button with a tap-anywhere-opens-report
+      chevron - delete moved to a collapsed "Manage Player" drawer on `player.html` instead
+      (reusing the page that already exists as the "detail view," rather than building a new
+      screen or a long-press gesture). Also fixed real single-line header truncation (e.g. "Latham
+      Lady Bison W...") - root cause was horizontal space next to the badge/pill, not the subtitle
+      as first assumed; header now wraps up to 2 lines.
+- [x] Third round: hid the native, unstyled `<input type="file">` controls behind styled buttons
+      everywhere they still appeared (game log "Attach Video," Log-At-Bat modal), matching the
+      "Add Pitch" pattern that already existed correctly; muted "Delete At-Bat" the same way as the
+      earlier roster-delete fix (icon-only, intensifies on hover) since it also sits on every card
+      during passive scrolling - left "Delete Pitch" untouched (a deliberate, already-opened-clip
+      context); grew the player-switcher dropdown chevron, which had opted out of this app's own
+      48px touch-target minimum entirely, not just looked small.
+- All three rounds verified with real Playwright runs against real team data (Thunder 10U, Latham
+  Lady Bison White 10U/Emily C) - not just code review - and redeployed to the Android emulator for
+  a real on-device screenshot each time, per `CLAUDE.md`'s emulator-deployment section.
+
 ## Self-service coach onboarding (signup + create team + add player); a real service-worker caching bug found along the way (2026-08-03)
 
 - [x] **Phase 1 (partial) of the competitive-analysis roadmap shipped**: a coach can now sign up,

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=55b9f90b25">
+<link rel="stylesheet" href="./coach.css?v=9a0289bdc5">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -45,6 +45,15 @@
   <h2>Practice Log</h2>
   <p class="hint">Batting practice/lesson sessions - kept separate from real game at-bats above.</p>
   <div id="practiceLogList"></div>
+
+  <details class="drawer" style="margin-top:24px;">
+    <summary><span>Manage Player</span></summary>
+    <div class="drawer-body">
+      <button class="tap-target btn-danger" id="deletePlayerBtn">🗑 Delete Player</button>
+      <p class="hint" style="margin-top:8px;">Removes her entire record, including every logged
+        at-bat, score, and clip. This can't be undone.</p>
+    </div>
+  </details>
 </div>
 
 <nav class="bottom-nav" id="bottomNav"></nav>
@@ -127,6 +136,25 @@
       roster,
       confirmedCount,
       totalCount,
+    });
+
+    document.getElementById("deletePlayerBtn").addEventListener("click", async () => {
+      if (
+        !confirm(
+          `Delete ${player.name} entirely, including every logged at-bat, score, and clip? This can't be undone.`,
+        )
+      ) {
+        return;
+      }
+      const btn = document.getElementById("deletePlayerBtn");
+      btn.disabled = true;
+      const { error } = await supabase.from("players").delete().eq("id", playerId);
+      if (error) {
+        alert(`Couldn't delete player: ${error.message}`);
+        btn.disabled = false;
+        return;
+      }
+      window.location.href = `./team.html?team=${teamSlug}`;
     });
 
     const reportHref = `./player.html?team=${teamSlug}&player=${playerSlug}`;
@@ -403,7 +431,7 @@
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
           <b>${g.date} vs ${g.opponent}, AB ${g.ab}</b>
-          <button class="tap-target btn-danger" style="font-size:12px;padding:6px 10px;flex:none;" data-delete-at-bat="${g.id}">🗑 Delete At-Bat</button>
+          <button class="tap-target btn-danger subtle" style="flex:none;" data-delete-at-bat="${g.id}" title="Delete At-Bat">🗑</button>
         </div>
         <p class="hint">${g.pitch ?? "—"}${zoneBits ? ` <span style="color:var(--clay);">(${zoneBits})</span>` : ""}</p>
         <p>${g.result}</p>
@@ -448,7 +476,7 @@
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
           <b>${g.date}${g.session_note ? ` — ${g.session_note}` : ""}, Rep ${g.ab}</b>
-          <button class="tap-target btn-danger" style="font-size:12px;padding:6px 10px;flex:none;" data-delete-at-bat="${g.id}">🗑 Delete</button>
+          <button class="tap-target btn-danger subtle" style="flex:none;" data-delete-at-bat="${g.id}" title="Delete practice session">🗑</button>
         </div>
         <div class="scrubber-mount" data-game-log-entry="${g.id}"></div>
       </div>
@@ -494,8 +522,8 @@
     if (!clips || clips.length === 0) {
       mount.innerHTML = `
         <div class="upload-control" data-game-log-entry="${gameLogEntryId}">
-          <input type="file" accept="video/*" class="tap-target">
-          <button class="tap-target" data-attach-video>Attach Video</button>
+          <input type="file" accept="video/*" class="attach-video-input" style="display:none;">
+          <button class="tap-target" data-attach-video>📹 Attach Video</button>
         </div>
         <p class="hint">Film from directly behind home plate, facing the batter — a camera along the
           baseline or outfield can't reliably pick out the bat.</p>
@@ -690,24 +718,7 @@
 
       const attachBtn = e.target.closest("[data-attach-video]");
       if (attachBtn) {
-        const control = attachBtn.closest(".upload-control");
-        const gameLogEntryId = control.dataset.gameLogEntry;
-        const fileInput = control.querySelector("input[type=file]");
-        const file = fileInput.files[0];
-        if (!file) {
-          alert("Choose a video file first.");
-          return;
-        }
-        attachBtn.disabled = true;
-        attachBtn.textContent = "Uploading…";
-        try {
-          await uploadRawClip(gameLogEntryId, file);
-          await loadClipsForEntry(gameLogEntryId, currentExtensionScore);
-        } catch (err) {
-          alert(`Couldn't upload video: ${err.message}`);
-          attachBtn.disabled = false;
-          attachBtn.textContent = "Attach Video";
-        }
+        attachBtn.closest(".upload-control").querySelector(".attach-video-input").click();
         return;
       }
 
@@ -779,6 +790,26 @@
     };
 
     const handleChange = async (e) => {
+      const attachInput = e.target.closest(".attach-video-input");
+      if (attachInput) {
+        const control = attachInput.closest(".upload-control");
+        const gameLogEntryId = control.dataset.gameLogEntry;
+        const file = attachInput.files[0];
+        if (!file) return;
+        const attachBtn = control.querySelector("[data-attach-video]");
+        attachBtn.disabled = true;
+        attachBtn.textContent = "Uploading…";
+        try {
+          await uploadRawClip(gameLogEntryId, file);
+          await loadClipsForEntry(gameLogEntryId, currentExtensionScore);
+        } catch (err) {
+          alert(`Couldn't upload video: ${err.message}`);
+          attachBtn.disabled = false;
+          attachBtn.textContent = "📹 Attach Video";
+        }
+        return;
+      }
+
       const fileInput = e.target.closest(".add-clip-input");
       if (!fileInput) return;
       const gameLogEntryId = fileInput.dataset.gameLogEntry;
@@ -923,10 +954,14 @@
           <input type="text" id="newSessionNote" placeholder="Session note (optional, e.g. &quot;tee work&quot;, &quot;front toss&quot;)" style="display:none;">
           <input type="text" id="newPitch" placeholder="Pitch type/context (optional, e.g. &quot;Rise ball&quot;)">
           <input type="text" id="newResult" placeholder="Result">
-          <label class="hint" for="newVideo">Video (optional) — processing starts automatically after upload.
+          <p class="hint">Video (optional) — processing starts automatically after upload.
             Film from directly behind home plate, facing the batter — a camera along the baseline or
-            outfield can't reliably pick out the bat.</label>
-          <input type="file" id="newVideo" accept="video/*">
+            outfield can't reliably pick out the bat.</p>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <input type="file" id="newVideo" accept="video/*" style="display:none;">
+            <button type="button" class="tap-target" id="newVideoTrigger">📹 Choose Video</button>
+            <span class="hint" id="newVideoFilename">No file chosen</span>
+          </div>
           <button class="primary tap-target" id="addAtBatBtn">Add At-Bat</button>
           <p class="hint" id="addAtBatStatus"></p>
         </div>
@@ -936,6 +971,14 @@
     backdrop.querySelector(".close-btn").addEventListener("click", () => backdrop.remove());
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) backdrop.remove();
+    });
+
+    backdrop.querySelector("#newVideoTrigger").addEventListener("click", () => {
+      backdrop.querySelector("#newVideo").click();
+    });
+    backdrop.querySelector("#newVideo").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      backdrop.querySelector("#newVideoFilename").textContent = file ? file.name : "No file chosen";
     });
 
     // Default to today (device-LOCAL date, not UTC - a coach filming a late

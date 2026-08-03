@@ -4,6 +4,27 @@ All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file starts 2026-08-01 — see
 `NEXT_STEPS.md` (and its own git history) for the detailed narrative of everything before that.
 
+## [0.7.0] - 2026-08-03
+
+### Changed
+- Roster row (`coach/team.html`) is now tap-anywhere-opens-report, signaled by a trailing `›`
+  chevron instead of an inline delete button - deleting a player moved to a collapsed "Manage
+  Player" drawer at the bottom of `player.html` (a rare action, no longer competing for tap space
+  on a row a coach opens constantly).
+- Game log/practice log "Delete At-Bat" buttons (`player.html`) are now icon-only and muted at
+  rest, intensifying to the full danger-red treatment on hover/focus - they sit on every card
+  during passive scrolling, unlike "Delete Pitch" (inside an already-opened clip tab, left
+  unchanged) or a roster action a coach deliberately seeks out.
+- Video upload: the raw, browser-native `<input type="file">` controls (game log "Attach Video"
+  and the Log-At-Bat modal) are hidden behind styled buttons, matching the pattern "Add Pitch"
+  already used - "Attach Video" now auto-uploads on file selection instead of a separate confirm
+  tap; the modal shows the chosen filename as text feedback.
+- Team/player name header no longer hard-truncates at one line (e.g. "Latham Lady Bison W...") -
+  wraps up to 2 lines (still gracefully truncates beyond that), fixing the actual cause (limited
+  horizontal space next to the badge/pill) rather than the subtitle underneath.
+- Confirmed-pill badge and player-switcher dropdown chevron both raised in contrast/tap-target
+  size for legibility and usability.
+
 ## [0.6.0] - 2026-08-03
 
 ### Added
