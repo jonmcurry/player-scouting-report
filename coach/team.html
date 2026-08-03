@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Team View</title>
-<link rel="stylesheet" href="./coach.css?v=178e3bdd59">
+<link rel="stylesheet" href="./coach.css?v=55b9f90b25">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -28,13 +28,6 @@
     <span><span class="legend-swatch bg-score-1"></span> Needs Work</span>
     <span><span class="legend-swatch bg-score-pending"></span> Not yet scored</span>
   </div>
-  <details class="drawer" style="margin-bottom:14px;">
-    <summary><span>Each bar is one of the 11 checkpoints, left to right — tap to see which is which</span></summary>
-    <div class="drawer-body">
-      <ol id="checkpointKey" style="margin:0;padding-left:20px;font-size:13px;color:var(--text-secondary);"></ol>
-    </div>
-  </details>
-
   <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
     <button class="tap-target" id="addPlayerBtn">+ Add Player</button>
   </div>
@@ -82,9 +75,6 @@
       return;
     }
     currentTeamId = team.id;
-    document.getElementById("checkpointKey").innerHTML = CHECKPOINTS.map(
-      (cp) => `<li>${cp.label}</li>`,
-    ).join("");
 
     await renderFocusBanner(team.id);
     currentPlayers = await loadPlayers(team.id);
