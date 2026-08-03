@@ -4,6 +4,21 @@ All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file starts 2026-08-01 — see
 `NEXT_STEPS.md` (and its own git history) for the detailed narrative of everything before that.
 
+## [0.5.0] - 2026-08-03
+
+### Added
+- Self-service coach onboarding: a coach can sign up, create their own team, and add players
+  entirely through the coach app, with no admin/`provisionCoach.ts` step required. New
+  `create_team()` database RPC atomically creates the team and its owning `coach_team_access` row.
+  Coach invites to an existing team are explicitly out of scope for this pass (real follow-up).
+
+### Fixed
+- `coach/sw.js` was caching every cross-origin request cache-first, not just its intended CDN
+  (`esm.sh`) - this meant live Supabase API reads could silently serve stale cached data whenever
+  the exact same query URL was repeated (e.g. a team roster reload right after adding a player
+  showed the pre-add, empty state). Now only `esm.sh` requests are cached; Supabase/GCS requests
+  always hit the network.
+
 ## [0.4.1] - 2026-08-03
 
 ### Removed

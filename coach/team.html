@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Team View</title>
-<link rel="stylesheet" href="./coach.css?v=10">
+<link rel="stylesheet" href="./coach.css?v=38081fb207">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -35,6 +35,9 @@
     </div>
   </details>
 
+  <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+    <button class="tap-target" id="addPlayerBtn">+ Add Player</button>
+  </div>
   <div id="playerCards"></div>
 </div>
 
@@ -45,9 +48,21 @@
 <script type="module">
   import { supabase, requireSession, CHECKPOINTS, qs } from "./shared.js";
   import { renderTeamAppBar, renderBottomNav, getLastPlayerSlug } from "./components/appShell.js";
+  import { closeableModal } from "./components/compModal.js";
 
   const MIN_ATBATS_FOR_PATTERN = 3;
   const teamSlug = qs("team");
+  let currentTeamId = null;
+  let currentPlayers = [];
+  let currentFilter = "all";
+
+  function slugify(text) {
+    return text
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
 
   async function main() {
     const session = await requireSession();
@@ -66,21 +81,22 @@
       document.getElementById("appBar").innerHTML = `<h1>Team not found (or you don't have access)</h1>`;
       return;
     }
+    currentTeamId = team.id;
     document.getElementById("checkpointKey").innerHTML = CHECKPOINTS.map(
       (cp) => `<li>${cp.label}</li>`,
     ).join("");
 
     await renderFocusBanner(team.id);
-    const players = await loadPlayers(team.id);
+    currentPlayers = await loadPlayers(team.id);
 
-    const confirmedCount = players.filter((p) => p.scoredCount > 0 && p.reviewedCount === p.scoredCount).length;
+    const confirmedCount = currentPlayers.filter((p) => p.scoredCount > 0 && p.reviewedCount === p.scoredCount).length;
     renderTeamAppBar(document.getElementById("appBar"), {
       teamName: team.name,
       confirmedCount,
-      totalCount: players.length,
+      totalCount: currentPlayers.length,
     });
 
-    const defaultPlayerSlug = getLastPlayerSlug(teamSlug) ?? players[0]?.slug ?? null;
+    const defaultPlayerSlug = getLastPlayerSlug(teamSlug) ?? currentPlayers[0]?.slug ?? null;
     const reportHref = defaultPlayerSlug ? `./player.html?team=${teamSlug}&player=${defaultPlayerSlug}` : "#";
     const logAbHref = defaultPlayerSlug ? `./player.html?team=${teamSlug}&player=${defaultPlayerSlug}&openLog=1` : "#";
     renderBottomNav(document.getElementById("bottomNav"), {
@@ -90,16 +106,64 @@
       logAbHref,
     });
 
-    let currentFilter = "all";
-    renderPlayerCards(players, currentFilter);
+    renderPlayerCards(currentPlayers, currentFilter);
 
     document.querySelectorAll(".chip").forEach((chip) => {
       chip.addEventListener("click", () => {
         document.querySelectorAll(".chip").forEach((c) => c.removeAttribute("data-active"));
         chip.setAttribute("data-active", "true");
         currentFilter = chip.dataset.filter;
-        renderPlayerCards(players, currentFilter);
+        renderPlayerCards(currentPlayers, currentFilter);
       });
+    });
+
+    document.getElementById("addPlayerBtn").addEventListener("click", openAddPlayerModal);
+  }
+
+  /** Reuses compModal.js's shared modal-backdrop shell rather than a new
+   * pattern - same `.modal`/`.close-btn` markup this app already uses for
+   * every other overlay. */
+  function openAddPlayerModal() {
+    const backdrop = closeableModal(`
+      <div class="modal">
+        <button class="close-btn tap-target">✕</button>
+        <h2 style="margin-top:0;">Add Player</h2>
+        <input type="text" id="newPlayerName" placeholder="Player name (e.g. Emily C)">
+        <input type="text" id="newPlayerJersey" placeholder="Jersey number">
+        <input type="text" id="newPlayerSlug" placeholder="URL slug (auto-filled from name)">
+        <button class="primary tap-target" id="savePlayerBtn" style="margin-top:10px;">Add Player</button>
+        <p class="error-text" id="addPlayerErrorMsg"></p>
+      </div>
+    `);
+
+    backdrop.querySelector("#newPlayerName").addEventListener("input", (e) => {
+      backdrop.querySelector("#newPlayerSlug").value = slugify(e.target.value);
+    });
+
+    backdrop.querySelector("#savePlayerBtn").addEventListener("click", async () => {
+      const name = backdrop.querySelector("#newPlayerName").value.trim();
+      const jerseyNumber = backdrop.querySelector("#newPlayerJersey").value.trim();
+      const slug = backdrop.querySelector("#newPlayerSlug").value.trim() || slugify(name);
+      const errorMsg = backdrop.querySelector("#addPlayerErrorMsg");
+      errorMsg.textContent = "";
+
+      if (!name) { errorMsg.textContent = "Enter a player name."; return; }
+      if (!jerseyNumber) { errorMsg.textContent = "Enter a jersey number."; return; }
+      if (!slug) { errorMsg.textContent = "Enter a URL slug."; return; }
+
+      const { error } = await supabase
+        .from("players")
+        .insert({ team_id: currentTeamId, name, jersey_number: jerseyNumber, slug });
+      if (error) {
+        errorMsg.textContent = error.message.includes("duplicate key")
+          ? "A player with that slug already exists on this team - try a different one."
+          : error.message;
+        return;
+      }
+
+      backdrop.remove();
+      currentPlayers = await loadPlayers(currentTeamId);
+      renderPlayerCards(currentPlayers, currentFilter);
     });
   }
 

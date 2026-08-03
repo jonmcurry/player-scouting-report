@@ -1,6 +1,6 @@
 {
   "name": "barreliq",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "description": "Node/TypeScript CLI layer for BarrelIQ's swing-scouting pipeline: Supabase-backed coach editing, GCS media, Gemini-assisted drafts. Separate from and does not replace the existing Python pose3d pipeline (scripts/pose3d/).",
   "type": "module",
@@ -17,6 +17,7 @@
     "ingest": "tsx src/cli/ingest.ts",
     "analyze": "tsx src/cli/analyze.ts",
     "provision-coach": "tsx src/cli/provisionCoach.ts",
+    "coach:bump-cache": "node scripts/bump-coach-cache.mjs",
     "db:migrate": "npx supabase db push",
     "db:reset": "npx supabase db reset"
   },

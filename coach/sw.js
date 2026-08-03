@@ -11,7 +11,7 @@
 // all for exactly this reason, on an already-installed app, even after a
 // full rebuild+reinstall. Confirmed the fix was correct all along; only the
 // cache-bust was missing.
-const CACHE_NAME = "barreliq-coach-v16";
+const CACHE_NAME = "barreliq-coach-38081fb207";
 // Separate, unversioned cache for cross-origin CDN libs (currently just
 // Three.js, see skeletonScene.js) - kept apart from CACHE_NAME so a normal
 // app-shell version bump doesn't force re-downloading a large lib that
@@ -21,7 +21,7 @@ const ASSETS = [
   "./index.html",
   "./team.html",
   "./player.html",
-  "./coach.css?v=10",
+  "./coach.css?v=38081fb207",
   "./shared.js",
   "./config.js",
   "./manifest.json",
@@ -67,10 +67,11 @@ self.addEventListener("activate", (evt) => {
 
 self.addEventListener("fetch", (evt) => {
   const url = new URL(evt.request.url);
-  if (url.origin !== self.location.origin) {
-    // Cross-origin CDN request (esm.sh) - cache-first, falling back to
-    // network and opportunistically caching a successful response for next
-    // time. Not precached at install time, see the comment above.
+  if (url.hostname === "esm.sh") {
+    // The actual CDN this app loads from (Three.js, supabase-js) - cache-first,
+    // falling back to network and opportunistically caching a successful
+    // response for next time. Not precached at install time, see the comment
+    // above.
     evt.respondWith(
       caches.open(CDN_CACHE).then(async (cache) => {
         const cached = await cache.match(evt.request);
@@ -80,6 +81,17 @@ self.addEventListener("fetch", (evt) => {
         return res;
       }),
     );
+    return;
+  }
+  if (url.origin !== self.location.origin) {
+    // Any other cross-origin request - the live Supabase REST/Auth API and
+    // GCS-hosted video both land here. Must never be cache-first: caching a
+    // Supabase GET by URL means a repeated identical query (e.g. reloading a
+    // roster right after inserting a row - the exact same request URL as the
+    // pre-insert load) would silently serve stale data forever instead of
+    // hitting the network. Confirmed real: this exact bug made a newly-added
+    // player invisible in the roster until a hard refresh.
+    evt.respondWith(fetch(evt.request));
     return;
   }
   evt.respondWith(caches.match(evt.request).then((res) => res || fetch(evt.request)));

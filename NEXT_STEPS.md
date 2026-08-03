@@ -1,5 +1,33 @@
 # Open Items, To-Dos, and Future Considerations
 
+## Self-service coach onboarding (signup + create team + add player); a real service-worker caching bug found along the way (2026-08-03)
+
+- [x] **Phase 1 (partial) of the competitive-analysis roadmap shipped**: a coach can now sign up,
+      create their own team, and add players with no admin/`provisionCoach.ts` step at all. New
+      `create_team()` `security definer` RPC (`supabase/migrations/00016_self_service_signup.sql`)
+      handles the team-row + `coach_team_access` row atomically, since `teams`' existing RLS policy
+      had a chicken-and-egg deny for a coach's very first INSERT. Per direct instruction, **inviting
+      a second coach to an existing team is explicitly out of scope for this pass** - a real
+      follow-up, not built here. iOS (the other half of Phase 1) remains blocked - no Mac/Xcode
+      hardware in this environment.
+- [x] **Found and fixed a real, previously-invisible bug in `coach/sw.js`**: its fetch handler
+      treated *any* cross-origin request as CDN-cacheable (cache-first), but the only actual CDN
+      this app uses is `esm.sh` - everything else cross-origin is the live Supabase REST/Auth API
+      and GCS video, both of which must never be cached. This silently served a stale cached
+      response for any Supabase GET repeated with the exact same URL (e.g. reloading a team's
+      roster right after inserting a new player - the pre-insert empty-roster response was cached
+      and then replayed instead of hitting the network). Confirmed via a real Playwright
+      reproduction and fix-verification (add a player -> roster now shows it immediately), not
+      just inferred from reading the code. Likely also explains other "the fix didn't take" moments
+      earlier in this project's history that were chalked up to something else.
+- [x] Verified the negative case too: a second, freshly-signed-up coach cannot see or open a first
+      coach's team (empty team list, "Team not found (or you don't have access)" on direct URL) -
+      self-signup didn't accidentally widen RLS access.
+- Not yet decided: whether/when to flip `supabase/config.toml`'s `enable_confirmations` to `true`
+  with real SMTP for production - required before this signup flow is safe to expose publicly, not
+  built in this pass (local dev's `false` setting means the "check your email" branch has never
+  actually been exercised end-to-end here).
+
 ## Monocular 3D lift can reconstruct an implausible torso tilt for some real camera angles (2026-08-02)
 
 - [x] **Display-layer stopgap shipped; underlying pipeline bug still open.** Found while chasing a

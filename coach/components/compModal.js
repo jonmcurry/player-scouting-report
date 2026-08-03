@@ -94,7 +94,11 @@ const CHECKPOINT_TO_PHASE_SLUG = {
 // (skeletonScene.js) - a real GPU context per canvas, not just DOM nodes, so
 // closing the modal must free it explicitly rather than rely on garbage
 // collection (browsers cap how many WebGL contexts can be live at once).
-function closeableModal(innerHTML, onClose) {
+/** Shared modal-backdrop shell (used internally by this file's own comp
+ * modals, and reused directly by team.html's "Add Player" modal rather than
+ * duplicating the same ~15-line pattern a third time). Markup passed via
+ * innerHTML must include one `.close-btn` element. */
+export function closeableModal(innerHTML, onClose) {
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
   backdrop.innerHTML = innerHTML;

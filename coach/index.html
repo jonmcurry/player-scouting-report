@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BarrelIQ — Coach Login</title>
-<link rel="stylesheet" href="./coach.css?v=10">
+<link rel="stylesheet" href="./coach.css?v=38081fb207">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -15,16 +15,40 @@
     <div class="jersey-badge lg" style="margin:0 auto 4px;">⚾</div>
     <h1 style="text-align:center;">BarrelIQ</h1>
     <p class="hint" style="text-align:center;margin-top:-8px;">Coach Sign In</p>
-    <p class="hint" style="text-align:center;">Access is provisioned by your team's site admin — there's no self-signup here.</p>
     <input type="email" id="email" placeholder="Email" autocomplete="username">
     <input type="password" id="password" placeholder="Password" autocomplete="current-password">
     <button class="primary tap-target" id="signInBtn">Sign In</button>
     <p class="error-text" id="errorMsg"></p>
+    <p class="hint" style="text-align:center;">New coach? <a href="#" id="showSignupLink">Create an account</a></p>
+  </div>
+
+  <div id="signupView" class="login-form" style="display:none;">
+    <div class="jersey-badge lg" style="margin:0 auto 4px;">⚾</div>
+    <h1 style="text-align:center;">Create Account</h1>
+    <p class="hint" style="text-align:center;margin-top:-8px;">Sets up your own coach login - your team comes next.</p>
+    <input type="text" id="signupName" placeholder="Your name (shown to other coaches)" autocomplete="name">
+    <input type="email" id="signupEmail" placeholder="Email" autocomplete="username">
+    <input type="password" id="signupPassword" placeholder="Password" autocomplete="new-password">
+    <input type="password" id="signupPasswordConfirm" placeholder="Confirm password" autocomplete="new-password">
+    <button class="primary tap-target" id="signUpBtn">Create Account</button>
+    <p class="error-text" id="signupErrorMsg"></p>
+    <p class="hint" id="signupCheckEmailMsg" style="display:none;text-align:center;">Check your email for a confirmation link, then sign in.</p>
+    <p class="hint" style="text-align:center;">Already have an account? <a href="#" id="showSignInLink">Sign in</a></p>
   </div>
 
   <div id="pickerView" style="display:none;">
     <h1>My Teams</h1>
     <div id="teamsList"></div>
+
+    <div id="createTeamView" style="display:none;">
+      <h1 style="margin-top:24px;">Create Your Team</h1>
+      <p class="hint">You don't have a team yet - set one up to start adding players.</p>
+      <input type="text" id="newTeamName" placeholder="Team name (e.g. Latham Lady Bison White 10U)">
+      <input type="text" id="newTeamSlug" placeholder="URL slug (auto-filled from name)">
+      <button class="primary tap-target" id="createTeamBtn">Create Team</button>
+      <p class="error-text" id="createTeamErrorMsg"></p>
+    </div>
+
     <button id="signOutBtn" style="margin-top:20px;">Sign out</button>
   </div>
 </div>
@@ -35,13 +59,27 @@
   import { supabase } from "./shared.js";
 
   const loginView = document.getElementById("loginView");
+  const signupView = document.getElementById("signupView");
   const pickerView = document.getElementById("pickerView");
+
+  // Shared with the "Add Player" slug auto-suggest on team.html - kept as a
+  // small inline duplicate rather than a new shared.js export, since it's
+  // an 8-line pure function and the two call sites don't share any other
+  // state worth factoring together.
+  function slugify(text) {
+    return text
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
 
   async function showPickerIfSignedIn() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return false;
 
     loginView.style.display = "none";
+    signupView.style.display = "none";
     pickerView.style.display = "block";
 
     const { data: access, error } = await supabase
@@ -54,11 +92,14 @@
     }
 
     const teamsList = document.getElementById("teamsList");
+    const createTeamView = document.getElementById("createTeamView");
     if (!access || access.length === 0) {
-      teamsList.innerHTML = `<p class="hint">No teams assigned yet — ask your site admin to grant access.</p>`;
+      teamsList.innerHTML = "";
+      createTeamView.style.display = "block";
       return true;
     }
 
+    createTeamView.style.display = "none";
     teamsList.innerHTML = "";
     for (const a of access) {
       const div = document.createElement("div");
@@ -84,6 +125,79 @@
       return;
     }
     await showPickerIfSignedIn();
+  });
+
+  document.getElementById("showSignupLink").addEventListener("click", (e) => {
+    e.preventDefault();
+    loginView.style.display = "none";
+    signupView.style.display = "block";
+  });
+  document.getElementById("showSignInLink").addEventListener("click", (e) => {
+    e.preventDefault();
+    signupView.style.display = "none";
+    loginView.style.display = "block";
+  });
+
+  document.getElementById("signUpBtn").addEventListener("click", async () => {
+    const displayName = document.getElementById("signupName").value.trim();
+    const email = document.getElementById("signupEmail").value.trim();
+    const password = document.getElementById("signupPassword").value;
+    const passwordConfirm = document.getElementById("signupPasswordConfirm").value;
+    const errorMsg = document.getElementById("signupErrorMsg");
+    const checkEmailMsg = document.getElementById("signupCheckEmailMsg");
+    errorMsg.textContent = "";
+    checkEmailMsg.style.display = "none";
+
+    if (!displayName) { errorMsg.textContent = "Enter your name."; return; }
+    if (password !== passwordConfirm) { errorMsg.textContent = "Passwords don't match."; return; }
+
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) {
+      errorMsg.textContent = error.message;
+      return;
+    }
+
+    if (!data.session) {
+      // Email confirmation is required (production config) - no session
+      // yet, so coach_profiles can't be written until the coach actually
+      // confirms and signs in for real. Real, not a fabricated success
+      // message - local dev's enable_confirmations=false means this branch
+      // never fires locally, only once a real deploy enables it.
+      checkEmailMsg.style.display = "block";
+      return;
+    }
+
+    const { error: profileError } = await supabase
+      .from("coach_profiles")
+      .insert({ user_id: data.user.id, display_name: displayName });
+    if (profileError) {
+      errorMsg.textContent = `Account created, but couldn't save your name: ${profileError.message}`;
+      return;
+    }
+    await showPickerIfSignedIn();
+  });
+
+  document.getElementById("newTeamName").addEventListener("input", (e) => {
+    document.getElementById("newTeamSlug").value = slugify(e.target.value);
+  });
+
+  document.getElementById("createTeamBtn").addEventListener("click", async () => {
+    const name = document.getElementById("newTeamName").value.trim();
+    const slug = document.getElementById("newTeamSlug").value.trim() || slugify(name);
+    const errorMsg = document.getElementById("createTeamErrorMsg");
+    errorMsg.textContent = "";
+
+    if (!name) { errorMsg.textContent = "Enter a team name."; return; }
+    if (!slug) { errorMsg.textContent = "Enter a URL slug."; return; }
+
+    const { data, error } = await supabase.rpc("create_team", { p_slug: slug, p_name: name });
+    if (error) {
+      errorMsg.textContent = error.message.includes("duplicate key")
+        ? `That URL slug is already taken - try a different one.`
+        : error.message;
+      return;
+    }
+    window.location.href = `./team.html?team=${data.slug}`;
   });
 
   document.getElementById("signOutBtn").addEventListener("click", async () => {

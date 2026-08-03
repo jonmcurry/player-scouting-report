@@ -188,10 +188,11 @@ input[type="text"], input[type="email"], input[type="password"] {
 .stepper button[data-score="2"][data-active="true"] { background: var(--status-warning); }
 .stepper button[data-score="3"][data-active="true"] { background: var(--status-good); }
 
-/* AI-audit badges - same three states as the public report's .review-badge,
-   punchier colors. ai-draft now shares the amber accent used by the
-   checkpoint card's "AI Draft" ribbon rather than a separate purple, so the
-   unreviewed-AI signal reads as one consistent color everywhere it appears. */
+/* AI-audit badges - three states (ai-draft/edited/confirmed), see
+   shared.js's renderReviewBadge(). ai-draft shares the amber accent used by
+   the checkpoint card's "AI Draft" ribbon rather than a separate purple, so
+   the unreviewed-AI signal reads as one consistent color everywhere it
+   appears. */
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 700; margin-top: 6px; }
 .badge.ai-draft { background: color-mix(in srgb, var(--status-draft) 18%, transparent); color: var(--status-draft); border: 1px dashed var(--status-draft); }
 .badge.edited { background: color-mix(in srgb, var(--status-warning) 20%, transparent); color: var(--status-warning-2); border: 1px dashed var(--status-warning); }
