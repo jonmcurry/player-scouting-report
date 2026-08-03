@@ -16,7 +16,6 @@ Built as a general multi-team tool, not a one-team script — currently used by 
 
 | Team | Roster | Status |
 |---|---|---|
-| **Bethlehem Boom 10U** | #2 Ellie T + 10 more | Not yet migrated to the coach app - no live report currently published |
 | **Latham Lady Bison White 10U** | #10 Emily C | On the coach app (Supabase) - real game log, real uploaded/processed video with pose3d data, real checklist scores |
 
 A fictional "Thunder 10U" team also exists in Supabase for local dev/testing only. Don't assume a
