@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=8">
+<link rel="stylesheet" href="./coach.css?v=10">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -237,6 +237,21 @@
    * earlier collapsible <details> drawers. Tapping a stepper score both
    * saves AND confirms in one tap (see stepper.js) - there's no separate
    * "Confirm Score" step, since the single-tap IS the confirmation. */
+  /** The app-bar "X/Y Confirmed" pill (roster-wide progress, not this-player-
+   * only) is set once at page load and was found to stay stale for the rest
+   * of the session after confirming a checkpoint score here - each card's
+   * own ribbon/verified-pill updates live, but a coach doing a real review
+   * pass would see the roster-wide count lag behind her own actions the
+   * whole time (confirmed for real: a fresh reload always showed the
+   * correct number, only the in-session value was wrong). Re-fetching just
+   * this pill's text, not the whole app bar, avoids disturbing the
+   * player-switcher dropdown's own state for an unrelated update. */
+  async function refreshConfirmedPill() {
+    const { confirmedCount, totalCount } = await loadRosterWithProgress(teamId);
+    const pill = document.querySelector(".confirmed-pill");
+    if (pill) pill.textContent = `✓ ${confirmedCount}/${totalCount} Confirmed`;
+  }
+
   async function loadChecklist() {
     const { data: rows } = await supabase
       .from("checklist_scores")
@@ -285,7 +300,10 @@
 
       if (row.id) {
         const mount = card.querySelector(".stepper-mount");
-        renderStepper(mount, row, coachDisplayName, () => loadChecklist());
+        renderStepper(mount, row, coachDisplayName, () => {
+          loadChecklist();
+          refreshConfirmedPill();
+        });
         card.querySelector("[data-comp]").addEventListener("click", (e) => {
           openCompModal(e.currentTarget.dataset.comp, e.currentTarget.dataset.label, firstClipContext);
         });
@@ -855,6 +873,25 @@
     }, 1000);
   }
 
+  /** Translates the one real-world constraint violation a coach can actually
+   * hit here (a duplicate date+opponent+AB# or date+rep#) into something
+   * she can act on, instead of the raw Postgres text ('duplicate key value
+   * violates unique constraint "game_log_entries_natural_key"') - confirmed
+   * by directly triggering both constraints (00013/00015) during testing,
+   * not guessed. Anything else falls back to the real error message rather
+   * than hiding it - only the ONE known, expected case gets a friendly
+   * rewrite. */
+  function friendlyInsertError(error, isGame) {
+    const msg = error?.message ?? "";
+    if (msg.includes("game_log_entries_practice_natural_key")) {
+      return "You already have a practice session logged for this date and rep # - use a different rep # or check the Practice Log below.";
+    }
+    if (msg.includes("game_log_entries_natural_key")) {
+      return "You already have an at-bat logged for this date, opponent, and AB # - use a different AB # or check the Game Log below.";
+    }
+    return `Couldn't save ${isGame ? "at-bat" : "practice session"}: ${msg}`;
+  }
+
   /** Log AB (ux.md Step 2/3B) - opened from the bottom nav's "+" button
    * instead of living inline in the page, so logging a new at-bat doesn't
    * push the whole checklist/game-log down every time it's not in use.
@@ -987,7 +1024,7 @@
         .select("id")
         .single();
       if (error || !newEntry) {
-        alert(`Couldn't save ${isGame ? "at-bat" : "practice session"}: ${error?.message}`);
+        alert(friendlyInsertError(error, isGame));
         return;
       }
 

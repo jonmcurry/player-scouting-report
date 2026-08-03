@@ -11,18 +11,20 @@ import { getSupabaseClient } from "./supabaseClient.js";
 export async function findGameLogEntryId(
   playerId: string,
   date: string,
-  opponent: string,
+  opponent: string | null,
   ab: number,
 ): Promise<string> {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from("game_log_entries")
-    .select("id")
-    .eq("player_id", playerId)
-    .eq("date", date)
-    .eq("opponent", opponent)
-    .eq("ab", ab)
-    .single();
+  // opponent is genuinely NULL for practice sessions (migration 00015 -
+  // session_type='practice' rows have no opponent). .eq('opponent', null)
+  // is NOT the same query: PostgREST serializes it as a literal string
+  // comparison ("opponent=eq.null"), which never matches a real SQL NULL -
+  // a real bug this caused: every practice-clip upload failed to find its
+  // own already-attached game_log_entries row with a "no row found" error
+  // that quoted opponent="null" (the string), not the null it actually was.
+  let query = supabase.from("game_log_entries").select("id").eq("player_id", playerId).eq("date", date).eq("ab", ab);
+  query = opponent === null ? query.is("opponent", null) : query.eq("opponent", opponent);
+  const { data, error } = await query.single();
   if (error || !data) {
     throw new Error(
       `No game_log_entries row found for player_id=${playerId} date=${date} ` +

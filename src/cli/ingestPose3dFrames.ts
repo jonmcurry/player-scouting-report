@@ -44,7 +44,7 @@ export async function ingestPose3dFrames(
   teamSlug: string,
   playerSlug: string,
   date: string,
-  opponent: string,
+  opponent: string | null,
   ab: number,
   clipDir: string,
   position: number,
@@ -80,7 +80,7 @@ export async function ingestPose3dFrames(
     console.log(
       `Skipped ${playerSlug}'s clip "${clipSlug}": longest real tracked run is only ` +
         `${trackedFrames.length} frame(s) (need >= ${MIN_TRACKED_FRAMES}) - not enough real data ` +
-        `for a skeleton comparison (${date} vs ${opponent}, AB ${ab}).`,
+        `for a skeleton comparison (${date}${opponent ? ` vs ${opponent}` : " practice session"}, AB ${ab}).`,
     );
     return;
   }
@@ -97,7 +97,7 @@ export async function ingestPose3dFrames(
 
   console.log(
     `Ingested ${smoothedFrames.length} smoothed pose3d frame(s) for ${playerSlug}'s clip "${clipSlug}" ` +
-      `(${date} vs ${opponent}, AB ${ab}, position ${position}).`,
+      `(${date}${opponent ? ` vs ${opponent}` : " practice session"}, AB ${ab}, position ${position}).`,
   );
 }
 

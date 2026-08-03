@@ -199,7 +199,20 @@ input[type="text"], input[type="email"], input[type="password"] {
 .badge.confirmed { background: color-mix(in srgb, var(--status-good) 18%, transparent); color: var(--status-good); }
 
 /* Filter chips (team.html) */
-.chip-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 14px; }
+/* On a narrow phone viewport (confirmed at 390px) the last chip gets cut off
+   mid-word rather than cleanly - the row IS scrollable and the partial chip
+   does hint at that, but a fade reads as "more content" more clearly than a
+   hard text cutoff does. mask-image, not a background gradient, so it still
+   fades correctly over whatever's behind it (page background varies). */
+.chip-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 14px;
+  mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+}
 .chip {
   flex: none;
   padding: 10px 14px;
@@ -438,7 +451,18 @@ details.drawer .drawer-body { padding: 0 16px 16px; }
 .skeleton-canvases { display: flex; gap: 10px; margin-bottom: 8px; }
 .skeleton-canvas-col { flex: 1; min-width: 0; text-align: center; }
 .skeleton-canvas-label { font-size: 11.5px; color: var(--text-muted); margin: 0 0 4px; }
-.skeleton-canvas { width: 100%; border-radius: 4px; background: #000; display: block; cursor: grab; touch-action: none; }
+/* aspect-ratio (matches the 360x420 width/height set on this canvas in
+ * skeletonComparison.js) decouples its CSS layout height from its intrinsic
+ * width/height ATTRIBUTES entirely. Without this, "width:100%" alone relies
+ * on the canvas's own attribute ratio for auto height - but skeletonScene.js's
+ * resize() WRITES those same attributes every frame via renderer.setSize(),
+ * which ResizeObserver then re-observes as a layout change, calling resize()
+ * again - a real, confirmed feedback loop (measured ballooning a canvas to
+ * 66,440px tall on a real device before this fix, not a theoretical concern).
+ * Only ever seen in the shipped app's responsive width:100% canvas, never in
+ * coach/dev/skeleton-test.html's fixed-pixel-size canvas, which is why this
+ * went unnoticed through this session's earlier dev-harness-only testing. */
+.skeleton-canvas { width: 100%; aspect-ratio: 6 / 7; border-radius: 4px; background: #000; display: block; cursor: grab; touch-action: none; }
 .skeleton-canvas:active { cursor: grabbing; }
 
 /* Modal (comp overlay + Log AB sheet) */
@@ -454,6 +478,11 @@ details.drawer .drawer-body { padding: 0 16px 16px; }
 .comp-split { display: flex; gap: 10px; margin: 10px 0; }
 .comp-split-col { flex: 1; min-width: 0; }
 .comp-split-col canvas, .comp-split-col img { width: 100%; border-radius: 4px; background: #000; display: block; }
+/* Same ResizeObserver-feedback-loop fix as .skeleton-canvas above, kept as
+ * its own rule (not folded into the shared selector) since the illustration
+ * <img> siblings are real 200x200 SQUARE SVGs - forcing 6:7 onto them too
+ * would visibly stretch every reference illustration in this app. */
+.comp-split-col canvas { aspect-ratio: 6 / 7; }
 
 /* 9-zone strike-zone picker (ux.md Step 3B / 5.2) - pitchZonePicker.js.
    Rows read High/Middle/Low top-to-bottom, columns In/Mid/Out

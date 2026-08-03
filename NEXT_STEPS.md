@@ -1,5 +1,39 @@
 # Open Items, To-Dos, and Future Considerations
 
+## Monocular 3D lift can reconstruct an implausible torso tilt for some real camera angles (2026-08-02)
+
+- [x] **Display-layer stopgap shipped; underlying pipeline bug still open.** Found while chasing a
+      "the 3D skeleton model looks amateurish/doesn't look like a batter" complaint on a real
+      reprocessed clip (`Emily_C_AB11-1785696124000`, Latham/Emily C). Confirmed via the clip's own
+      `overlay.mp4` (2D keypoints drawn on real video pixels) that the 2D tracking is accurate and
+      she's in a completely normal, upright stance/swing throughout - including at the auto-detected
+      contact frame. But every frame's `torso_tilt_from_vertical_deg` (from `pose_3d.json`) reads
+      55-70deg, wildly high for a real batter. Root cause: `scripts/pose3d/lift_3d.py`'s
+      `WORLD_ROTATION` is a single FIXED rotation applied to every clip to decide which raw axis is
+      "vertical" - borrowed from VideoPose3D's own demo/visualizer code, which its own authors label
+      "only for visualization purposes," not real calibration. It implicitly assumes a camera
+      position/height similar to Human3.6M's studio setup; this clip's real camera evidently differs
+      enough that the assumption breaks, even though the *relative* 2D->3D lift of joints-to-each-
+      other may still be reasonable. **Confirmed this wasn't a one-clip fluke**: the user directly
+      compared the rendered model against a real photo of the actual player's stance (didn't match -
+      looked like a forward lunge), which led to checking the dev harness's own long-used reference
+      clip (`Emily_C_AB1 (4)`, `coach/dev/sample_pose3d.json`) - same defect, 34-65deg across all
+      1264 frames of the clip, never once plausible. That reference clip had been used to build and
+      tune the whole 3D renderer this session without ever being checked against real footage first.
+      **Fixed at the display layer** (`coach/components/skeletonScene.js`'s `setClipFrames`): a
+      per-clip "auto-level" correction estimates the clip's own average torso-up direction and
+      rigidly rotates the whole clip (same correction every frame, so all real relative motion - the
+      actual swing - is fully preserved) to read close to upright. Verified on both clips, on desktop
+      and the real Android WebView (CDP-attached, real device screencap). **Still open**: this does
+      NOT correct the stored `video_clip_metrics` angles (`torso_tilt_at_contact_deg`,
+      `hip_shoulder_separation_at_contact_deg`, `pelvis_tilt_at_contact_deg`) shown in the Swing
+      Metrics panel, or the checklist scoring that reads real angles - those remain the pipeline's
+      raw, unreliable values, now visually INCONSISTENT with the corrected model (a coach could see
+      an upright model next to a "Torso Tilt: 55deg" readout). A real pipeline-level fix (derive a
+      per-clip vertical estimate from tracked ground contact, or relabel these as camera-relative
+      rather than claiming true-vertical) is still needed - this was deliberately scoped to the
+      renderer only, not the scoring pipeline, given the size/risk of that broader change.
+
 Snapshot as of 2026-07-31 (updated after the mobile UX rebuild, Latham/Emily C's Supabase
 migration, the BarrelIQ rebrand, a performance/scale review, a skeleton bone-length rigidity fix,
 an untracked-frame rendering bug fix, a multi-clip switcher, delete-at-bat, interactive camera

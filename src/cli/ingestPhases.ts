@@ -72,7 +72,7 @@ export async function ingestPhases(
   teamSlug: string,
   playerSlug: string,
   date: string,
-  opponent: string,
+  opponent: string | null,
   ab: number,
   clipDir: string,
 ): Promise<void> {
@@ -142,7 +142,7 @@ export async function ingestPhases(
 
   console.log(
     `Ingested ${written} phase(s) for ${playerSlug}'s clip "${clipSlug}" ` +
-      `(${date} vs ${opponent}, AB ${ab}).`,
+      `(${date}${opponent ? ` vs ${opponent}` : " practice session"}, AB ${ab}).`,
   );
 }
 

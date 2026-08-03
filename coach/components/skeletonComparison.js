@@ -2,11 +2,11 @@
 // comparison view - replaces videoScrubber.js's real-video playback
 // entirely (see the approved plan). Renders the player's own real,
 // smoothed pose3d joint trajectory, driven by the same real swing_phases
-// timestamps videoScrubber.js used, via Canvas2D (skeletonRenderer.js) -
-// never raw video, so none of the Content-Type/codec/frame-rate/caching bug
-// class this replaces can recur.
+// timestamps videoScrubber.js used, via real WebGL meshes (skeletonScene.js,
+// Three.js) - never raw video, so none of the Content-Type/codec/frame-rate/
+// caching bug class this replaces can recur.
 import { supabase } from "../shared.js";
-import { drawFigure, DEFAULT_CAMERA, attachDragToRotate } from "./skeletonRenderer.js";
+import { createSkeletonScene, linkScenes } from "./skeletonScene.js";
 import { correctKneeAngle } from "./fkCorrection.js";
 import { L_HIP, L_KNEE, L_ANKLE, R_HIP, R_KNEE, R_ANKLE } from "./h36mSkeleton.js";
 
@@ -23,7 +23,7 @@ const EXTENSION_TARGET_DEG = 155;
  * mirrors src/services/db/videoClipUpsert.ts's packing exactly, so this is
  * the one place that format is decoded. Reconstructs the SAME per-frame
  * shape ({..., joints: [[x,y,z], ...]}) the rest of this file (and
- * fkCorrection.js/skeletonRenderer.js) already expects, so nothing
+ * fkCorrection.js/skeletonScene.js) already expects, so nothing
  * downstream of loadClipSkeletonData needs to know this optimization
  * exists. */
 function unpackJoints(frames, jointNames, hexBlob) {
@@ -105,14 +105,24 @@ function currentPhaseLabel(phases, t) {
 /**
  * @param {HTMLElement} mountEl
  * @param {{ realFrames: Array, correctedFrames: Array|null, phases: Array<{slug:string,label:string,timeS:number|null,confidence:string|null}>, note?: string }} data
+ * @returns {Promise<{ dispose: () => void }>} async - loading the real
+ *   character model is a real network fetch (cached after the first time,
+ *   see skeletonScene.js's module-level template cache), unlike the old
+ *   primitive-only renderer which built synchronously. Caller (compModal.js)
+ *   must call dispose() when the modal closes - each mount owns a real
+ *   WebGLRenderer context (two, for a two-panel comparison), and browsers
+ *   cap how many can be live at once. Safe to call dispose() even if the
+ *   model hasn't finished loading yet (e.g. the coach closes the modal
+ *   immediately) - it cancels cleanly instead of finishing setup pointlessly.
  */
-export function renderSkeletonComparison(mountEl, { realFrames, correctedFrames, phases, note }) {
+export async function renderSkeletonComparison(mountEl, { realFrames, correctedFrames, phases, note }) {
   const locatedPhases = phases.filter((p) => p.timeS !== null);
   const twoPanel = !!correctedFrames;
 
   mountEl.innerHTML = `
     <div class="scrubber">
-      <div class="skeleton-canvases">
+      <p class="hint" data-loading>Loading 3D model…</p>
+      <div class="skeleton-canvases" data-canvases hidden>
         <div class="skeleton-canvas-col">
           ${twoPanel ? `<p class="skeleton-canvas-label">Her real swing</p>` : ""}
           <canvas class="skeleton-canvas" data-cv-real width="360" height="420"></canvas>
@@ -127,7 +137,7 @@ export function renderSkeletonComparison(mountEl, { realFrames, correctedFrames,
         }
       </div>
       ${note ? `<p class="hint">${note}</p>` : ""}
-      <div class="scrubber-controls">
+      <div class="scrubber-controls" data-controls hidden>
         <button type="button" class="tap-target" data-play>&#9654; Play</button>
         <select class="tap-target" data-speed>
           <option value="0.25">0.25x</option>
@@ -137,18 +147,40 @@ export function renderSkeletonComparison(mountEl, { realFrames, correctedFrames,
         <button type="button" class="tap-target" data-reset-camera>&#8635; Reset View</button>
         <span class="scrubber-phase-label" data-phase-label>&mdash;</span>
       </div>
-      <div class="scrubber-track-wrap">
+      <div class="scrubber-track-wrap" data-track hidden>
         <input type="range" class="tap-target" data-scrub min="0" max="1000" value="0" step="1">
         <div class="scrubber-ticks" data-ticks></div>
       </div>
       <p class="hint">Reconstructed from her real filmed swing (YOLO11-pose + VideoPose3D, smoothed) -
-        not a video, a rendered 3D model. Drag the figure to rotate the view (e.g. side-on for bat
+        not a video, a rendered 3D model. Drag the figure to orbit the view (e.g. side-on for bat
         path, overhead for hip-shoulder separation); scrub or press play to move through the swing.</p>
     </div>
   `;
 
+  let cancelled = false;
   const cvReal = mountEl.querySelector("[data-cv-real]");
   const cvCorrected = mountEl.querySelector("[data-cv-corrected]");
+
+  const sceneReal = await createSkeletonScene(cvReal);
+  if (cancelled) { sceneReal.dispose(); return { dispose() {} }; }
+  const sceneCorrected = twoPanel ? await createSkeletonScene(cvCorrected) : null;
+  if (cancelled) {
+    sceneReal.dispose();
+    if (sceneCorrected) sceneCorrected.dispose();
+    return { dispose() {} };
+  }
+
+  mountEl.querySelector("[data-loading]").hidden = true;
+  mountEl.querySelector("[data-canvases]").hidden = false;
+  mountEl.querySelector("[data-controls]").hidden = false;
+  mountEl.querySelector("[data-track]").hidden = false;
+  // The canvases were hidden (0x0) while loading, so the ResizeObserver in
+  // skeletonScene.js never got a real size to work with - force one resize
+  // now that they're visible, instead of waiting on the observer's next
+  // async callback (which would show one wrong-sized frame first).
+  sceneReal.resize();
+  if (sceneCorrected) sceneCorrected.resize();
+
   const playBtn = mountEl.querySelector("[data-play]");
   const speedSelect = mountEl.querySelector("[data-speed]");
   const phaseLabel = mountEl.querySelector("[data-phase-label]");
@@ -170,27 +202,24 @@ export function renderSkeletonComparison(mountEl, { realFrames, correctedFrames,
     )
     .join("");
 
+  sceneReal.setClipFrames(realFrames);
+  if (sceneCorrected) {
+    sceneCorrected.setClipFrames(correctedFrames);
+    linkScenes(sceneReal, sceneCorrected);
+  }
+
   let frame = 0;
   let playing = false;
   let speed = Number(speedSelect.value);
   let lastTick = 0;
   let acc = 0;
-  // Own mutable clone, not the shared DEFAULT_CAMERA constant - each mount
-  // (a page can have several game-log cards' comparisons on screen at once)
-  // gets its own independent rotation. Both panels share this one object so
-  // rotating one rotates both in sync - the point of a side-by-side
-  // real-vs-target comparison is seeing them from the same angle.
-  const camera = { ...DEFAULT_CAMERA };
+  let rafId = null;
 
-  function render() {
-    const f = realFrames[frame];
-    drawFigure(cvReal.getContext("2d"), f.joints, cvReal.width, cvReal.height, camera, {});
-    if (twoPanel) {
-      const cf = correctedFrames[frame];
-      drawFigure(cvCorrected.getContext("2d"), cf.joints, cvCorrected.width, cvCorrected.height, camera, {});
-    }
+  function setFrame() {
+    sceneReal.setJoints(realFrames[frame].joints);
+    if (sceneCorrected) sceneCorrected.setJoints(correctedFrames[frame].joints);
     scrubInput.value = String(Math.round((frame / Math.max(1, n - 1)) * 1000));
-    phaseLabel.textContent = currentPhaseLabel(locatedPhases, f.time_s);
+    phaseLabel.textContent = currentPhaseLabel(locatedPhases, realFrames[frame].time_s);
   }
 
   function tick(ts) {
@@ -201,11 +230,13 @@ export function renderSkeletonComparison(mountEl, { realFrames, correctedFrames,
           frame = (frame + 1) % n;
           acc -= 1;
         }
+        setFrame();
       }
       lastTick = ts;
-      render();
     }
-    requestAnimationFrame(tick);
+    sceneReal.tick();
+    if (sceneCorrected) sceneCorrected.tick();
+    rafId = requestAnimationFrame(tick);
   }
 
   playBtn.addEventListener("click", () => {
@@ -218,26 +249,34 @@ export function renderSkeletonComparison(mountEl, { realFrames, correctedFrames,
   });
   scrubInput.addEventListener("input", () => {
     frame = Math.min(n - 1, Math.round((Number(scrubInput.value) / 1000) * (n - 1)));
-    render();
+    setFrame();
   });
 
   const resetCameraBtn = mountEl.querySelector("[data-reset-camera]");
   resetCameraBtn.addEventListener("click", () => {
-    camera.yaw = DEFAULT_CAMERA.yaw;
-    camera.pitch = DEFAULT_CAMERA.pitch;
-    render();
+    sceneReal.resetCamera();
+    if (sceneCorrected) sceneCorrected.resetCamera();
   });
-  attachDragToRotate(twoPanel ? [cvReal, cvCorrected] : [cvReal], camera, render);
 
-  render();
-  requestAnimationFrame(tick);
+  setFrame();
+  rafId = requestAnimationFrame(tick);
+
+  return {
+    dispose() {
+      cancelled = true;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      sceneReal.dispose();
+      if (sceneCorrected) sceneCorrected.dispose();
+    },
+  };
 }
 
 /** Static single-frame render for compModal.js's Tier 2 (the 5 checkpoints
  * with a real single-instant phase mapping) - replaces extractFrameToCanvas()'s
  * video-frame grab with the real reconstructed skeleton at that same phase's
- * real timestamp, nearest-frame-matched. */
-export function renderSkeletonFrameToCanvas(realFrames, phaseTimeS, canvasEl) {
+ * real timestamp, nearest-frame-matched.
+ * @returns {{ dispose: () => void }} caller must call dispose() on modal close. */
+export async function renderSkeletonFrameToCanvas(realFrames, phaseTimeS, canvasEl) {
   let nearest = realFrames[0];
   let bestDelta = Infinity;
   for (const f of realFrames) {
@@ -249,11 +288,26 @@ export function renderSkeletonFrameToCanvas(realFrames, phaseTimeS, canvasEl) {
   }
   canvasEl.width = 360;
   canvasEl.height = 420;
-  // Own mutable clone (see renderSkeletonComparison's identical reasoning) -
-  // a static single-frame view still benefits from letting a coach rotate
-  // to check the same instant from a different angle.
-  const camera = { ...DEFAULT_CAMERA };
-  const render = () => drawFigure(canvasEl.getContext("2d"), nearest.joints, canvasEl.width, canvasEl.height, camera, {});
-  attachDragToRotate([canvasEl], camera, render);
-  render();
+
+  let cancelled = false;
+  const scene = await createSkeletonScene(canvasEl);
+  if (cancelled) { scene.dispose(); return { dispose() {} }; }
+
+  scene.setClipFrames(realFrames);
+  scene.setJoints(nearest.joints);
+
+  let rafId = null;
+  function tick() {
+    scene.tick();
+    rafId = requestAnimationFrame(tick);
+  }
+  rafId = requestAnimationFrame(tick);
+
+  return {
+    dispose() {
+      cancelled = true;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      scene.dispose();
+    },
+  };
 }

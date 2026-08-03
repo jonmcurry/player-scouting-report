@@ -4,6 +4,94 @@ All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file starts 2026-08-01 — see
 `NEXT_STEPS.md` (and its own git history) for the detailed narrative of everything before that.
 
+## [0.4.0] - 2026-08-02
+
+### Changed
+- Replaced the 3D skeleton renderer entirely: the checklist's static skeleton view and the
+  post-processing scrubbable comparison view both used to fake "3D" with Canvas2D (manually-drawn
+  capsule strokes, gradient-fill circles, no real depth buffer or lighting) - flagged directly by
+  the user as reading like a flat, dated stick figure, confirmed by screenshotting the actual
+  render rather than taking the complaint on faith. Rebuilt on real WebGL (Three.js): real
+  capsule/sphere/box meshes lit with ambient + directional lights, a lathed tapered bat mesh
+  instead of two flat strokes, and free-orbit camera control (`THREE.OrbitControls`) replacing the
+  old hand-rolled yaw/pitch drag math. The two-panel real-vs-corrected comparison still rotates
+  both panels together when either is dragged. No pose data or scoring logic changed - this is a
+  rendering-layer swap only. `coach/components/skeletonRenderer.js` deleted (superseded by
+  `skeletonScene.js`); `coach/dev/skeleton-test.html` rewritten to exercise the new engine.
+- Follow-up pass after seeing the new renderer against a real clip: per-limb-CATEGORY colors (one
+  flat color for a whole arm, upper+forearm alike, no skin tone at all) replaced with real
+  clothing-line color zones (skin: head/neck/forearms/hands; jersey: torso/shoulders/upper arms;
+  pants: pelvis/thighs/calves; cleats: feet), plus per-bone (not per-category) radii so a thigh is
+  thicker than a calf and an upper arm thicker than a forearm, and real hand/foot shapes instead of
+  bare ball joints.
+- User directly compared the rendered model against a real photo of the actual player's stance and
+  it plainly didn't match (looked like a forward lunge, not a batting stance) - traced to a real,
+  systemic bug, not a styling issue: confirmed via a real clip's own overlay video (2D tracking
+  accurate, she's in a normal upright stance throughout) that this pipeline's monocular 2D->3D lift
+  can reconstruct an implausible torso tilt for some real camera angles - `lift_3d.py`'s
+  `WORLD_ROTATION` is a single fixed "vertical" assumption (borrowed from VideoPose3D's own demo
+  code, explicitly documented by its authors as visualization-only, not real calibration) applied
+  to every clip regardless of actual camera height/angle. Confirmed this wasn't a one-clip fluke -
+  the SAME defect was present in the exact reference clip used to build/tune this renderer all
+  along (torso tilt 34-65deg across all 1264 frames, never once plausible) - it had never actually
+  been checked against real footage before now. Added a per-clip "auto-level" correction in
+  `skeletonScene.js`: estimates the clip's own average torso-up direction and rigidly rotates the
+  whole clip (same correction every frame, so all real relative motion is fully preserved) to read
+  close to upright. Verified on both the reference clip and the real flagged clip, on desktop and
+  the real Android WebView. Display-only - does NOT correct the stored `video_clip_metrics` angles
+  (`torso_tilt_at_contact_deg` etc.), which remain the pipeline's raw, still-unreliable values; a
+  real pipeline-level fix is tracked separately in `NEXT_STEPS.md`.
+- User rejected the primitive-mesh mannequin outright, comparing it directly against a real photo
+  of an actual player's stance ("doesn't look professional at all... doesn't even represent a
+  softball batter") - a styling pass couldn't fix this since the fundamental shape (capsule limbs)
+  was the problem, not the materials. Replaced entirely with a real rigged, skinned humanoid
+  character (`coach/assets/models/batter.fbx`, a Mixamo-rigged mesh the user sourced) driven by a
+  new bone-retargeting layer: each frame, the pipeline's 17 tracked H36M joints are converted into
+  real bone rotations for the character's ~20 posable bones (full 2-vector hip/spine basis
+  retargeting to preserve real hip-shoulder separation twist; single-vector aim alignment for
+  limbs; fingers/toes/clavicles left at rest - H36M has no data for them). Two real bugs found and
+  fixed via direct comparison against real rendered output, not assumed: the character's native
+  scale (~181cm, Mixamo's centimeter convention) was being treated as meter-scale, putting the
+  camera inside the mesh; and the retargeting math assumed the Hips/Spine bones' bind-pose world
+  orientation was identity, which was wrong and caused visible head/neck mesh distortion - fixed by
+  capturing each bone's REAL rest-pose world quaternion instead of assuming one.
+  `createSkeletonScene()` is now async (loading a real character mesh is a real network fetch,
+  cached after first load) - `skeletonComparison.js` and `compModal.js` updated to await it, with a
+  "Loading 3D model…" state and graceful failure handling. No real uniform/face texture is applied
+  yet (this specific export has none) - the character currently renders in a neutral matte tone;
+  adding real texture art is separate follow-up work. Verified via direct comparison against
+  reference photos and real device screenshots on desktop and the real Android WebView.
+
+### Fixed
+- A real, pre-existing bug unrelated to the character work above, only just surfaced: the shipped
+  app's `.skeleton-canvas { width: 100% }` CSS relied on the canvas's own intrinsic width/height
+  attribute ratio for "auto" height, while the renderer's `resize()` writes those same attributes
+  on every layout change - a genuine ResizeObserver feedback loop, measured ballooning a canvas to
+  66,440px tall on a real device. Never caught earlier because `coach/dev/skeleton-test.html`'s dev
+  harness uses a fixed-pixel-size canvas (no feedback loop possible there); only surfaced once real
+  clip data existed to render the live comparison view in the actual app for the first time. Fixed
+  with `aspect-ratio: 6 / 7` on `.skeleton-canvas` and `.comp-split-col canvas`, decoupling layout
+  height from the attributes entirely.
+
+## [0.3.2] - 2026-08-02
+
+### Fixed
+- Full end-to-end audit across every feature surfaced 3 real bugs, all now fixed and verified live:
+  - Raw Postgres duplicate-key errors (e.g. `game_log_entries_practice_natural_key`) were leaking
+    straight to the coach in an `alert()` instead of a usable message. Added `friendlyInsertError()`
+    to translate the two natural-key constraints (game vs. practice) into plain-language guidance
+    pointing at the right log section; verified against real collisions in both modes.
+  - The player page's "X/Y Confirmed" app-bar pill only updated on a full reload after confirming a
+    checkpoint score, so a coach confirming several in one sitting saw a stale count the whole time.
+    Added `refreshConfirmedPill()`, wired into the same callback that already re-renders the
+    checklist after a confirm; verified live against a real roster (0/2 -> 1/2, no reload).
+  - On narrow/mobile viewports the "Priority Flaws" filter chip on the team page was hard-cut
+    mid-word by `overflow-x` with no visual hint the row scrolls further. Added a `mask-image` fade
+    on `.chip-row`'s trailing edge; verified the row genuinely overflows (564px content in a 362px
+    viewport) and the fade is applied via computed style.
+- Bumped PWA cache (`CACHE_NAME` v10->v11, `coach.css` v8->v9) since this round touched both
+  `player.html` and `coach.css` - see the cache-busting note in `sw.js`.
+
 ## [0.3.1] - 2026-08-01
 
 ### Fixed

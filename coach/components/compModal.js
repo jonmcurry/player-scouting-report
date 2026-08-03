@@ -90,13 +90,21 @@ const CHECKPOINT_TO_PHASE_SLUG = {
   "follow-through": "follow-through",
 };
 
-function closeableModal(innerHTML) {
+// onClose disposes any live WebGL scene(s) mounted inside the modal
+// (skeletonScene.js) - a real GPU context per canvas, not just DOM nodes, so
+// closing the modal must free it explicitly rather than rely on garbage
+// collection (browsers cap how many WebGL contexts can be live at once).
+function closeableModal(innerHTML, onClose) {
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
   backdrop.innerHTML = innerHTML;
-  backdrop.querySelector(".close-btn").addEventListener("click", () => backdrop.remove());
+  const close = () => {
+    if (onClose) onClose();
+    backdrop.remove();
+  };
+  backdrop.querySelector(".close-btn").addEventListener("click", close);
   backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) backdrop.remove();
+    if (e.target === backdrop) close();
   });
   document.body.appendChild(backdrop);
   return backdrop;
@@ -106,8 +114,10 @@ function closeableModal(innerHTML) {
  * correction applies) skeleton comparison, reusing the exact same component
  * player.html mounts per game-log card - "fully superseded by the new
  * comparison" per the approved plan, not a separate static view. */
-function openTier1Modal(checkpointSlug, checkpointLabel, info, clipContext) {
-  const backdrop = closeableModal(`
+async function openTier1Modal(checkpointSlug, checkpointLabel, info, clipContext) {
+  let sceneHandle = null;
+  const backdrop = closeableModal(
+    `
     <div class="modal" style="max-width:640px;">
       <button class="close-btn tap-target">✕</button>
       <h2 style="margin-top:0;">${checkpointLabel}</h2>
@@ -115,7 +125,9 @@ function openTier1Modal(checkpointSlug, checkpointLabel, info, clipContext) {
       ${info.comp ? `<p><b>Reference comp: ${info.comp}</b></p>` : ""}
       <p>${info.cue}</p>
     </div>
-  `);
+  `,
+    () => sceneHandle && sceneHandle.dispose(),
+  );
 
   let correctedFrames = null;
   let note;
@@ -134,7 +146,7 @@ function openTier1Modal(checkpointSlug, checkpointLabel, info, clipContext) {
     note = "No calibrated healthy target exists yet for hip-shoulder separation - showing her real swing only.";
   }
 
-  renderSkeletonComparison(backdrop.querySelector(".skeleton-comparison-mount"), {
+  sceneHandle = await renderSkeletonComparison(backdrop.querySelector(".skeleton-comparison-mount"), {
     realFrames: clipContext.realFrames,
     correctedFrames,
     phases: clipContext.phases,
@@ -158,7 +170,15 @@ export function openCompModal(checkpointSlug, checkpointLabel, clipContext) {
   };
 
   if (TIER_1_CHECKPOINTS.has(checkpointSlug) && clipContext) {
-    openTier1Modal(checkpointSlug, checkpointLabel, info, clipContext);
+    // Not awaited - openCompModal() itself stays synchronous (the modal
+    // backdrop appears immediately, showing its own "Loading 3D model..."
+    // state; see renderSkeletonComparison). Caught here so a real network
+    // failure loading the character model surfaces as a visible alert
+    // instead of a silent unhandled rejection.
+    openTier1Modal(checkpointSlug, checkpointLabel, info, clipContext).catch((err) => {
+      console.error(err);
+      alert(`Couldn't load the 3D model: ${err.message}`);
+    });
     return;
   }
 
@@ -168,7 +188,9 @@ export function openCompModal(checkpointSlug, checkpointLabel, clipContext) {
       ? clipContext.phases.find((p) => p.slug === phaseSlug && p.timeS !== null)
       : null;
 
-  const backdrop = closeableModal(`
+  let sceneHandle = null;
+  const backdrop = closeableModal(
+    `
     <div class="modal">
       <button class="close-btn tap-target">✕</button>
       <h2 style="margin-top:0;">${checkpointLabel}</h2>
@@ -198,10 +220,17 @@ export function openCompModal(checkpointSlug, checkpointLabel, clipContext) {
       ${info.comp ? `<p><b>Reference comp: ${info.comp}</b></p>` : ""}
       <p>${info.cue}</p>
     </div>
-  `);
+  `,
+    () => sceneHandle && sceneHandle.dispose(),
+  );
 
   if (phase) {
     const canvasEl = backdrop.querySelector(".comp-extracted-frame");
-    renderSkeletonFrameToCanvas(clipContext.realFrames, phase.timeS, canvasEl);
+    renderSkeletonFrameToCanvas(clipContext.realFrames, phase.timeS, canvasEl)
+      .then((handle) => { sceneHandle = handle; })
+      .catch((err) => {
+        console.error(err);
+        alert(`Couldn't load the 3D model: ${err.message}`);
+      });
   }
 }

@@ -1,4 +1,4 @@
-// H36M-17 joint/bone topology shared by skeletonRenderer.js and
+// H36M-17 joint/bone topology shared by skeletonScene.js and
 // fkCorrection.js. Names and index order verified against
 // scripts/pose3d/lift_3d.py's H36M_JOINT_NAMES (itself confirmed there
 // against VideoPose3D_src/common/h36m_dataset.py's remove_joints() call) -

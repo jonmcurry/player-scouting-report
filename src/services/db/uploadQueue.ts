@@ -22,7 +22,7 @@ export interface ClipContext {
   teamSlug: string;
   playerSlug: string;
   date: string;
-  opponent: string;
+  opponent: string | null;
   ab: number;
 }
 
@@ -85,7 +85,7 @@ async function findClipContext(
   }
   const entry = data.game_log_entries as unknown as {
     date: string;
-    opponent: string;
+    opponent: string | null;
     ab: number;
     players: { slug: string; teams: { slug: string } };
   };
