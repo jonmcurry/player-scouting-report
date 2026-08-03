@@ -12,42 +12,31 @@ Built as a general multi-team tool, not a one-team script — currently used by 
 - **What's actually shipped, version by version:** [CHANGELOG.md](CHANGELOG.md)
 - **Changelog/versioning/git conventions for this repo:** [CLAUDE.md](CLAUDE.md)
 
-## The two paths through this codebase
-
-This repo currently has **two parallel ways a team's report gets produced** — not because that's
-the intended end state, but because migrating a real team's data takes real work and not every
-team has been moved yet. Know which one you're touching before changing anything.
-
-1. **Coach app path (current, active development)** — a coach (or, once mobile-hosted, a parent)
-   uploads video through a real app; a worker automatically runs the full pose3d pipeline and
-   writes scores into Supabase; a coach reviews/confirms AI-drafted scores in the app. This is
-   where all new work happens. See [Coach app + pipeline](#coach-app--pipeline-current-path) below.
-2. **Legacy static-HTML path (still live for teams not yet migrated)** — hand-edit a report's
-   embedded JS data arrays directly, `git push`, GitHub Pages serves the static file. No coach app,
-   no Supabase, no automated processing. See [Legacy static-report path](#legacy-static-report-path)
-   below. **Don't build new features on this path** — it's kept working for the one team still on
-   it, not as a second product direction.
-
 ## Teams
 
-| Team | Path | Roster | Live report |
-|---|---|---|---|
-| **Bethlehem Boom 10U** | Legacy static-HTML | #2 Ellie T + 10 more | [team_summary.html](https://jonmcurry.github.io/player-scouting-report/reports/team_summary.html) |
-| **Latham Lady Bison White 10U** | Coach app (Supabase) | #10 Emily C | Private (coach app, not yet publicly published) |
+| Team | Roster | Status |
+|---|---|---|
+| **Bethlehem Boom 10U** | #2 Ellie T + 10 more | Not yet migrated to the coach app - no live report currently published |
+| **Latham Lady Bison White 10U** | #10 Emily C | On the coach app (Supabase) - real game log, real uploaded/processed video with pose3d data, real checklist scores |
 
-**Migration status**: Bethlehem Boom 10U is fully on the legacy static-HTML path. Latham Lady Bison
-White 10U's real player (Emily C) is fully on the Supabase coach-app path — real game log, real
-uploaded/processed video clips with pose3d data, real checklist scores. A fictional "Thunder 10U"
-team also exists in Supabase for local dev/testing only. Don't assume a team/player is on one path
-or the other without checking — query the local Supabase DB directly (`docker exec
+A fictional "Thunder 10U" team also exists in Supabase for local dev/testing only. Don't assume a
+team/player's real data state without checking — query the local Supabase DB directly (`docker exec
 supabase_db_softball_analysis psql -U postgres -d postgres -c "select name from teams;"`) rather
 than guessing.
 
-## Coach app + pipeline (current path)
+There used to be a second, hand-edited static-HTML path (extract frames with PowerShell, hand-edit
+a report's embedded JS data arrays, `git push`, GitHub Pages serves the result) that Bethlehem
+Boom's report was built on. **That path, its generated report files, and its generator scripts have
+been removed** — it's not how this project works anymore. If you land on an old reference to
+`reports/`, `generate_team_reports.ps1`, `scripts/teams/*.ps1`, `scripts/extract_frames.ps1`,
+`src/cli/generate.ts`, or `src/cli/migrate.ts` in an old commit, comment, or your own memory of this
+project, know that it's gone — the coach app below is the only path now.
 
-The active product: a coach (or team's roster) uploads real game footage through a private,
-authenticated app; a worker automatically runs the pose3d pipeline; the coach reviews AI-drafted
-scores against real 3D-reconstructed swing data and confirms or corrects them.
+## Coach app + pipeline
+
+A coach (or team's roster) uploads real game footage through a private, authenticated app; a
+worker automatically runs the pose3d pipeline; the coach reviews AI-drafted scores against real
+3D-reconstructed swing data and confirms or corrects them.
 
 ### What's real today
 
@@ -64,8 +53,7 @@ scores against real 3D-reconstructed swing data and confirms or corrects them.
   by the player's own real tracked H36M joint data via bone retargeting, not a canned animation and
   not a flat stick figure. Drag to orbit; scrub/play through the real swing.
 - **Live, persisted coach editing**: 1-tap checklist score stepper, at-bat/practice-session
-  logging, all with real-time Supabase RLS (each coach only sees their own team's data) — no
-  hand-edited HTML for anything on this path.
+  logging, all with real-time Supabase RLS (each coach only sees their own team's data).
 - **AI-assisted, coach-verified scoring**: Gemini drafts a checklist score from extracted frames;
   it renders as an unconfirmed "🤖 AI draft" badge until a coach reviews it. If a coach's score
   disagrees with the AI draft, both numbers stay visible — a disagreement is never silently lost.
@@ -81,8 +69,9 @@ scores against real 3D-reconstructed swing data and confirms or corrects them.
 No hosted production Supabase project yet (`coach/config.js`'s `PROD_SUPABASE_URL`/`KEY` are blank
 placeholders — everything today points at a local dev instance), no billing, no self-service
 team/coach signup (a coach account is created by an admin script, `provision-coach`, on purpose —
-see below), no age-group benchmarking, no parent-facing read-only view. See
-[NEXT_STEPS.md](NEXT_STEPS.md) for what's actively being worked on.
+see below), no age-group benchmarking, no parent-facing read-only view, no public report output at
+all right now (see Teams above — Bethlehem Boom has no live report until it's migrated to this
+path). See [NEXT_STEPS.md](NEXT_STEPS.md) for what's actively being worked on.
 
 ### One-time local setup
 
@@ -138,6 +127,18 @@ cd android
 ./gradlew installDebug   # requires an emulator or device already running/connected
 ```
 
+### Filming at games
+
+- Film **every at-bat**, not just the good or bad ones — a checklist built from a cherry-picked
+  swing will mislead more than help.
+- Slow-mo still works fine in games: start recording as the pitcher begins her windup, not when the
+  bat starts moving — 10U pitch speed gives plenty of reaction time.
+- Prefer **1/8 speed** (240fps) over 1/4 (120fps) when light allows; drop to 1/4 or normal speed at
+  dusk/under weak field lights, where a dim 1/8 clip comes out dark and noisy.
+- Shoot from a consistent spot each game (behind the backstop is usually best for both stance and
+  swing plane) — this pipeline has no real camera calibration (see below), so consistency matters
+  more than it might seem.
+
 ### The pose3d pipeline itself
 
 `scripts/pose3d/` — YOLO11-pose (person/keypoints) + YOLOv8 bat detection/ByteTrack + One-Euro
@@ -168,80 +169,10 @@ regardless. The coach app's 3D model works around this at the display layer (a p
 working (`run_pose3d.ps1 -LegacyMediapipe`) for side-by-side comparison only. Don't build new work
 on them.
 
-## Legacy static-report path
-
-Zero-cost, no Supabase/coach-app dependency: extract frames from a video with PowerShell, hand-edit
-a report's embedded JS data arrays, `git push`, GitHub Pages serves the result. This is how
-Bethlehem Boom 10U's report is produced today, and the only reason this path still exists — **new
-teams should go through the coach app instead** (see above).
-
-### Filming at games
-
-- Film **every at-bat**, not just the good or bad ones — a checklist built from a cherry-picked
-  swing will mislead more than help. (This applies to both paths.)
-- Slow-mo still works fine in games: start recording as the pitcher begins her windup, not when the
-  bat starts moving — 10U pitch speed gives plenty of reaction time.
-- Prefer **1/8 speed** (240fps) over 1/4 (120fps) when light allows; drop to 1/4 or normal speed at
-  dusk/under weak field lights, where a dim 1/8 clip comes out dark and noisy.
-- Shoot from a consistent spot each game (behind the backstop is usually best for both stance and
-  swing plane) — this pipeline has no real camera calibration (see above), so consistency matters
-  more than it might seem.
-
-### Folder layout
-
-- `videos/` — raw game clips (gitignored — real footage never leaves your machine). Suggested
-  naming: `<player_slug>_<YYYYMMDD>_<opponent>_ab<N>.mp4`.
-- `frames/<player_slug>/<clip_name>/` — extracted stills + contact sheet (gitignored).
-- `reports/` — filled-in, self-contained interactive HTML reports (double-click to open, no server
-  needed). Bethlehem Boom's files live at the `reports/` root (predates the multi-team structure,
-  URL already shared with coaches). Every other legacy-path team gets its own subfolder (e.g.
-  `reports/latham-lady-bison-white-10u/` — though Latham is now Supabase-backed, so this subfolder
-  is effectively frozen/historical). `_individual_report_template.html` /
-  `_team_comparison_template.html` are the shared blank templates. `example_maddie.html` /
-  `example_ava.html` / `example_team_summary.html` are fictional demo reports (Maddie shows the
-  "resolved" evidence-discipline state past the at-bat threshold; Ava shows the "⚠ early read"
-  warning banner).
-- `scripts/extract_frames.ps1` — pulls frames + a contact sheet out of a video.
-- `scripts/generate_team_reports.ps1` — the shared generator engine (`-TeamName`/`-Coaches`/
-  `-Players`/`-OutDir`) producing a placeholder page per player + a wired-up `team_summary.html`.
-  Not meant to be run directly.
-  - `scripts/teams/*.ps1` — one thin config script per team. **To add a team on this path**: copy
-    `scripts/teams/latham_lady_bison_white_10u.ps1`, change the roster/`-OutDir`, run it. **To add
-    a player**: add them to that config and re-run — it only writes files for players still listed,
-    never touching anyone already filled in with real data.
-
-### Workflow
-
-1. Film an at-bat.
-2. Copy into `videos/`, e.g. `videos/maggie_m_20260802_eagles_ab1.mp4`.
-3. `./scripts/extract_frames.ps1 -VideoPath videos/maggie_m_20260802_eagles_ab1.mp4 -PlayerName maggie_m`
-4. Review `contact_sheet.png` under `frames/maggie_m/.../`, pull specific `frame_###.png` files for
-   stance/load/stride/contact/extension/follow-through.
-5. Open `reports/maggie_m.html`. Add a row to `GAME_LOG` (date, opponent, AB#, **pitch
-   location/type**, result, clip filename) — the pitch column matters, since a rollover on an
-   outside pitch is normal, but on middle-middle it's a real swing flaw.
-6. Once a few at-bats are logged, fill in `CHECKLIST` (score 1-3 + notes per checkpoint, describing
-   the *pattern* across at-bats) and the issue/comp/drill sections — cite which at-bat(s) show each
-   issue. 10 mechanical checkpoints + an 11th, **swing decisions**, scored from the pitch column.
-   - **Evidence-discipline check**: scoring while fewer than 3 at-bats are logged auto-shows a
-     visible "⚠ early read" warning banner — a computed check, not just policy.
-   - **AI-assisted scoring**: `score`/`aiDraft` set to the same value + `reviewedBy: null` renders
-     an unconfirmed "🤖 AI draft" badge. A coach sets `reviewedBy` to confirm, or edits `score`
-     (leaving `aiDraft` alone) to disagree — both numbers then show, so a disagreement is never
-     silently lost. Same `reviewedBy` pattern applies to `ISSUES`.
-   - Copy `reviewedCount` into `team_summary.html`'s `PLAYERS` array for the roster-level "X/N
-     confirmed" indicator.
-   - **At-Bat Outcome Correlation**: a `GAME_LOG` entry's `outcome` tag + a `CHECKLIST`/`ISSUES`
-     row's `atBats` array (referencing at-bat position, not the repeatable `ab` field) drives a
-     computed correlation section — leave `atBats: []` until real notes cite real at-bats.
-7. Copy `strength`/`issue`/`drill`/`comp`/`scores` into `reports/team_summary.html`'s `PLAYERS`
-   array — the side-by-side table, heat map, and live team-average row all regenerate from it.
-   **Team-Wide Patterns** auto-flag any checkpoint whose visible-player average drops below 2.0.
-
 ## Reference comp banks
 
-Shared by both paths (the coach app's `compModal.js` uses the same bank). **Weight the softball
-bank first** — same sport, same rise-ball timing:
+Used by the coach app's checklist reference-comp modal (`coach/components/compModal.js`). **Weight
+the softball bank first** — same sport, same rise-ball timing:
 
 - **Softball** (6, each with a specific sourced trait): Jocelyn Alo (shortened a long swing to
   control the zone under pressure), Lauren Chamberlain (kept the barrel through the zone longer for

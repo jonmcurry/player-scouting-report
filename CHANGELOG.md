@@ -4,6 +4,24 @@ All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file starts 2026-08-01 — see
 `NEXT_STEPS.md` (and its own git history) for the detailed narrative of everything before that.
 
+## [0.4.1] - 2026-08-03
+
+### Removed
+- The entire legacy static-HTML report path, confirmed unused/deprecated by the user (a first pass
+  only updated the README to describe it as legacy without actually removing it - real feedback,
+  not a judgment call): `reports/` (Bethlehem Boom's real published files, Latham's frozen
+  pre-migration copy, the shared templates, and the fictional demo reports), the PowerShell
+  generator (`scripts/generate_team_reports.ps1`, `scripts/teams/*.ps1`, `scripts/extract_frames.ps1`
+  - superseded by `src/cli/extract.ts`, kept), and the two Node CLIs that only existed to read/write
+  those files (`src/cli/generate.ts`, `src/cli/migrate.ts`, and their `build:reports`/`migrate` npm
+  scripts). Bethlehem Boom 10U currently has no live report until it's onboarded onto the coach app
+  - flagged as a real, currently-open gap in `NEXT_STEPS.md`, not silently dropped.
+
+### Changed
+- README.md rewritten again to match: no more "two paths," the coach app is presented as the only
+  path, with an explicit note for anyone who runs into a stale reference to the removed system in
+  an old commit/comment/their own memory of this project.
+
 ## [0.4.0] - 2026-08-02
 
 ### Changed

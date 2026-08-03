@@ -850,13 +850,15 @@ now fixed before that migration happens, not something to re-discover the hard w
       of the pose3d evidence work from being genuinely "done," not just built.
 - [ ] Re-run `scripts/pose3d/render_public_skeleton.py` for any of Emily's other clips if more
       contact-confidence-"high" swings get filmed/reprocessed — right now she has exactly one.
-- [ ] Bethlehem Boom 10U still needs its own `migrate.ts` pass (11 real players) if/when it moves
-      off the static-HTML path - Latham's migration this session (Emily C only so far, now proven
-      reproducible via a full db-reset-and-redo) is the template to follow, not a reason to assume
-      Bethlehem is done too.
-- [ ] Latham has other roster spots beyond Emily C (see the team's `team_summary.html`) that
-      aren't in Supabase yet - each needs its own real, hand-filled report content before
-      `migrate.ts` has anything meaningful to migrate for them.
+- [ ] Bethlehem Boom 10U (11 real players) still needs onboarding onto the coach app - **not** via
+      `migrate.ts`, which was deleted 2026-08-03 along with the entire legacy static-HTML report
+      path (`reports/`, `generate_team_reports.ps1`, `scripts/teams/*.ps1`, `generate.ts`) once it
+      was confirmed unused. There is currently no tool that bulk-imports a roster into Supabase -
+      onboarding a team now means real data entry through the coach app itself (or building a new,
+      purpose-built import tool if 11 players by hand turns out to be too slow).
+- [ ] Latham has other roster spots beyond Emily C (see `latham_lady_bison_white_10u_roster` memory)
+      that aren't in Supabase yet - same onboarding gap as above, now that there's no legacy report
+      to seed from.
 
 ## Future considerations (bigger, no immediate action needed)
 

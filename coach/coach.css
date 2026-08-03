@@ -1,8 +1,7 @@
-/* Shared stylesheet for the coach app (coach/*.html) only - NOT used by the
-   public reports/ site, which stays fully self-contained per file on
-   purpose. These pages are a connected, login-gated flow rather than
-   independently-shareable documents, so one shared file here is a
-   deliberate, small departure from that convention, not an oversight.
+/* Shared stylesheet for the coach app (coach/*.html) only. These pages are a
+   connected, login-gated flow, so one shared file here is the right call
+   (unlike the old per-file-self-contained legacy static reports, since
+   removed - see CHANGELOG.md).
 
    Design system: "infield dirt at night" - a deliberately dark-only,
    sunlight-optimized palette (ux.md Step 1): dark slate background, clay/

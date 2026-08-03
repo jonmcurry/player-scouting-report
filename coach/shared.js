@@ -1,6 +1,5 @@
 // Shared Supabase client + small helpers used by every coach/*.html page.
-// Loaded as `<script type="module">`, no bundler - matches this repo's
-// established "no build step" convention (see reports/*.html).
+// Loaded as `<script type="module">`, no bundler.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 
@@ -80,10 +79,9 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-/** Same three states as the public report's .review-badge (ai-draft /
- * edited-unconfirmed / confirmed), rendered with this app's punchier badge
- * classes. Mirrors the exact logic in
- * reports/_individual_report_template.html's reviewBadge() function. */
+/** Same three states as the old static report template's .review-badge
+ * (ai-draft / edited-unconfirmed / confirmed, since removed), rendered with
+ * this app's punchier badge classes. */
 export function renderReviewBadge(row) {
   if (row.score === null || row.score === undefined) return "";
   if (!row.reviewed_by) {
