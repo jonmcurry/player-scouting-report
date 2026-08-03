@@ -4,6 +4,17 @@ All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file starts 2026-08-01 — see
 `NEXT_STEPS.md` (and its own git history) for the detailed narrative of everything before that.
 
+## [0.7.1] - 2026-08-03
+
+### Removed
+- The 8-name MLB reference-comp bank (Shoeless Joe Jackson, Ty Cobb, Pete Rose, Ted Williams, Barry
+  Bonds, Lou Gehrig, Babe Ruth, Ichiro Suzuki) from `readme.md` - direct decision to focus
+  exclusively on top-end softball hitters for comps/analysis. The live coach-app modal
+  (`compModal.js`) never actually included these; the real find was `src/services/ai/
+  geminiAnalyzer.ts`'s system prompt, which told Gemini to fall back to "a general MLB mechanics
+  reference" when no softball comp fit - rewritten to never cite an MLB/baseball player, omitting a
+  named comp entirely rather than reaching for baseball when nothing in the softball bank fits.
+
 ## [0.7.0] - 2026-08-03
 
 ### Changed

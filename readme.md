@@ -170,8 +170,9 @@ on them.
 
 ## Reference comp banks
 
-Used by the coach app's checklist reference-comp modal (`coach/components/compModal.js`). **Weight
-the softball bank first** — same sport, same rise-ball timing:
+Used by the coach app's checklist reference-comp modal (`coach/components/compModal.js`) and the
+Gemini analysis prompt (`src/services/ai/geminiAnalyzer.ts`). Softball-only, top-end hitters —
+no MLB/baseball comps, by direct decision (2026-08-03; an earlier 8-name MLB bank was removed):
 
 - **Softball** (6, each with a specific sourced trait): Jocelyn Alo (shortened a long swing to
   control the zone under pressure), Lauren Chamberlain (kept the barrel through the zone longer for
@@ -179,14 +180,10 @@ the softball bank first** — same sport, same rise-ball timing:
   Sierra Romero (lets the ball travel deep before releasing the barrel), Natasha Watley (documented
   slap-hitting footwork/hand path), Haylie McCleney (hips→torso→shoulders→barrel sequencing +
   plate discipline).
-- **MLB** (8, named cues for isolated mechanics only, not literal templates): Shoeless Joe Jackson,
-  Ty Cobb, Pete Rose, Ted Williams, Barry Bonds, Lou Gehrig, Babe Ruth, Ichiro Suzuki.
 
-Fact-checked 2026-07-23 against real hitting-instruction/historical sources in two passes; one
-softball claim (a mechanical detail attributed to Alo) turned out unsourced/fabricated on the
-second pass and was corrected. One live, unsettled debate not taken a side on: whether softball and
-baseball swings are mechanically more alike than traditionally taught — this project weights
-softball comps heavily for timing-specific things either way, which holds regardless.
+Fact-checked 2026-07-23 against real hitting-instruction sources in two passes; one softball claim
+(a mechanical detail attributed to Alo) turned out unsourced/fabricated on the second pass and was
+corrected.
 
 ## GCP deployment (planned, not yet live)
 

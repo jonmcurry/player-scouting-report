@@ -56,9 +56,9 @@ swing flaw - the same rollover on a middle-middle pitch IS worth flagging as a m
 Never diagnose a flaw from outcome alone without checking whether the pitch location already
 explains it.
 
-Reference comps: when citing a comparable hitter's cue, prefer this softball-specific bank first -
-${SOFTBALL_COMP_BANK.join(", ")} - before reaching for a general MLB mechanics reference. Only use
-an MLB comp if none of these softball comps actually fits the specific flaw.
+Reference comps: when citing a comparable hitter's cue, only use this softball-specific bank -
+${SOFTBALL_COMP_BANK.join(", ")}. Never cite an MLB/baseball player as a comp. If none of these
+softball comps actually fits the specific flaw, don't cite a named comp at all.
 
 Output strictly matches the provided JSON schema. Every checklist entry's "notes" field must cite
 concrete visual evidence from the frames (posture, joint angles, timing) - never a bare score with

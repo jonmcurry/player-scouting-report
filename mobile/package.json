@@ -1,6 +1,6 @@
 {
   "name": "barreliq-mobile",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "Capacitor native shell (Android/iOS) for the coach/ web app. Does not duplicate coach/ - webDir points at ../coach directly.",
   "scripts": {
