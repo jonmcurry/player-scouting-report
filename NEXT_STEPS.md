@@ -1,5 +1,25 @@
 # Open Items, To-Dos, and Future Considerations
 
+## In-app video capture: cheap win shipped, guided camera view deferred (2026-08-04)
+
+- [x] **Shipped**: every video `<input type="file">` in `coach/player.html` (Attach Video, Add
+      Pitch, Log At-Bat modal) now has `capture="environment"` - on mobile this hands off straight
+      to the device camera instead of a generic file-choose dialog, so a coach/parent records the
+      swing in the moment rather than filming separately in a camera app and hunting for the file
+      afterward. No new dependency, no native plugin.
+- [ ] **Deferred, real follow-up, not forgotten**: a genuine in-app guided camera view - a live
+      preview inside the app's own UI (not a hand-off to the OS camera) with an overlay showing
+      where to stand/how to frame the shot ("directly behind home plate, facing the batter"),
+      matching the filming guidance this app already states as text. Real motivation, not just
+      polish: bad camera angle is a *confirmed* cause of bad data in this pipeline (the open
+      torso-tilt bug is angle-sensitive; the quality gate already bails when nothing's trackable) -
+      catching a bad angle before recording is a real accuracy lever, not just convenience.
+      Technically feasible without a native Capacitor plugin - `getUserMedia()` +
+      `MediaRecorder()` (well-supported in Android WebView) can render the live preview + overlay
+      and do the actual recording, no new dependency. Real cost: camera-heavy WebView behavior is
+      the least reliable thing to verify on an emulator - needs a real device test before trusting
+      it, not just this session's usual emulator screenshot pass.
+
 ## Go-live audit + 3 critical fixes: RLS hole, manual scoring, signup gate (2026-08-04)
 
 - [x] **Full UX/production-readiness audit performed live** (Playwright + direct RLS/grant

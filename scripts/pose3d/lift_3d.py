@@ -62,6 +62,8 @@ from common.model import TemporalModel  # noqa: E402
 from common.camera import camera_to_world  # noqa: E402
 from common.custom_dataset import custom_camera_params  # noqa: E402
 
+from correct_limb_depth import correct_limb_depth  # noqa: E402
+
 CHECKPOINT = VP3D_SRC / "checkpoint" / "pretrained_h36m_detectron_coco.bin"
 WORLD_ROTATION = np.array(custom_camera_params["orientation"], dtype=np.float32)
 
@@ -219,6 +221,12 @@ def run(pose_2d_path, out_dir):
     n = len(frames)
 
     kps_xy = np.zeros((n, 17, 2), dtype=np.float32)
+    # Per-joint 2D confidence, read but previously discarded here (only
+    # presence/absence was used) - correct_limb_depth needs it to know which
+    # limb joints are reliable enough to reproject from real 2D data. Frames
+    # with no tracked batter at all keep confidence 0 for every joint, which
+    # correctly excludes them from that correction (JOINT_CONF_MIN gate).
+    kps_conf = np.zeros((n, 17), dtype=np.float32)
     present = []
     for i, f in enumerate(frames):
         if f["keypoints"] is None:
@@ -227,6 +235,7 @@ def run(pose_2d_path, out_dir):
         present.append(True)
         for j, (x, y, c) in enumerate(f["keypoints"]):
             kps_xy[i, j] = (x, y)
+            kps_conf[i, j] = c
 
     n_present = sum(present)
     print(f"[lift_3d] {n_present}/{n} frames had a tracked batter (rest interpolated)")
@@ -249,6 +258,15 @@ def run(pose_2d_path, out_dir):
     pred = pred.squeeze(0).cpu().numpy()
 
     assert pred.shape[0] == n, f"expected {n} output frames, got {pred.shape[0]}"
+
+    # Corrects a real, measured, systematic depth bias in the model's own
+    # regression for elbow/wrist/knee/ankle (never the torso) - see
+    # correct_limb_depth.py's module docstring for the full finding and
+    # method. Must happen HERE, in the model's native pre-rotation
+    # camera-space, before WORLD_ROTATION - that's the space
+    # pose_2d.json's own normalization already matches.
+    fps = meta.get("fps", 30.0)
+    pred = correct_limb_depth(pred, kps_norm, kps_conf, fps)
 
     # Rotate into the same "world" frame (Z-up) VideoPose3D's own custom-video
     # visualizer uses - see module docstring for why this specific rotation.

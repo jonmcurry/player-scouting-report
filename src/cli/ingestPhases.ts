@@ -152,7 +152,7 @@ async function main() {
     .requiredOption("--team <slug>", "Team slug")
     .requiredOption("--player <slug>", "Player slug")
     .requiredOption("--date <date>", "Game date (YYYY-MM-DD), matches an existing game_log_entries row")
-    .requiredOption("--opponent <name>", "Opponent, matches an existing game_log_entries row")
+    .option("--opponent <name>", "Opponent, matches an existing game_log_entries row - omit for a practice session (opponent is a real SQL NULL there, not an empty string)")
     .requiredOption("--ab <number>", "At-bat number, matches an existing game_log_entries row")
     .requiredOption("--clipDir <path>", 'Path to the pose3d output dir, e.g. "frames/emily_c/Emily_C_AB1 (4)"');
   program.parse(process.argv);
@@ -160,13 +160,13 @@ async function main() {
     team: string;
     player: string;
     date: string;
-    opponent: string;
+    opponent?: string;
     ab: string;
     clipDir: string;
   }>();
 
   try {
-    await ingestPhases(opts.team, opts.player, opts.date, opts.opponent, Number(opts.ab), opts.clipDir);
+    await ingestPhases(opts.team, opts.player, opts.date, opts.opponent ?? null, Number(opts.ab), opts.clipDir);
   } catch (err) {
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);

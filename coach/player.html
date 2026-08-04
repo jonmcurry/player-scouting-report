@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=4d0d0284eb">
+<link rel="stylesheet" href="./coach.css?v=4006500fab">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -628,7 +628,7 @@
     if (!clips || clips.length === 0) {
       mount.innerHTML = `
         <div class="upload-control" data-game-log-entry="${gameLogEntryId}">
-          <input type="file" accept="video/*" class="attach-video-input" style="display:none;">
+          <input type="file" accept="video/*" capture="environment" class="attach-video-input" style="display:none;">
           <button class="tap-target" data-attach-video>📹 Attach Video</button>
         </div>
         <p class="hint">Film from directly behind home plate, facing the batter — a camera along the
@@ -663,7 +663,7 @@
           <button class="clip-tab-btn tap-target add-clip-btn" data-add-clip-for-entry="${gameLogEntryId}"
                   title="Film from directly behind home plate, facing the batter">➕ Add Pitch</button>
         </div>
-        <input type="file" accept="video/*" class="add-clip-input" data-game-log-entry="${gameLogEntryId}" style="display:none;">
+        <input type="file" accept="video/*" capture="environment" class="add-clip-input" data-game-log-entry="${gameLogEntryId}" style="display:none;">
       </div>
       <div class="active-clip-mount" data-active-clip-mount="${gameLogEntryId}"></div>
     `;
@@ -1064,7 +1064,7 @@
             Film from directly behind home plate, facing the batter — a camera along the baseline or
             outfield can't reliably pick out the bat.</p>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <input type="file" id="newVideo" accept="video/*" style="display:none;">
+            <input type="file" id="newVideo" accept="video/*" capture="environment" style="display:none;">
             <button type="button" class="tap-target" id="newVideoTrigger">📹 Choose Video</button>
             <span class="hint" id="newVideoFilename">No file chosen</span>
           </div>

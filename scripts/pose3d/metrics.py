@@ -216,9 +216,24 @@ def find_contact_frame(speeds, knee_series, rotation_series):
     a real swing's body is actively rotating through the same kind of
     window. rotation_series (see rotation_activity_series) adds that as a
     required third signal: contact = argmax(bat_speed_norm * knee_norm *
-    rotation_norm) over frames where all three are present. Dead time
-    (standing, waggling, walking) essentially never has a fast bat, a
-    near-locked-out front knee, AND active body rotation all at once.
+    rotation_norm) over frames where all three are present AND rotation
+    activity clears ROTATION_MIN_DEG in absolute terms (not just a nonzero
+    percentile) - dead time (standing, waggling, walking) essentially never
+    has a fast bat, a near-locked-out front knee, AND active body rotation
+    all at once.
+
+    The ROTATION_MIN_DEG floor must be an actual gate on candidates, not
+    just a post-hoc confidence label: a real 2D bat-tip tracking glitch (a
+    pre-contact frame where the detector's bat-tip position jumps ~50px in
+    2 frames with no real bat motion behind it - confirmed on a real clip,
+    Emily_C_AB11-1785696124000, where the "fast" frame lands while the pitch
+    is still visibly in flight toward the plate in the source video) can
+    produce a bat_speed_norm near 1.0 at a frame with only ~2deg of rotation
+    activity. That alone was enough to outscore the true contact frame once
+    a separate, unrelated fix (limb-depth correction in lift_3d.py) brought
+    knee_norm at the true contact frame down from an inflated, biased value
+    to its correct one - the rotation floor is exactly what's supposed to
+    rule frames like that out, so it has to actually exclude them up front.
     """
     speed_norm = _minmax_norm(speeds)
     knee_norm = _minmax_norm(knee_series)
@@ -226,6 +241,8 @@ def find_contact_frame(speeds, knee_series, rotation_series):
     best_i, best_score = None, -1.0
     for i in range(len(speed_norm)):
         if speed_norm[i] is None or knee_norm[i] is None or rot_norm[i] is None:
+            continue
+        if rotation_series[i] is None or rotation_series[i] < ROTATION_MIN_DEG:
             continue
         score = speed_norm[i] * knee_norm[i] * rot_norm[i]
         if score > best_score:

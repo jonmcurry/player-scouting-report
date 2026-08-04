@@ -107,7 +107,7 @@ async function main() {
     .requiredOption("--team <slug>", "Team slug")
     .requiredOption("--player <slug>", "Player slug")
     .requiredOption("--date <date>", "Game date (YYYY-MM-DD), matches an existing game_log_entries row")
-    .requiredOption("--opponent <name>", "Opponent, matches an existing game_log_entries row")
+    .option("--opponent <name>", "Opponent, matches an existing game_log_entries row - omit for a practice session (opponent is a real SQL NULL there, not an empty string)")
     .requiredOption("--ab <number>", "At-bat number, matches an existing game_log_entries row")
     .requiredOption("--clipDir <path>", 'Path to the pose3d output dir, e.g. "frames/emily_c/Emily_C_AB1 (4)"')
     .option("--position <number>", "Display order among multiple physical clips for the same at-bat", "0");
@@ -116,7 +116,7 @@ async function main() {
     team: string;
     player: string;
     date: string;
-    opponent: string;
+    opponent?: string;
     ab: string;
     clipDir: string;
     position: string;
@@ -127,7 +127,7 @@ async function main() {
       opts.team,
       opts.player,
       opts.date,
-      opts.opponent,
+      opts.opponent ?? null,
       Number(opts.ab),
       opts.clipDir,
       Number(opts.position),
