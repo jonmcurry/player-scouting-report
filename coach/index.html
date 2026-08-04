@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BarrelIQ — Coach Login</title>
-<link rel="stylesheet" href="./coach.css?v=9a0289bdc5">
+<link rel="stylesheet" href="./coach.css?v=0c05e077dd">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -45,6 +45,7 @@
       <p class="hint">You don't have a team yet - set one up to start adding players.</p>
       <input type="text" id="newTeamName" placeholder="Team name (e.g. Latham Lady Bison White 10U)">
       <input type="text" id="newTeamSlug" placeholder="URL slug (auto-filled from name)">
+      <input type="text" id="newTeamAccessCode" placeholder="Access code (ask your BarrelIQ contact)">
       <button class="primary tap-target" id="createTeamBtn">Create Team</button>
       <p class="error-text" id="createTeamErrorMsg"></p>
     </div>
@@ -184,17 +185,25 @@
   document.getElementById("createTeamBtn").addEventListener("click", async () => {
     const name = document.getElementById("newTeamName").value.trim();
     const slug = document.getElementById("newTeamSlug").value.trim() || slugify(name);
+    const accessCode = document.getElementById("newTeamAccessCode").value.trim();
     const errorMsg = document.getElementById("createTeamErrorMsg");
     errorMsg.textContent = "";
 
     if (!name) { errorMsg.textContent = "Enter a team name."; return; }
     if (!slug) { errorMsg.textContent = "Enter a URL slug."; return; }
+    if (!accessCode) { errorMsg.textContent = "Enter your access code."; return; }
 
-    const { data, error } = await supabase.rpc("create_team", { p_slug: slug, p_name: name });
+    const { data, error } = await supabase.rpc("create_team", {
+      p_slug: slug,
+      p_name: name,
+      p_access_code: accessCode,
+    });
     if (error) {
       errorMsg.textContent = error.message.includes("duplicate key")
         ? `That URL slug is already taken - try a different one.`
-        : error.message;
+        : error.message.includes("invalid access code")
+          ? `That access code isn't right - ask your BarrelIQ contact for the team setup code.`
+          : error.message;
       return;
     }
     window.location.href = `./team.html?team=${data.slug}`;

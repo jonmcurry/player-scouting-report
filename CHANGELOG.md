@@ -4,6 +4,28 @@ All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file starts 2026-08-01 — see
 `NEXT_STEPS.md` (and its own git history) for the detailed narrative of everything before that.
 
+## [0.8.0] - 2026-08-04
+
+### Security
+- Fixed a real, proven RLS hole: `checkpoints` and `swing_phase_types` had row-level security
+  disabled entirely (not just "no policy") plus full write grants to `authenticated` - any
+  self-signed-up coach, including one with zero team access, could rewrite shared checklist data
+  used by every team. `00017_lock_down_reference_tables.sql` enables RLS, adds read-only policies,
+  and revokes the write grants. Re-ran the exact exploit after the fix - now correctly blocked.
+- Self-service team creation now requires an access code, checked server-side in `create_team()`
+  against a new `app_settings` table (service_role-only). Account signup itself stays open - a
+  team-less coach account is inert once the fix above landed - but creating real team data now
+  needs a code the app owner hands out. `00018_team_creation_access_code.sql`.
+
+### Added
+- A coach can now manually score any checklist checkpoint with no video or AI draft required -
+  previously the entire scoring UI only rendered once a `checklist_scores` row already existed,
+  and the only two things that ever created one were the pose3d pipeline and the (never verified
+  against a real key) Gemini analyzer, leaving a brand-new player with zero way to be scored.
+  `coach/components/stepper.js` now upserts on `(player_id, checkpoint_id)` instead of updating a
+  row that might not exist yet; confirming a real AI-drafted score still correctly preserves
+  `ai_draft`/`source`.
+
 ## [0.7.1] - 2026-08-03
 
 ### Removed

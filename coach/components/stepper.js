@@ -1,13 +1,20 @@
-// 1-tap 3-segment score stepper. Tapping a segment writes score+ai_draft
-// (ai_draft only if this is the FIRST score ever set, so a real AI draft
-// value already on the row isn't overwritten by the act of confirming it)
-// and reviewed_by = the signed-in coach's display name, directly to
-// Supabase - this is a real, persisted write, not local-only state.
+// 1-tap 3-segment score stepper. Tapping a segment writes score+reviewed_by
+// directly to Supabase - this is a real, persisted write, not local-only
+// state. Upserts on (player_id, checkpoint_id) rather than updating by row
+// id, since a checkpoint with no AI/pose3d draft yet has no existing row -
+// a coach can score it directly, no video required (checklist_scores.source
+// allows NULL for exactly this case; see 00001_initial_schema.sql's column
+// comment). ai_draft/notes/source are explicitly passed through from the
+// existing row on every write, not just score/reviewed_by - Supabase's
+// upsert only touches columns present in the payload, so omitting them
+// would silently null out a real AI draft the moment a coach confirms it.
 import { supabase } from "../shared.js";
 
 /**
  * @param {HTMLElement} container - element to render the stepper into
- * @param {object} row - a checklist_scores row: {id, score, ai_draft, reviewed_by}
+ * @param {object} row - a checklist_scores row (or a not-yet-scored
+ *   placeholder): {id, score, ai_draft, notes, source, reviewed_by,
+ *   playerId, checkpointId}
  * @param {string} coachDisplayName
  * @param {(newRow: object) => void} onChange - called with the updated row after a successful write
  */
@@ -32,11 +39,18 @@ export function renderStepper(container, row, coachDisplayName, onChange) {
       btn.disabled = true;
       const { data, error } = await supabase
         .from("checklist_scores")
-        .update({
-          score: newScore,
-          reviewed_by: coachDisplayName,
-        })
-        .eq("id", row.id)
+        .upsert(
+          {
+            player_id: row.playerId,
+            checkpoint_id: row.checkpointId,
+            score: newScore,
+            ai_draft: row.ai_draft ?? null,
+            notes: row.notes ?? "",
+            source: row.source ?? null,
+            reviewed_by: coachDisplayName,
+          },
+          { onConflict: "player_id,checkpoint_id" },
+        )
         .select()
         .single();
       btn.disabled = false;

@@ -1,5 +1,46 @@
 # Open Items, To-Dos, and Future Considerations
 
+## Go-live audit + 3 critical fixes: RLS hole, manual scoring, signup gate (2026-08-04)
+
+- [x] **Full UX/production-readiness audit performed live** (Playwright + direct RLS/grant
+      probing against local Supabase, not just code review) - found and proved a real, exploitable
+      security hole, a completely dead-end core workflow, and several lower-severity gaps. Full
+      findings published as an artifact during the session (5 critical, 7 important, 3 polish, 8
+      already-fixed-this-week).
+- [x] **Fixed: `checkpoints`/`swing_phase_types` RLS hole.** Both tables had RLS disabled entirely
+      (not just "no policy") plus full write grants to `authenticated` - proven exploitable by
+      signing up a brand-new, zero-team coach and rewriting shared checklist data directly.
+      `00017_lock_down_reference_tables.sql` enables RLS + adds read-only policies + revokes the
+      write grants. Re-ran the exact exploit after the fix - now correctly blocked
+      (`permission denied for table checkpoints`), reads still work.
+- [x] **Fixed: no way to manually score a checkpoint.** The checklist only ever rendered a
+      scoring UI once a `checklist_scores` row already existed, and the only two things that ever
+      created one were the pose3d pipeline and the (never-tested-against-a-real-key) Gemini
+      analyzer. The schema already anticipated direct coach entry (`source` allows NULL, with a
+      comment saying so) - the gap was 100% frontend. `coach/player.html`'s checklist now always
+      renders a stepper; `coach/components/stepper.js` upserts on `(player_id, checkpoint_id)`
+      instead of updating by an id that might not exist yet. Verified a brand-new player with zero
+      clips can now be scored end-to-end, and separately verified re-confirming a REAL AI-drafted
+      score (Emily C) still preserves `ai_draft`/`source` correctly (upsert explicitly passes them
+      through rather than nulling them out).
+- [x] **Fixed: self-signup had no compensating control.** Account creation stays open (harmless on
+      its own once the RLS fix above landed), but creating a team now requires an access code,
+      checked server-side in `create_team()` against a new `app_settings` table (service_role-only,
+      no RLS policies at all). `00018_team_creation_access_code.sql`.
+- [ ] **Real action item, not resolved by code:** the seeded access code
+      (`LOCAL-DEV-ONLY-CHANGE-ME`) is a placeholder - this repo is public
+      (`jonmcurry/player-scouting-report`), so a real code was deliberately NOT committed. Before
+      any real coach outside this session uses signup, set a real value directly against the
+      hosted Supabase project once one exists:
+      `update app_settings set value = '...' where key = 'team_creation_code';` - then hand that
+      code out to real coaches yourself, out of band.
+- Still open from the audit, not addressed this pass (by scope, not oversight - see the published
+  audit artifact for full detail): no automated video-processing trigger (manual CLI only, blocked
+  on the same no-GCP-account constraint as Phase 2), native `alert()`/`confirm()` throughout
+  instead of styled dialogs, Gemini analyzer still unverified against a real API call, no hosted
+  prod Supabase project, placeholder app icons, no privacy policy/terms, thin accessibility
+  labeling, iOS not started, single-player sample size.
+
 ## Coach-app UI polish pass, three rounds from real screenshot feedback (2026-08-03)
 
 - [x] Reviewed and implemented a real UX checklist against `team.html`'s roster view, correcting

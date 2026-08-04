@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=9a0289bdc5">
+<link rel="stylesheet" href="./coach.css?v=0c05e077dd">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -281,6 +281,9 @@
   }
 
   async function loadChecklist() {
+    const { data: checkpointRows } = await supabase.from("checkpoints").select("id, slug").order("sort_order");
+    const checkpointIdBySlug = new Map((checkpointRows ?? []).map((c) => [c.slug, c.id]));
+
     const { data: rows } = await supabase
       .from("checklist_scores")
       .select("id, score, ai_draft, reviewed_by, notes, source, checkpoints!inner(slug, label, sort_order)")
@@ -292,14 +295,22 @@
     const bySlug = new Map((rows ?? []).map((r) => [r.checkpoints.slug, r]));
 
     CHECKPOINTS.forEach((cp, idx) => {
+      // A checkpoint with no row yet is scoreable directly by the coach - no
+      // video/AI draft required (checklist_scores.source allows NULL for
+      // exactly this case, see 00001_initial_schema.sql's column comment).
+      // playerId/checkpointId are only needed by the placeholder branch;
+      // stepper.js upserts on (player_id, checkpoint_id) either way.
       const row = bySlug.get(cp.slug) ?? {
         id: null,
         score: null,
         ai_draft: null,
         reviewed_by: null,
-        notes: "Awaiting video",
+        notes: "",
+        source: null,
         checkpoints: cp,
       };
+      row.playerId = playerId;
+      row.checkpointId = row.checkpointId ?? checkpointIdBySlug.get(cp.slug);
       const unconfirmed = !!row.id && row.score !== null && !row.reviewed_by;
 
       const card = document.createElement("div");
@@ -311,31 +322,23 @@
           <h3>${cp.label}</h3>
           ${row.id && row.reviewed_by ? `<span class="verified-pill">✓ Verified</span>` : ""}
         </div>
-        ${row.id ? `<div class="stepper-mount"></div>` : ""}
+        <div class="stepper-mount"></div>
         <p class="cp-notes">${row.notes ?? ""}</p>
-        ${
-          row.id
-            ? `
-          <div class="cp-actions">
-            <button type="button" class="view-skeleton-btn tap-target" data-comp="${cp.slug}" data-label="${cp.label}">📐 View 3D Skeleton</button>
-            <span class="cp-meta">${row.reviewed_by ? `Reviewed by ${row.reviewed_by}` : ""}</span>
-          </div>
-        `
-            : `<p class="hint">Not scored yet</p>`
-        }
+        <div class="cp-actions">
+          <button type="button" class="view-skeleton-btn tap-target" data-comp="${cp.slug}" data-label="${cp.label}">📐 View 3D Skeleton</button>
+          <span class="cp-meta">${row.reviewed_by ? `Reviewed by ${row.reviewed_by}` : ""}</span>
+        </div>
       `;
       container.appendChild(card);
 
-      if (row.id) {
-        const mount = card.querySelector(".stepper-mount");
-        renderStepper(mount, row, coachDisplayName, () => {
-          loadChecklist();
-          refreshConfirmedPill();
-        });
-        card.querySelector("[data-comp]").addEventListener("click", (e) => {
-          openCompModal(e.currentTarget.dataset.comp, e.currentTarget.dataset.label, firstClipContext);
-        });
-      }
+      const mount = card.querySelector(".stepper-mount");
+      renderStepper(mount, row, coachDisplayName, () => {
+        loadChecklist();
+        refreshConfirmedPill();
+      });
+      card.querySelector("[data-comp]").addEventListener("click", (e) => {
+        openCompModal(e.currentTarget.dataset.comp, e.currentTarget.dataset.label, firstClipContext);
+      });
     });
   }
 
