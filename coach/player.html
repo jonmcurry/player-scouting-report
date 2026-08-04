@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=0c05e077dd">
+<link rel="stylesheet" href="./coach.css?v=4d0d0284eb">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -49,7 +49,12 @@
   <details class="drawer" style="margin-top:24px;">
     <summary><span>Manage Player</span></summary>
     <div class="drawer-body">
-      <button class="tap-target btn-danger" id="deletePlayerBtn">🗑 Delete Player</button>
+      <p class="hint">Share a read-only version of her report - no BarrelIQ account needed to
+        view it. Video/clip data is never included.</p>
+      <button class="tap-target" id="createShareLinkBtn">🔗 Create Share Link</button>
+      <div id="shareLinksList" style="margin-top:10px;"></div>
+
+      <button class="tap-target btn-danger" id="deletePlayerBtn" style="margin-top:20px;">🗑 Delete Player</button>
       <p class="hint" style="margin-top:8px;">Removes her entire record, including every logged
         at-bat, score, and clip. This can't be undone.</p>
     </div>
@@ -63,6 +68,7 @@
 <script type="module">
   import { supabase, requireSession, getMyDisplayName, CHECKPOINTS, qs, renderReviewBadge } from "./shared.js";
   import { renderStepper } from "./components/stepper.js";
+  import { renderTrendChart } from "./components/trendChart.js";
   import { openCompModal } from "./components/compModal.js";
   import { loadClipSkeletonData, loadExtensionScore, buildExtensionCorrectedFrames, renderSkeletonComparison } from "./components/skeletonComparison.js";
   import { loadSwingMetrics, renderSwingMetricsPanel } from "./components/swingMetricsPanel.js";
@@ -75,6 +81,7 @@
   const playerSlug = qs("player");
 
   let coachDisplayName = "Coach";
+  let coachUserId = null;
   let playerId = null;
   let teamId = null;
   // Reference-comp context for "Compare against Reference Comp" (Tier-1
@@ -112,6 +119,7 @@
   async function main() {
     const session = await requireSession();
     if (!session) return;
+    coachUserId = session.user.id;
     coachDisplayName = await getMyDisplayName(session.user.id);
 
     const { data: player, error } = await supabase
@@ -156,6 +164,48 @@
       }
       window.location.href = `./team.html?team=${teamSlug}`;
     });
+
+    document.getElementById("createShareLinkBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("createShareLinkBtn");
+      btn.disabled = true;
+      const token = crypto.randomUUID();
+      const { error } = await supabase
+        .from("player_share_links")
+        .insert({ player_id: playerId, token, created_by: coachUserId });
+      btn.disabled = false;
+      if (error) {
+        alert(`Couldn't create share link: ${error.message}`);
+        return;
+      }
+      await loadShareLinks();
+    });
+
+    document.getElementById("shareLinksList").addEventListener("click", async (e) => {
+      const copyBtn = e.target.closest("[data-copy-link]");
+      if (copyBtn) {
+        await navigator.clipboard.writeText(copyBtn.dataset.copyLink);
+        const original = copyBtn.textContent;
+        copyBtn.textContent = "Copied!";
+        setTimeout(() => { copyBtn.textContent = original; }, 1500);
+        return;
+      }
+      const revokeBtn = e.target.closest("[data-revoke-link]");
+      if (revokeBtn) {
+        if (!confirm("Revoke this share link? Anyone with the old link will lose access immediately.")) return;
+        revokeBtn.disabled = true;
+        const { error } = await supabase
+          .from("player_share_links")
+          .update({ revoked_at: new Date().toISOString() })
+          .eq("id", revokeBtn.dataset.revokeLink);
+        if (error) {
+          alert(`Couldn't revoke link: ${error.message}`);
+          revokeBtn.disabled = false;
+          return;
+        }
+        await loadShareLinks();
+      }
+    });
+    await loadShareLinks();
 
     const reportHref = `./player.html?team=${teamSlug}&player=${playerSlug}`;
     renderBottomNav(document.getElementById("bottomNav"), {
@@ -290,6 +340,26 @@
       .eq("player_id", playerId)
       .order("sort_order", { referencedTable: "checkpoints" });
 
+    // checklist_score_history is already real, trigger-populated audit data
+    // (log_checklist_score_history(), 00002_coach_app.sql) - fires on every
+    // score change from any code path, not something new to start writing.
+    // Batched into one query for the whole checklist rather than one per
+    // checkpoint, same N+1-avoidance convention as loadPlayers() elsewhere
+    // in this app.
+    const scoreIds = (rows ?? []).map((r) => r.id);
+    const historyByScoreId = new Map();
+    if (scoreIds.length > 0) {
+      const { data: history } = await supabase
+        .from("checklist_score_history")
+        .select("checklist_score_id, score, changed_at")
+        .in("checklist_score_id", scoreIds)
+        .order("changed_at");
+      for (const h of history ?? []) {
+        if (!historyByScoreId.has(h.checklist_score_id)) historyByScoreId.set(h.checklist_score_id, []);
+        historyByScoreId.get(h.checklist_score_id).push(h);
+      }
+    }
+
     const container = document.getElementById("checklistCards");
     container.innerHTML = "";
     const bySlug = new Map((rows ?? []).map((r) => [r.checkpoints.slug, r]));
@@ -328,6 +398,7 @@
           <button type="button" class="view-skeleton-btn tap-target" data-comp="${cp.slug}" data-label="${cp.label}">📐 View 3D Skeleton</button>
           <span class="cp-meta">${row.reviewed_by ? `Reviewed by ${row.reviewed_by}` : ""}</span>
         </div>
+        <div class="trend-mount"></div>
       `;
       container.appendChild(card);
 
@@ -339,6 +410,11 @@
       card.querySelector("[data-comp]").addEventListener("click", (e) => {
         openCompModal(e.currentTarget.dataset.comp, e.currentTarget.dataset.label, firstClipContext);
       });
+
+      const scoreHistory = row.id ? historyByScoreId.get(row.id) : null;
+      if (scoreHistory && scoreHistory.length >= 2) {
+        renderTrendChart(card.querySelector(".trend-mount"), scoreHistory);
+      }
     });
   }
 
@@ -412,6 +488,33 @@
         <div class="followup-field"><b>What to check next time</b>${whatToCheckNext ?? "TBD"}</div>
       </div>
     `;
+  }
+
+  async function loadShareLinks() {
+    const { data: links } = await supabase
+      .from("player_share_links")
+      .select("id, token, created_at")
+      .eq("player_id", playerId)
+      .is("revoked_at", null)
+      .order("created_at", { ascending: false });
+
+    const el = document.getElementById("shareLinksList");
+    if (!links || links.length === 0) {
+      el.innerHTML = `<p class="hint">No active share links.</p>`;
+      return;
+    }
+    el.innerHTML = links
+      .map((l) => {
+        const url = `${window.location.origin}${window.location.pathname.replace(/player\.html$/, "report.html")}?token=${l.token}`;
+        return `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+          <span class="hint" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${url}</span>
+          <button type="button" class="tap-target" style="flex:none;" data-copy-link="${url}">Copy</button>
+          <button type="button" class="tap-target btn-danger" style="flex:none;" data-revoke-link="${l.id}">Revoke</button>
+        </div>
+      `;
+      })
+      .join("");
   }
 
   // session_type='game' - a practice session has no opponent/pitch/result

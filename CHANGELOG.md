@@ -4,6 +4,22 @@ All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file starts 2026-08-01 — see
 `NEXT_STEPS.md` (and its own git history) for the detailed narrative of everything before that.
 
+## [0.9.0] - 2026-08-04
+
+### Added
+- Per-checkpoint progress-over-time sparklines on `player.html`. `checklist_score_history` was
+  already a real, trigger-populated audit trail (fires on every score change from any code path) -
+  the gap was purely presentational. A checkpoint with 2+ real score changes now shows a small
+  inline chart; checkpoints with fewer stay unchanged, same "never fabricate a trend" discipline
+  the existing `loadTrend()` banner already followed.
+- Shareable, read-only player reports. A coach can generate a link from `player.html`'s "Manage
+  Player" drawer that a parent/recruiter can open with no BarrelIQ account at all
+  (`coach/report.html` + new `get-player-report` Edge Function). This app's RLS model has never
+  granted `anon` anything on any table, by deliberate original design - this feature doesn't change
+  that: the Edge Function validates the share token and reads with `service_role` internally,
+  mirroring the existing `get-upload-url` function's pattern, rather than exposing Supabase
+  directly to an anonymous browser client. Links are revocable per-player at any time.
+
 ## [0.8.0] - 2026-08-04
 
 ### Security

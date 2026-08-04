@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>BarrelIQ — Scouting Report</title>
+<link rel="stylesheet" href="./coach.css?v=4d0d0284eb">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/icon-192.svg">
+<meta name="theme-color" content="#121418">
+</head>
+<body>
+<div class="wrap">
+  <div id="reportRoot">
+    <p class="hint" style="text-align:center;margin-top:40px;">Loading report…</p>
+  </div>
+</div>
+
+<!-- Dev-only, gitignored, silently absent in a real deploy - see coach/config.js -->
+<script src="./config.local.js"></script>
+<script type="module">
+  // Deliberately the only page in coach/ that never calls requireSession() -
+  // a real, working share link must be viewable by a parent/recruiter with
+  // no BarrelIQ account at all. Reuses shared.js's plain anon-key client
+  // only for its supabase.functions.invoke() convenience (CORS/apikey
+  // headers already handled) - no session, no login prompt, no RLS-backed
+  // table read happens from this page at all. The actual data comes from
+  // the get-player-report Edge Function, which validates the token
+  // server-side using service_role - see that function's own header
+  // comment for why this is the app's one intentional public-read boundary.
+  import { supabase, qs } from "./shared.js";
+
+  const root = document.getElementById("reportRoot");
+  const token = qs("token");
+
+  function scoreClass(score) {
+    return score ? `bg-score-${score}` : "bg-score-pending";
+  }
+
+  async function main() {
+    if (!token) {
+      root.innerHTML = `<h1 style="text-align:center;">No report link provided</h1>`;
+      return;
+    }
+
+    const { data, error } = await supabase.functions.invoke("get-player-report", { body: { token } });
+    if (error || !data || data.error) {
+      root.innerHTML = `
+        <h1 style="text-align:center;">Report not available</h1>
+        <p class="hint" style="text-align:center;">${data?.error ?? "This link may have been revoked or is no longer valid."}</p>
+      `;
+      return;
+    }
+
+    root.innerHTML = `
+      <div class="card" style="text-align:center;margin-top:20px;">
+        <div class="jersey-badge lg" style="margin:0 auto 10px;">${data.jerseyNumber}</div>
+        <div style="font-family:var(--font-display);font-weight:600;font-size:22px;text-transform:uppercase;">${data.playerName}</div>
+        <div class="hint">${data.teamName}</div>
+        <p class="hint" style="margin-top:10px;">${data.loggedAtBats} logged at-bat(s)</p>
+      </div>
+
+      <h2 style="margin-top:24px;">Swing Checklist</h2>
+      <div id="checkpointList"></div>
+
+      <p class="hint" style="text-align:center;margin-top:24px;">Shared read-only view from BarrelIQ. No login required.</p>
+    `;
+
+    document.getElementById("checkpointList").innerHTML = data.checkpoints
+      .map(
+        (cp) => `
+      <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
+        <div>
+          <div style="font-weight:600;">${cp.label}</div>
+          ${cp.reviewedBy ? `<span class="hint">Reviewed by ${cp.reviewedBy}</span>` : `<span class="hint">Not yet scored</span>`}
+        </div>
+        <div class="block ${scoreClass(cp.score)}" style="width:28px;height:14px;flex:none;"></div>
+      </div>
+    `,
+      )
+      .join("");
+  }
+
+  main();
+</script>
+</body>
+</html>

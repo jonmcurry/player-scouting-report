@@ -354,6 +354,11 @@ details.drawer .drawer-body { padding: 0 16px 16px; }
   color: var(--clay); font-size: 13px; font-weight: 700;
 }
 .checkpoint-card .cp-meta { font-size: 12px; color: var(--text-muted); }
+/* Per-checkpoint score-history sparkline (trendChart.js) - only mounted
+   when a checkpoint has 2+ real history rows, so an empty mount takes no
+   visible space. */
+.checkpoint-card .trend-mount:not(:empty) { margin-top: 10px; }
+.trend-sparkline { display: block; }
 
 /* "AI Draft - Unconfirmed" ribbon, top-right corner of an unconfirmed
    checkpoint card */

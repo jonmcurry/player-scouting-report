@@ -51,7 +51,7 @@ if (assetPaths.length === 0) {
 // not assumed stable). Normalizing the stamp to a fixed placeholder before
 // hashing breaks the loop: real content changes to these files still change
 // the digest, but the version stamp itself no longer feeds back into it.
-const SELF_REFERENTIAL_FILES = new Set(["index.html", "team.html", "player.html"]);
+const SELF_REFERENTIAL_FILES = new Set(["index.html", "team.html", "player.html", "report.html"]);
 const STAMP_PLACEHOLDER = "coach.css?v=PLACEHOLDER";
 
 const hash = createHash("sha256");
@@ -86,7 +86,7 @@ newSw = newSw.replace(/"\.\/coach\.css(?:\?v=[^"]*)?"/, (m) => {
 });
 if (newSw !== sw) writeFileSync(swPath, newSw);
 
-for (const file of ["index.html", "team.html", "player.html"]) {
+for (const file of ["index.html", "team.html", "player.html", "report.html"]) {
   const p = path.join(coachDir, file);
   const html = readFileSync(p, "utf-8");
   const updated = html.replace(/coach\.css\?v=[^"]*/, `coach.css?v=${digest}`);
