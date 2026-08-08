@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=4006500fab">
+<link rel="stylesheet" href="./coach.css?v=3070b86860">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -129,7 +129,24 @@
       .eq("teams.slug", teamSlug)
       .single();
     if (error || !player) {
-      document.getElementById("appBar").innerHTML = `<h1>Player not found (or you don't have access)</h1>`;
+      // Same real, common path as team.html's identical guard: RLS
+      // correctly returns no row for a player whose team this coach has no
+      // coach_team_access row for. Everything in .wrap (checklist, Manage
+      // Player's Create Share Link / Delete Player buttons, etc.) is static
+      // HTML present regardless of load success - without hiding it, a
+      // coach could tap "Delete Player" against a page that never resolved
+      // a real playerId and get a confusing silent failure. Hide it and
+      // give her a real way back instead of a dead end.
+      document.getElementById("appBar").innerHTML = `
+        <div class="app-bar-left">
+          <a href="./index.html" class="app-bar-back tap-target" aria-label="Back to My Teams">‹</a>
+          <div class="app-bar-titles">
+            <div class="app-bar-title-row"><h1>Player not found</h1></div>
+            <div class="app-bar-subtitle">This link may be wrong, or you don't have access to this player.</div>
+          </div>
+        </div>
+      `;
+      document.querySelector(".wrap").style.display = "none";
       return;
     }
     playerId = player.id;

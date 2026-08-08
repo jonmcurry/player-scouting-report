@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Team View</title>
-<link rel="stylesheet" href="./coach.css?v=4006500fab">
+<link rel="stylesheet" href="./coach.css?v=3070b86860">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -71,7 +71,25 @@
       .eq("slug", teamSlug)
       .single();
     if (teamErr || !team) {
-      document.getElementById("appBar").innerHTML = `<h1>Team not found (or you don't have access)</h1>`;
+      // A real, common path - not just a typo'd URL: RLS correctly returns no
+      // row for a team this coach has no coach_team_access row for (e.g. a
+      // stale bookmark from before she was removed, or a link meant for a
+      // different coach). The toolbar/legend/player-cards below are static
+      // HTML present in the page shell regardless of load success, so
+      // without this they'd stay visible looking fully functional - a coach
+      // could tap "+ Add Player" and get silent nothing. Hide them and give
+      // her a real way back instead of a dead end.
+      document.getElementById("appBar").innerHTML = `
+        <div class="app-bar-left">
+          <a href="./index.html" class="app-bar-back tap-target" aria-label="Back to My Teams">‹</a>
+          <div class="app-bar-titles">
+            <div class="app-bar-title-row"><h1>Team not found</h1></div>
+            <div class="app-bar-subtitle">This link may be wrong, or you don't have access to this team.</div>
+          </div>
+        </div>
+      `;
+      document.querySelector(".roster-toolbar").style.display = "none";
+      document.querySelector(".legend-row").style.display = "none";
       return;
     }
     currentTeamId = team.id;
