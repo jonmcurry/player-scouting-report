@@ -401,10 +401,29 @@ export async function createSkeletonScene(canvasEl, opts = {}) {
     }
   }
 
+  // A one-shot resize() call right after the canvas is unhidden used to be
+  // enough (skeletonComparison.js still does this, as a hint), but that's a
+  // real race that can lose - confirmed reproducible on a genuinely cold
+  // app launch (not a warm reload within the same session): the canvas can
+  // still measure 0x0 for a few frames after its container becomes visible,
+  // so a single guarded call silently did nothing, permanently leaving the
+  // renderer/camera sized from whatever the <canvas> width/height
+  // ATTRIBUTES happened to be (360x420, aspect ~0.857) rather than the
+  // element's real CSS size - the tiny, badly-cropped model this produced
+  // never self-corrected until something else (a later reload, an
+  // accidental camera drag) forced a fresh resize. Re-checking every tick()
+  // instead of relying on one synchronous call (or even the ResizeObserver
+  // below, kept as a faster-reacting supplement, not the only path) makes
+  // this self-healing regardless of what caused the miss - cheap to check,
+  // since the size comparison makes it a no-op once stable.
+  let lastW = 0;
+  let lastH = 0;
   function resize() {
     const w = canvasEl.clientWidth || canvasEl.width;
     const h = canvasEl.clientHeight || canvasEl.height;
-    if (w === 0 || h === 0) return;
+    if (w === 0 || h === 0 || (w === lastW && h === lastH)) return;
+    lastW = w;
+    lastH = h;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -414,6 +433,7 @@ export async function createSkeletonScene(canvasEl, opts = {}) {
   resize();
 
   function tick() {
+    resize();
     controls.update();
     renderer.render(scene, camera);
   }
