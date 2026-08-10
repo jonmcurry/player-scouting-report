@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Team View</title>
-<link rel="stylesheet" href="./coach.css?v=de5bbdbd45">
+<link rel="stylesheet" href="./coach.css?v=b11dd8c7a8">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -39,7 +39,7 @@
 <!-- Dev-only, gitignored, silently absent in a real deploy - see coach/config.js -->
 <script src="./config.local.js"></script>
 <script type="module">
-  import { supabase, requireSession, CHECKPOINTS, qs } from "./shared.js";
+  import { supabase, requireSession, CHECKPOINTS, qs, escapeHtml } from "./shared.js";
   import { renderTeamAppBar, renderBottomNav, getLastPlayerSlug } from "./components/appShell.js";
   import { closeableModal } from "./components/compModal.js";
 
@@ -192,7 +192,7 @@
       <div class="focus-banner">
         <h2>Team focus areas (avg &lt; 2.0)</h2>
         <ul>
-          ${data.map((d) => `<li><b>${d.checkpoint_label}</b> — avg ${Number(d.avg_score).toFixed(1)}</li>`).join("")}
+          ${data.map((d) => `<li><b>${escapeHtml(d.checkpoint_label)}</b> — avg ${Number(d.avg_score).toFixed(1)}</li>`).join("")}
         </ul>
       </div>
     `;
@@ -264,18 +264,18 @@
         const blocks = CHECKPOINTS.map((cp) => {
           const row = p.scoresBySlug.get(cp.slug);
           const cls = row?.score ? `bg-score-${row.score}` : "bg-score-pending";
-          return `<div class="block ${cls}" title="${cp.label}: ${row?.score ?? "—"}"></div>`;
+          return `<div class="block ${cls}" title="${escapeHtml(cp.label)}: ${row?.score ?? "—"}"></div>`;
         }).join("");
         return `
-          <a class="lineup-row tap-target" href="./player.html?team=${teamSlug}&player=${p.slug}">
-            <div class="jersey-badge">${p.jersey_number}</div>
+          <a class="lineup-row tap-target" href="./player.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(p.slug)}">
+            <div class="jersey-badge">${escapeHtml(p.jersey_number)}</div>
             <div class="lineup-main">
               <div class="lineup-head">
-                <span class="lineup-name">${p.name}</span>
-                <span class="hint">${p.reviewedCount}/${p.scoredCount} scored confirmed</span>
+                <span class="lineup-name">${escapeHtml(p.name)}</span>
+                <span class="hint">${escapeHtml(p.reviewedCount)}/${escapeHtml(p.scoredCount)} scored confirmed</span>
               </div>
               <div class="mini-heatmap">${blocks}</div>
-              ${p.abCount < MIN_ATBATS_FOR_PATTERN ? `<p class="hint" style="margin:6px 0 0;">⚠ Only ${p.abCount} at-bat(s) logged</p>` : ""}
+              ${p.abCount < MIN_ATBATS_FOR_PATTERN ? `<p class="hint" style="margin:6px 0 0;">⚠ Only ${escapeHtml(p.abCount)} at-bat(s) logged</p>` : ""}
             </div>
             <span class="lineup-chevron">›</span>
           </a>

@@ -167,25 +167,143 @@ def _reproject_inplane(s, R, t, observed_2d):
     return R.T @ ((observed_2d - t) / s)
 
 
-def _resolve_depth(child_xy, parent_xyz, target_length, child_z_original):
+def _resolve_depth(child_xy, parent_xyz, target_length, child_z_original, parent_z_original):
     """Given the child joint's corrected in-plane (X, Y), the (already
     resolved) parent's full (X, Y, Z), and the target bone length between
     them, solves for the child's Z. Two real roots exist (near/far side of
     the parent) - a single 2D view can't disambiguate that on its own, so
     this picks whichever root stays closest to the model's OWN original Z
     for this joint, trusting the model's depth ORDERING even though its
-    magnitude is the thing being corrected. If the in-plane distance alone
-    already exceeds the target bone length (real for a foreshortened limb
-    the model's own reprojected 2D disagrees with), the joint is placed at
-    the parent's own depth rather than producing an imaginary result."""
+    magnitude is the thing being corrected.
+
+    If the in-plane distance alone already exceeds the target bone length,
+    falls back to the model's own ORIGINAL relative depth offset between
+    this joint and its parent (child_z_original - parent_z_original),
+    applied onto the parent's corrected depth - not to the parent's exact
+    depth (a real, confirmed bug this used to have: forcing a zero offset
+    ignores the model's own relative-depth signal entirely, and on
+    Emily_C_AB11-1785696124000 frame 65 it left the two wrists nowhere near
+    each other in depth even though real 2D tracking shows them together
+    gripping the bat - each wrist resolved independently against its own
+    elbow, and the right forearm happened to hit exactly this edge case
+    while the left didn't). This in-plane-exceeds-target case is a real,
+    occasionally-occurring situation on short bone segments (forearm,
+    shin) - ordinary per-frame 2D pixel jitter is a bigger fraction of a
+    short segment's length than a long one (thigh, upper arm), so it's
+    more likely to briefly push the reprojected in-plane distance past
+    this clip's own median bone length - not exclusively "a real
+    foreshortened limb the model's own reprojected 2D disagrees with" as
+    once assumed."""
     dx = child_xy[0] - parent_xyz[0]
     dy = child_xy[1] - parent_xyz[1]
     remaining_sq = target_length ** 2 - dx ** 2 - dy ** 2
     if remaining_sq <= 0:
-        return parent_xyz[2]
+        return parent_xyz[2] + (child_z_original - parent_z_original)
     dz = remaining_sq ** 0.5
     z_plus, z_minus = parent_xyz[2] + dz, parent_xyz[2] - dz
     return z_plus if abs(z_plus - child_z_original) <= abs(z_minus - child_z_original) else z_minus
+
+
+def _solve_2bone_ik(shoulder, target, upper_len, fore_len, pole_ref_elbow):
+    """Standard 2-bone IK (shoulder->elbow->wrist reaching for `target`) -
+    the same technique any game/animation rig uses to plant a hand on an
+    object of known position: given the two fixed segment lengths, the
+    elbow must lie on a circle around the shoulder->target axis; picking
+    where on that circle is the one degree of freedom a 2-bone chain can't
+    get from segment lengths alone, resolved here via a "pole vector" - the
+    component of the ALREADY-RECONSTRUCTED elbow's own direction that's
+    perpendicular to shoulder->target, i.e. trust the model's elbow for
+    which way it bends, not for how far it reached. Returns (elbow, wrist);
+    wrist lands exactly on `target` unless target is unreachable (clamped
+    to the chain's max/min reach)."""
+    v = target - shoulder
+    raw_d = np.linalg.norm(v)
+    # Degenerate case (target ~coincides with the shoulder, or a near-zero
+    # bone length from a corrupted clip) - dividing by raw_d/upper_len below
+    # would divide by ~0. Real human data never actually puts a grip point
+    # on top of a shoulder; this is a defensive floor, not a case expected
+    # to fire on real clips - falls back to the pole reference's own
+    # direction (or an arbitrary axis if even that's degenerate) rather
+    # than fabricating a numeric artifact or propagating a NaN into the
+    # rest of this frame's joints.
+    if raw_d > 1e-6:
+        v_hat = v / raw_d
+    else:
+        pole_dir = pole_ref_elbow - shoulder
+        pole_dir_norm = np.linalg.norm(pole_dir)
+        v_hat = pole_dir / pole_dir_norm if pole_dir_norm > 1e-6 else np.array([0.0, -1.0, 0.0])
+    upper_len = max(upper_len, 1e-6)
+    fore_len = max(fore_len, 1e-6)
+    d = min(raw_d, upper_len + fore_len - 1e-6)
+    d = max(d, abs(upper_len - fore_len) + 1e-6)
+    cos_theta = np.clip((upper_len**2 + d**2 - fore_len**2) / (2 * upper_len * d), -1, 1)
+    theta = np.arccos(cos_theta)
+    w = pole_ref_elbow - shoulder
+    w_perp = w - np.dot(w, v_hat) * v_hat
+    if np.linalg.norm(w_perp) < 1e-6:
+        arb = np.array([1.0, 0.0, 0.0]) if abs(v_hat[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+        w_perp = arb - np.dot(arb, v_hat) * v_hat
+    pole_hat = w_perp / np.linalg.norm(w_perp)
+    elbow = shoulder + upper_len * (np.cos(theta) * v_hat + np.sin(theta) * pole_hat)
+    e_to_t = target - elbow
+    wrist = elbow + fore_len * (e_to_t / np.linalg.norm(e_to_t))
+    return elbow, wrist
+
+
+def _converge_bat_grip(corrected, target_length):
+    """Real, measured bug found chasing a persistent "doesn't look like a
+    real batter" report, much bigger in practice than the per-joint depth
+    bias above: even after the per-chain reprojection/depth-resolve, the
+    two independently-reconstructed wrists routinely land 0.5-6 SHOULDER
+    WIDTHS apart (measured on Emily_C_AB11-1785696124000: every single one
+    of 359 frames exceeded 0.5, median 1.4) - anatomically impossible for a
+    two-handed bat grip, where real separation is a few cm. Root cause:
+    each arm chain is corrected independently, so ordinary per-frame 2D
+    jitter and the similarity-fit's own residual - small on their own - get
+    amplified by the elbow-to-wrist lever arm, with nothing constraining
+    the two chains relative to EACH OTHER. This never shows up as a
+    per-joint bone-length violation (each arm's own segment lengths stay
+    correct), so the earlier per-limb correction alone can't catch it.
+
+    Fix: exploit real, sport-specific domain knowledge no generic pose
+    pipeline would know - both hands stay together on the bat handle for
+    essentially this entire clip (this app only ever analyzes a swing
+    window, not general activity). Solve each arm as a proper 2-bone IK
+    chain (see _solve_2bone_ik) reaching for a shared grip point, using the
+    ALREADY-TRUSTED per-clip median upper-arm/forearm lengths and each
+    elbow's own reconstructed direction as the pole reference (so which way
+    the elbow bends still comes from the model, only the exact reach is
+    corrected). Iterates the grip point to its own average wrist position a
+    few times to converge, since each arm's solve shifts the shared target
+    slightly. Measured on frame 65 of the same clip: wrist separation 0.304
+    -> 0.000 (exact convergence, as expected - IK by construction can always
+    place both wrists at a reachable shared target), with elbow separation
+    dropping from 0.585 (2.5x shoulder width - anatomically impossible for
+    a compact grip) to 0.098 (well under half a shoulder width). At
+    contact/extension frames elbow separation grows back out to ~1.2-1.3x
+    shoulder width - correctly reflects real arm extension toward the ball,
+    not a bug this fix reintroduces. Only elbow/wrist positions change;
+    shoulders (this function's `corrected` input's torso joints) are
+    untouched."""
+    n = corrected.shape[0]
+    upper_l = target_length[H_L_ELBOW]
+    fore_l = target_length[H_L_WRIST]
+    upper_r = target_length[H_R_ELBOW]
+    fore_r = target_length[H_R_WRIST]
+
+    out = corrected.copy()
+    for i in range(n):
+        l_sho, l_elb0 = out[i, H_L_SHOULDER], out[i, H_L_ELBOW]
+        r_sho, r_elb0 = out[i, H_R_SHOULDER], out[i, H_R_ELBOW]
+        grip = (out[i, H_L_WRIST] + out[i, H_R_WRIST]) / 2
+        l_elb, l_wri, r_elb, r_wri = l_elb0, out[i, H_L_WRIST], r_elb0, out[i, H_R_WRIST]
+        for _ in range(4):
+            l_elb, l_wri = _solve_2bone_ik(l_sho, grip, upper_l, fore_l, l_elb0)
+            r_elb, r_wri = _solve_2bone_ik(r_sho, grip, upper_r, fore_r, r_elb0)
+            grip = (l_wri + r_wri) / 2
+        out[i, H_L_ELBOW], out[i, H_L_WRIST] = l_elb, l_wri
+        out[i, H_R_ELBOW], out[i, H_R_WRIST] = r_elb, r_wri
+    return out
 
 
 def correct_limb_depth(pred, kps_norm, kps_conf, fps):
@@ -256,7 +374,7 @@ def correct_limb_depth(pred, kps_norm, kps_conf, fps):
                 continue
             xy = _reproject_inplane(s, R, t, kps_norm[i, c_idx])
             parent_xyz = corrected[i, parent_h_idx]
-            z = _resolve_depth(xy, parent_xyz, target_length[h_idx], pred[i, h_idx, 2])
+            z = _resolve_depth(xy, parent_xyz, target_length[h_idx], pred[i, h_idx, 2], pred[i, parent_h_idx, 2])
             corrected[i, h_idx] = [xy[0], xy[1], z]
             frame_touched = True
         if frame_touched:
@@ -264,6 +382,8 @@ def correct_limb_depth(pred, kps_norm, kps_conf, fps):
 
     print(f"[correct_limb_depth] reprojected limb joints in {n_frames_corrected}/{n} frames "
           f"(rest kept the model's original estimate - insufficient 2D confidence)")
+
+    corrected = _converge_bat_grip(corrected, target_length)
 
     # One-Euro smoothing per joint per axis, matching this pipeline's
     # existing convention (one_euro_filter.py) - the mix of

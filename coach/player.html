@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=de5bbdbd45">
+<link rel="stylesheet" href="./coach.css?v=b11dd8c7a8">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -66,7 +66,7 @@
 <!-- Dev-only, gitignored, silently absent in a real deploy - see coach/config.js -->
 <script src="./config.local.js"></script>
 <script type="module">
-  import { supabase, requireSession, getMyDisplayName, CHECKPOINTS, qs, renderReviewBadge } from "./shared.js";
+  import { supabase, requireSession, getMyDisplayName, CHECKPOINTS, qs, renderReviewBadge, escapeHtml } from "./shared.js";
   import { renderStepper } from "./components/stepper.js";
   import { renderTrendChart } from "./components/trendChart.js";
   import { openCompModal } from "./components/compModal.js";
@@ -299,23 +299,30 @@
     // session_type='game' - "Logged ABs"/"Early Read" status are real-game
     // performance concepts; a practice rep isn't an at-bat and shouldn't
     // count toward either (see 00015_practice_sessions.sql).
-    const { count: abCount } = await supabase
+    const { count: abCount, error: abCountError } = await supabase
       .from("game_log_entries")
       .select("id", { count: "exact", head: true })
       .eq("player_id", playerId)
       .eq("session_type", "game");
 
-    const { data: teamStats } = await supabase.from("team_summary_stats").select("avg_score").eq("team_id", teamId);
+    const { data: teamStats, error: teamStatsError } =
+      await supabase.from("team_summary_stats").select("avg_score").eq("team_id", teamId);
     const scores = (teamStats ?? []).map((r) => Number(r.avg_score)).filter((n) => !Number.isNaN(n));
-    const teamAvg = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
+    const teamAvg = teamStatsError ? "—" : scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
 
-    const count = abCount ?? 0;
-    const statusLabel = count >= MIN_ATBATS_FOR_PATTERN ? "Pattern Ready" : `Early Read (${count}/${MIN_ATBATS_FOR_PATTERN})`;
+    // A failed count query used to fall back to 0 with no indication - a
+    // coach could read "Logged ABs: 0" as "this player's whole game log is
+    // gone" instead of "this failed to load." Show a dash instead of a
+    // fabricated zero on a real query failure.
+    const count = abCountError ? null : (abCount ?? 0);
+    const statusLabel = abCountError
+      ? "—"
+      : count >= MIN_ATBATS_FOR_PATTERN ? "Pattern Ready" : `Early Read (${count}/${MIN_ATBATS_FOR_PATTERN})`;
 
     document.getElementById("statsRow").innerHTML = `
       <div class="stat-tile">
         <span class="stat-label">Logged ABs</span>
-        <div class="stat-value">${count}</div>
+        <div class="stat-value">${count === null ? "—" : count}</div>
       </div>
       <div class="stat-tile">
         <span class="stat-label">Team Avg</span>
@@ -348,14 +355,33 @@
   }
 
   async function loadChecklist() {
-    const { data: checkpointRows } = await supabase.from("checkpoints").select("id, slug").order("sort_order");
+    const { data: checkpointRows, error: checkpointsError } = await supabase
+      .from("checkpoints").select("id, slug").order("sort_order");
     const checkpointIdBySlug = new Map((checkpointRows ?? []).map((c) => [c.slug, c.id]));
 
-    const { data: rows } = await supabase
+    const { data: rows, error: rowsError } = await supabase
       .from("checklist_scores")
       .select("id, score, ai_draft, reviewed_by, notes, source, checkpoints!inner(slug, label, sort_order)")
       .eq("player_id", playerId)
       .order("sort_order", { referencedTable: "checkpoints" });
+
+    // Real, confirmed data-loss bug this guards against: on a failed load
+    // (e.g. a dugout wifi blip), `rows` used to silently fall back to `[]`,
+    // every checkpoint rendered as an empty not-yet-scored placeholder
+    // (ai_draft: null, notes: "", source: null), and stepper.js's upsert
+    // writes those exact in-memory values on every field alongside the new
+    // score - a coach tapping a score on a checkpoint that ACTUALLY had a
+    // real AI draft/notes in the database would silently overwrite them
+    // with nulls, with zero indication anything went wrong. Refusing to
+    // render the checklist (with fabricated placeholder data a coach could
+    // act on) on a genuine load failure is the only safe choice here - a
+    // visible error a coach can retry beats an invisible one that corrupts
+    // real data.
+    if (checkpointsError || rowsError) {
+      const container = document.getElementById("checklistCards");
+      container.innerHTML = `<p class="error-text">Couldn't load the swing checklist (${escapeHtml((checkpointsError ?? rowsError).message)}). Scoring is disabled until this loads - try reloading.</p>`;
+      return;
+    }
 
     // checklist_score_history is already real, trigger-populated audit data
     // (log_checklist_score_history(), 00002_coach_app.sql) - fires on every
@@ -410,10 +436,10 @@
           ${row.id && row.reviewed_by ? `<span class="verified-pill">✓ Verified</span>` : ""}
         </div>
         <div class="stepper-mount"></div>
-        <p class="cp-notes">${row.notes ?? ""}</p>
+        <p class="cp-notes">${escapeHtml(row.notes ?? "")}</p>
         <div class="cp-actions">
           <button type="button" class="view-skeleton-btn tap-target" data-comp="${cp.slug}" data-label="${cp.label}">📐 View 3D Skeleton</button>
-          <span class="cp-meta">${row.reviewed_by ? `Reviewed by ${row.reviewed_by}` : ""}</span>
+          <span class="cp-meta">${row.reviewed_by ? `Reviewed by ${escapeHtml(row.reviewed_by)}` : ""}</span>
         </div>
         <div class="trend-mount"></div>
       `;
@@ -449,11 +475,11 @@
       .map(
         (i) => `
       <div class="card">
-        <b>${i.issue}</b>
-        <p class="hint">${i.seen_in_at_bats}</p>
-        <p><b>Likely cause:</b> ${i.likely_cause}</p>
-        <p><b>Effect:</b> ${i.effect}</p>
-        ${i.reviewed_by ? `<span class="badge confirmed">✓ Verified by ${i.reviewed_by}</span>` : `<span class="badge ai-draft">🤖 AI Draft</span>`}
+        <b>${escapeHtml(i.issue)}</b>
+        <p class="hint">${escapeHtml(i.seen_in_at_bats)}</p>
+        <p><b>Likely cause:</b> ${escapeHtml(i.likely_cause)}</p>
+        <p><b>Effect:</b> ${escapeHtml(i.effect)}</p>
+        ${i.reviewed_by ? `<span class="badge confirmed">✓ Verified by ${escapeHtml(i.reviewed_by)}</span>` : `<span class="badge ai-draft">🤖 AI Draft</span>`}
       </div>
     `,
       )
@@ -480,10 +506,10 @@
       compEl.innerHTML = `<p class="hint">Comp cues will be picked once the specific issue is identified from film.</p>`;
     } else {
       const rows = comps
-        .map((c) => `<tr><td>${c.comp_name}</td><td>${c.cue}</td></tr>`)
+        .map((c) => `<tr><td>${escapeHtml(c.comp_name)}</td><td>${escapeHtml(c.cue)}</td></tr>`)
         .join("");
       const notesHtml = (notes ?? [])
-        .map((n) => `<p class="comp-note">${n.note}</p>`)
+        .map((n) => `<p class="comp-note">${escapeHtml(n.note)}</p>`)
         .join("");
       compEl.innerHTML = `<table class="comp-table"><tbody>${rows}</tbody></table>${notesHtml}`;
     }
@@ -493,7 +519,7 @@
       drillEl.innerHTML = `<p class="hint">Drills will be recommended once the primary issue(s) are identified from film.</p>`;
     } else {
       drillEl.innerHTML = `<ul class="drills">${drills
-        .map((d) => `<li><b>${d.title}</b> — ${d.description}</li>`)
+        .map((d) => `<li><b>${escapeHtml(d.title)}</b> — ${escapeHtml(d.description)}</li>`)
         .join("")}</ul>`;
     }
   }
@@ -510,7 +536,7 @@
   async function loadShareLinks() {
     const { data: links } = await supabase
       .from("player_share_links")
-      .select("id, token, created_at")
+      .select("id, token, created_at, expires_at")
       .eq("player_id", playerId)
       .is("revoked_at", null)
       .order("created_at", { ascending: false });
@@ -523,9 +549,15 @@
     el.innerHTML = links
       .map((l) => {
         const url = `${window.location.origin}${window.location.pathname.replace(/player\.html$/, "report.html")}?token=${l.token}`;
+        // Links now expire on their own (see 00020_share_link_expiry.sql) -
+        // shown so a coach isn't surprised when an old link stops working.
+        const expiresLabel = new Date(l.expires_at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
         return `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
-          <span class="hint" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${url}</span>
+          <div style="flex:1;min-width:0;">
+            <div class="hint" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${url}</div>
+            <div class="hint" style="font-size:11px;">Expires ${expiresLabel}</div>
+          </div>
           <button type="button" class="tap-target" style="flex:none;" data-copy-link="${url}">Copy</button>
           <button type="button" class="tap-target btn-danger" style="flex:none;" data-revoke-link="${l.id}">Revoke</button>
         </div>
@@ -553,11 +585,11 @@
         return `
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-          <b>${g.date} vs ${g.opponent}, AB ${g.ab}</b>
+          <b>${escapeHtml(g.date)} vs ${escapeHtml(g.opponent)}, AB ${escapeHtml(g.ab)}</b>
           <button class="tap-target btn-danger subtle" style="flex:none;" data-delete-at-bat="${g.id}" title="Delete At-Bat">🗑</button>
         </div>
-        <p class="hint">${g.pitch ?? "—"}${zoneBits ? ` <span style="color:var(--clay);">(${zoneBits})</span>` : ""}</p>
-        <p>${g.result}</p>
+        <p class="hint">${escapeHtml(g.pitch ?? "—")}${zoneBits ? ` <span style="color:var(--clay);">(${escapeHtml(zoneBits)})</span>` : ""}</p>
+        <p>${escapeHtml(g.result)}</p>
         <div class="scrubber-mount" data-game-log-entry="${g.id}"></div>
       </div>
     `;
@@ -598,7 +630,7 @@
         (g) => `
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-          <b>${g.date}${g.session_note ? ` — ${g.session_note}` : ""}, Rep ${g.ab}</b>
+          <b>${escapeHtml(g.date)}${g.session_note ? ` — ${escapeHtml(g.session_note)}` : ""}, Rep ${escapeHtml(g.ab)}</b>
           <button class="tap-target btn-danger subtle" style="flex:none;" data-delete-at-bat="${g.id}" title="Delete practice session">🗑</button>
         </div>
         <div class="scrubber-mount" data-game-log-entry="${g.id}"></div>
@@ -849,9 +881,13 @@
       if (retryBtn) {
         retryBtn.disabled = true;
         const gameLogEntryId = retryBtn.dataset.gameLogEntry;
+        // A human-initiated retry always gets a full fresh set of automatic
+        // attempts too (see markClipFailed/MAX_AUTO_RETRIES in
+        // src/services/db/uploadQueue.ts), not whatever was left over from
+        // the auto-retry cycle that preceded this manual tap.
         const { error } = await supabase
           .from("video_clips")
-          .update({ status: "pending", error_message: null })
+          .update({ status: "pending", error_message: null, retry_count: 0, next_retry_at: null })
           .eq("id", retryBtn.dataset.retryClip);
         if (error) {
           alert(`Couldn't retry: ${error.message}`);

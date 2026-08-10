@@ -15,6 +15,16 @@ import { getSupabaseClient } from "./supabaseClient.js";
 // default is a generous upper bound, not a measured typical duration.
 const STALE_CLAIM_MINUTES = Number(process.env.UPLOAD_QUEUE_STALE_CLAIM_MINUTES ?? 15);
 
+// A real, confirmed gap this closes: a failed clip used to require a human
+// to notice and tap "Retry" (coach/player.html) - a transient failure (a
+// momentary GCS blip, a flaky download) had no automatic recovery at all.
+// markClipFailed below re-queues under this cap instead of going straight
+// to 'failed'; once exhausted it falls back to exactly today's behavior.
+// Backoff (indexed by the retry attempt about to be made, 0-based) - a
+// short list, not a real exponential formula, since there are only 3 steps.
+const MAX_AUTO_RETRIES = 3;
+const RETRY_BACKOFF_MINUTES = [2, 10, 30];
+
 export interface ClipContext {
   videoClipId: string;
   clipSlug: string;
@@ -42,7 +52,13 @@ export interface ClipContext {
 export async function claimNextPendingClip(): Promise<ClipContext | null> {
   const supabase = getSupabaseClient();
   const staleCutoff = new Date(Date.now() - STALE_CLAIM_MINUTES * 60_000).toISOString();
-  const claimableFilter = `status.eq.pending,and(status.eq.processing,claimed_at.lt.${staleCutoff})`;
+  const nowIso = new Date().toISOString();
+  // A 'pending' clip is only actually claimable once its retry backoff (if
+  // any - see markClipFailed/next_retry_at) has elapsed, so an auto-retried
+  // clip isn't immediately re-claimed by the very next poll tick.
+  const claimableFilter =
+    `and(status.eq.pending,or(next_retry_at.is.null,next_retry_at.lte.${nowIso})),` +
+    `and(status.eq.processing,claimed_at.lt.${staleCutoff})`;
 
   const { data: candidates, error: findErr } = await supabase
     .from("video_clips")
@@ -105,7 +121,7 @@ export async function markClipReady(videoClipId: string): Promise<void> {
   const supabase = getSupabaseClient();
   const { error } = await supabase
     .from("video_clips")
-    .update({ status: "ready", error_message: null })
+    .update({ status: "ready", error_message: null, retry_count: 0, next_retry_at: null })
     .eq("id", videoClipId);
   if (error) throw new Error(`Marking clip ${videoClipId} ready: ${error.message}`);
 }
@@ -115,9 +131,32 @@ export async function markClipFailed(videoClipId: string, message: string): Prom
   // Cap length - stderr from a failed pose3d run can be a full Python
   // traceback; the UI only needs enough to be useful, not the whole dump.
   const truncated = message.length > 2000 ? `${message.slice(0, 2000)}\n...(truncated)` : message;
-  const { error } = await supabase
+
+  const { data: current, error: readErr } = await supabase
     .from("video_clips")
-    .update({ status: "failed", error_message: truncated })
-    .eq("id", videoClipId);
+    .select("retry_count")
+    .eq("id", videoClipId)
+    .single();
+  if (readErr) throw new Error(`Reading retry_count for clip ${videoClipId}: ${readErr.message}`);
+  const retryCount = current!.retry_count as number;
+
+  const update =
+    retryCount < MAX_AUTO_RETRIES
+      ? {
+          // Auto-retry: back in the pending queue, not terminally failed -
+          // the existing manual Retry button (coach/player.html) remains
+          // available the whole time too, it just won't be needed yet.
+          status: "pending",
+          error_message: truncated,
+          retry_count: retryCount + 1,
+          next_retry_at: new Date(Date.now() + RETRY_BACKOFF_MINUTES[retryCount]! * 60_000).toISOString(),
+        }
+      : {
+          // Exhausted - exactly today's pre-existing behavior, human retry only.
+          status: "failed",
+          error_message: truncated,
+        };
+
+  const { error } = await supabase.from("video_clips").update(update).eq("id", videoClipId);
   if (error) throw new Error(`Marking clip ${videoClipId} failed: ${error.message}`);
 }

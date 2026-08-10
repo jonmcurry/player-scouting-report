@@ -41,11 +41,14 @@ Deno.serve(async (req) => {
 
     const { data: link, error: linkError } = await supabase
       .from("player_share_links")
-      .select("player_id, revoked_at")
+      .select("player_id, revoked_at, expires_at")
       .eq("token", token)
       .maybeSingle();
 
-    if (linkError || !link || link.revoked_at) {
+    // Same generic message for revoked/expired/never-existed - deliberately
+    // not distinguishing them to an anonymous caller (no reason to leak
+    // which case applies).
+    if (linkError || !link || link.revoked_at || new Date(link.expires_at) < new Date()) {
       return jsonResponse({ error: "This link is invalid or has been revoked." }, 404);
     }
 

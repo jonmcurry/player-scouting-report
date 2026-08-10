@@ -474,7 +474,16 @@ details.drawer .drawer-body { padding: 0 16px 16px; }
 .scrubber-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
 .scrubber-phase-label { font-family: var(--font-display); font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--clay); margin-left: auto; }
 .scrubber-track-wrap { position: relative; padding-top: 14px; }
-.scrubber-track-wrap input[type="range"] { width: 100%; }
+/* touch-action: pan-y - without this, a vertical page-scroll swipe that
+ * happens to start on this slider gets swallowed by the browser's native
+ * range-input touch handling (which jumps the value to the touch's X
+ * position on touchdown, before any drag direction is even known), silently
+ * changing which swing frame is displayed instead of scrolling the page.
+ * Confirmed directly: a plain stationary tap on this element (zero
+ * movement) jumped its value from 0 to 500 on a real device. pan-y tells
+ * the browser to treat a vertical gesture on this element as page-scroll,
+ * only handing it to the slider once movement is clearly horizontal. */
+.scrubber-track-wrap input[type="range"] { width: 100%; touch-action: pan-y; }
 .scrubber-ticks { position: absolute; top: 0; left: 0; right: 0; height: 12px; pointer-events: none; }
 .scrubber-tick { position: absolute; top: 0; transform: translateX(-50%); }
 .scrubber-tick-dot { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--status-good); border: 1.5px solid var(--surface-2); }

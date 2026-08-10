@@ -58,6 +58,26 @@ export function qs(name) {
   return new URLSearchParams(window.location.search).get(name);
 }
 
+/** Escapes text for safe interpolation into an innerHTML template string.
+ * Real, necessary defense: coach-entered free text (player/team names,
+ * opponent, notes, at-bat results) round-trips straight into innerHTML
+ * across this app with no build-step templating to do it automatically -
+ * without this, a coach typing `<img src=x onerror=...>` into any of those
+ * fields runs as script for every other coach who views that data, and (via
+ * report.html's public, unauthenticated share-link page) for anyone who
+ * opens the link at all. Use for every DB-sourced string embedded via
+ * innerHTML/template literals; not needed for values only ever set via
+ * textContent or a DOM property (those never parse as markup). */
+export function escapeHtml(s) {
+  if (s === null || s === undefined) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // PWA offline shell (ux.md Step 5.3) - registered once here since shared.js
 // is imported by every coach/*.html page, rather than duplicating a
 // <script> registration block per page.
@@ -94,5 +114,5 @@ export function renderReviewBadge(row) {
     row.ai_draft != null && row.ai_draft !== row.score
       ? ` (AI: ${row.ai_draft} → Coach: ${row.score})`
       : "";
-  return `<span class="badge confirmed">✓ Verified by ${row.reviewed_by}${diff}</span>`;
+  return `<span class="badge confirmed">✓ Verified by ${escapeHtml(row.reviewed_by)}${diff}</span>`;
 }

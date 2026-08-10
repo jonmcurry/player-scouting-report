@@ -86,6 +86,33 @@ def write_status(out_dir, status, detail=None):
     os.replace(tmp_path, final_path)  # atomic on both POSIX and Windows (NTFS)
 
 
+
+# Every stage's own working video/audio copy - locate_swing.py's
+# _stage0_audio.wav/_trimmed_input.mp4/_candidate_N.mp4, decimate.py's
+# _decimated_input.mp4, refine_bat_speed.py's _full_rate_window.mp4. None of
+# these can be deleted by the stage that creates them - each stays in use by
+# every LATER stage (analysis_video_path threads through detect_2d/lift_3d/
+# metrics/overlay all the way to the end of run()), so only the orchestrator
+# here, once it truly knows the whole run is over, can safely remove them.
+# A real, confirmed leak before this existed: for exactly the clips this
+# pipeline's own docstring calls out as its target case (large/long clips,
+# ambiguous audio needing multiple candidate trims), every run permanently
+# left one or more full re-encoded video copies (plus a WAV) in
+# frames/<player>/<clip>/ - unbounded growth across re-runs/retries, on
+# success AND on every failure path. Called from all three of run()'s real
+# exit points (success, low-quality early-stop, and __main__'s crash
+# handler) - best-effort: a cleanup failure must never mask the real
+# pipeline outcome that was already written to pipeline_status.json.
+def _cleanup_temp_files(out_dir):
+    out_dir = pathlib.Path(out_dir)
+    for p in out_dir.glob("_*"):
+        if p.is_file():
+            try:
+                p.unlink()
+            except OSError as exc:
+                print(f"[run_pipeline] couldn't remove temp file {p}: {exc}")
+
+
 def run(video_path, out_dir):
     video_path = pathlib.Path(video_path)
     out_dir = pathlib.Path(out_dir)
@@ -161,6 +188,7 @@ def run(video_path, out_dir):
         }, indent=2))
         dt = time.time() - t0
         print(f"\n=== Stopped early after {dt:.1f}s (low-quality footage). Output: {out_dir} ===")
+        _cleanup_temp_files(out_dir)
         write_status(out_dir, "complete", {"outcome": "low_quality_footage", "error": str(low_quality_exc)})
         return
 
@@ -192,6 +220,11 @@ def run(video_path, out_dir):
 
     print("\n--- Stage 4/4: annotated overlay for QA (overlay) ---")
     overlay.run(out_dir, analysis_video_path)
+
+    # Every stage above is done reading its own working video/audio copy by
+    # this point - safe to reclaim the disk now, before the real completion
+    # status is written below.
+    _cleanup_temp_files(out_dir)
 
     dt = time.time() - t0
     print(f"\n=== Done in {dt:.1f}s. Output: {out_dir} ===")
@@ -226,4 +259,14 @@ if __name__ == "__main__":
             write_status(_out_dir, "crashed", {"error": str(exc), "traceback": traceback.format_exc()})
         except OSError:
             pass  # out_dir may not even exist yet if the crash was that early
+        # Best-effort here too - this process is about to exit either way
+        # (raise below), so nothing in THIS run will touch these files
+        # again. The real, confirmed leak this whole function guards
+        # against was worst on exactly this path: a crash used to leave
+        # every working video/audio copy from whichever stage was in
+        # flight sitting in out_dir forever, with no cleanup ever attempted.
+        try:
+            _cleanup_temp_files(_out_dir)
+        except OSError:
+            pass
         raise

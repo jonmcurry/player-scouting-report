@@ -1,7 +1,7 @@
 // Shared sticky app bar + bottom nav (ux.md Step 2) used by team.html and
 // player.html - NOT index.html, which is the login/team-picker step and has
 // no team/roster context yet.
-import { supabase } from "../shared.js";
+import { supabase, escapeHtml } from "../shared.js";
 
 const LAST_PLAYER_KEY_PREFIX = "coach:lastPlayer:";
 
@@ -65,7 +65,7 @@ export function renderTeamAppBar(container, { teamName, confirmedCount, totalCou
       <a href="./index.html" class="app-bar-back tap-target" aria-label="Back to My Teams">‹</a>
       <div class="jersey-badge">⚾</div>
       <div class="app-bar-titles">
-        <div class="app-bar-title-row"><h1>${teamName}</h1></div>
+        <div class="app-bar-title-row"><h1>${escapeHtml(teamName)}</h1></div>
         <div class="app-bar-subtitle">Team Roster</div>
       </div>
     </div>
@@ -83,13 +83,13 @@ export function renderPlayerAppBar(container, { player, teamName, teamSlug, rost
   container.innerHTML = `
     <div class="app-bar-left player-switcher">
       <a href="./index.html" class="app-bar-back tap-target" aria-label="Back to My Teams">‹</a>
-      <div class="jersey-badge">${player.jersey_number}</div>
+      <div class="jersey-badge">${escapeHtml(player.jersey_number)}</div>
       <div class="app-bar-titles">
         <div class="app-bar-title-row">
-          <h1>${player.name}</h1>
+          <h1>${escapeHtml(player.name)}</h1>
           <button type="button" class="app-bar-caret tap-target" id="playerSwitcherToggle" aria-label="Switch player">▾</button>
         </div>
-        <div class="app-bar-subtitle">${teamName}</div>
+        <div class="app-bar-subtitle">${escapeHtml(teamName)}</div>
       </div>
       <div class="player-switcher-menu" id="playerSwitcherMenu" style="display:none;"></div>
     </div>
@@ -100,9 +100,9 @@ export function renderPlayerAppBar(container, { player, teamName, teamSlug, rost
   menu.innerHTML = roster
     .map(
       (p) => `
-    <a href="./player.html?team=${teamSlug}&player=${p.slug}" data-current="${p.slug === player.slug}">
-      <div class="jersey-badge sm">${p.jersey_number}</div>
-      <span>${p.name}</span>
+    <a href="./player.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(p.slug)}" data-current="${p.slug === player.slug}">
+      <div class="jersey-badge sm">${escapeHtml(p.jersey_number)}</div>
+      <span>${escapeHtml(p.name)}</span>
     </a>
   `,
     )

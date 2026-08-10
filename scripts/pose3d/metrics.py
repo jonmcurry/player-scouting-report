@@ -98,6 +98,41 @@ EXTENSION_HIGH_CONF_DEG = 155.0
 STRIDE_SPEED_MIN_HIP_WIDTHS_PER_S = 6.0
 STRIDE_SUSTAIN_S = 3 / 30
 
+# Hip-translation ceiling for find_stance_frame's "quiet" window, in
+# hip-widths/second - a real, confirmed gap the rotation-only check below
+# can't see: rotation_series measures ANGULAR motion (hip/shoulder-line
+# orientation change), which stays low for straight-line RUNNING just as
+# much as for genuinely standing still, so a batter dashing between plays
+# was picked as her "stance" (Emily_C_AB11-1785696124000, frame 238 -
+# confirmed by extracting the real video frame: she's clearly mid-dash,
+# pitch still in flight, not standing in the box). Calibrated against that
+# same real clip: genuinely-still frames near the top of the recording
+# measured a consistent 0.02-0.25 hip-widths/s, while the confirmed-running
+# window never sustains more than 1-2 consecutive frames below 0.4 even at
+# its calmest mid-stride footfall instants (single-frame dips there are a
+# real gait-cycle artifact, not stillness - same reason STRIDE_SUSTAIN_S
+# requires a run, not one frame, above ITS threshold). 0.5 leaves real
+# margin above the stance ceiling while still rejecting every sustained
+# window in the running sequence.
+STANCE_MAX_HIP_TRANSLATION_HIP_WIDTHS_PER_S = 0.5
+
+# A third real, confirmed find_stance_frame failure mode, distinct from the
+# two above: on long, multi-pitch clips (Emily_C_AB2, 7135 frames), the
+# rotation+hip-translation "quiet" check picked a frame where she's genuinely
+# standing still but turned well away from square-to-camera (2D shoulder
+# width only 24.2px against that same clip's own 46.1px median - a 0.525x
+# ratio) - a real quiet moment, just not a representative "facing the
+# pitcher" stance, and the narrow shoulder measurement itself then degrades
+# every downstream 2D-anchor-based correction that assumes a roughly
+# camera-facing torso. Calibrated against 3 real distinct clips: a genuine
+# facing-camera stance measures 1.0-2.1x that SAME clip's own median
+# shoulder width (wider than typical, since a resting stance is usually
+# squarer to the camera than the more rotated in-swing frames that pull the
+# median down) - Emily_C_AB11 2.14x, Emily_C_AB12 1.04x - while the one
+# confirmed bad pick sits at 0.525x, well clear of both. 0.7 leaves real
+# margin below every good clip measured while still rejecting that one.
+STANCE_MIN_FACING_RATIO = 0.7
+
 # Movement-pattern flags (new) - margin in normalized [0,1] percentile units.
 KNEE_DOMINANT_MARGIN = 0.15
 # Reuses find_load_frame's own 2.5s backward-window default for the wrist-
@@ -133,6 +168,30 @@ def body_scale_px(pose_2d_frames):
         if lh[2] > 0.15 and rh[2] > 0.15:
             hip_w.append(dist(lh, rh))
     return median(shoulder_w), median(hip_w)
+
+
+def facing_camera_series(pose_2d_frames, shoulder_px):
+    """Per-frame ratio of this frame's 2D shoulder width to the clip's own
+    median (from body_scale_px) - a self-normalized proxy for "how square to
+    the camera is she right now," with no camera calibration required since
+    it's relative to this same clip's own typical width. See
+    STANCE_MIN_FACING_RATIO's comment for why this is needed and how it was
+    calibrated. None where shoulders aren't confidently tracked or the clip
+    has no usable median at all."""
+    if not shoulder_px:
+        return [None] * len(pose_2d_frames)
+    out = []
+    for f in pose_2d_frames:
+        kp = f["keypoints"]
+        if kp is None:
+            out.append(None)
+            continue
+        ls, rs = kp[L_SHOULDER_2D], kp[R_SHOULDER_2D]
+        if ls[2] > 0.15 and rs[2] > 0.15:
+            out.append(dist(ls, rs) / shoulder_px)
+        else:
+            out.append(None)
+    return out
 
 
 def bat_speeds(bat_frames, fps):
@@ -524,34 +583,72 @@ def find_load_frame(pose_2d_frames, front_side, contact_frame, fps, n, search_s=
     }
 
 
-def find_stance_frame(rotation_series, load_frame, stride_frame, contact_frame, fps, n,
-                       search_s=3.0, quiet_run_s=5 / 30):
-    """Stance = last frame of a sustained quiet run (rotation activity under
-    ROTATION_MIN_DEG for >= quiet_run_frames consecutive frames) immediately
-    before whichever of Load/Stride starts the swing, in a backward window
-    from contact. This is a state-boundary heuristic, not a true detected
-    instant - it is structurally indistinguishable from mid-clip dead time,
-    a bat waggle, or an earlier pitch's stance, so confidence is always "low"
-    when found at all, documented here rather than silently implied.
+def find_stance_frame(rotation_series, hip_translation_series, facing_series, load_frame,
+                       stride_frame, contact_frame, fps, n, quiet_run_s=5 / 30):
+    """Stance = last frame of a sustained quiet run immediately before
+    whichever of Load/Stride starts the swing, searched from the true start
+    of the tracked clip (not a fixed backward window from contact - a real
+    at-bat clip can have many seconds of genuine standing/waiting before the
+    swing even begins, confirmed on this exact clip: the real quiet stance
+    window sits ~9.6s before contact, which a since-removed 3.0s cap would
+    have missed entirely, returning "not found" for a real, findable stance
+    instead of a wrong one - an improvement, but not the honest goal here).
+    "quiet" requires low rotation activity, low hip translation, AND a
+    facing-camera ratio at or above STANCE_MIN_FACING_RATIO, all
+    simultaneously, for >= quiet_run_frames consecutive frames. This is a
+    state-boundary heuristic, not a true detected instant - it is
+    structurally indistinguishable from mid-clip dead time or an earlier
+    pitch's stance, so confidence is always "low" when found at all,
+    documented here rather than silently implied.
 
-    Confirmed a real failure mode by extracting the actual detected frame as
-    a still image (not just trusting the numbers): on Emily_C_AB1 (1) (a
-    high-confidence CONTACT clip), the "quiet" frame this function found
-    ~1.9s before contact visually shows the batter already mid-swing
-    (post-stride, bat already through the zone toward a different pitch/
-    contact instant earlier in this same clip) - NOT a genuine pre-pitch
-    stance. Angular-velocity floors alone can't distinguish "at rest" from
-    "a brief lull between two rapid rotations," which is exactly why this
-    stays capped at "low" unconditionally rather than ever being trusted as
-    "high" - a coach-facing UI must not present this as a reliable marker."""
+    Confirmed THREE real failure modes by extracting the actual detected
+    frame as a still image or its real 2D measurements (not just trusting
+    the numbers), not just one:
+    1. On Emily_C_AB1 (1) (a high-confidence CONTACT clip), the "quiet"
+       frame found ~1.9s before contact visually shows the batter already
+       mid-swing (post-stride, bat already through the zone toward a
+       different pitch/contact instant earlier in this same clip) - NOT a
+       genuine pre-pitch stance. Angular-velocity floors alone can't
+       distinguish "at rest" from "a brief lull between two rapid
+       rotations."
+    2. On Emily_C_AB11-1785696124000, rotation activity ALONE picked frame
+       238 as "stance" - the real video shows her clearly mid-dash between
+       plays (pitch still in flight, nowhere near the box). Rotation
+       activity measures ANGULAR motion only, which stays just as low for
+       straight-line running as for genuinely standing still - it was never
+       going to catch this on its own. The hip_translation_series check
+       above exists specifically because of this confirmed failure (see
+       STANCE_MAX_HIP_TRANSLATION_HIP_WIDTHS_PER_S's own comment for the
+       real calibration numbers from this exact clip).
+    3. On Emily_C_AB2 (a 7135-frame, multi-pitch clip), rotation+hip-
+       translation alone picked a frame where she's genuinely standing
+       still but turned well away from square-to-camera (2D shoulder width
+       0.525x this same clip's own median) - a real quiet moment, just not
+       a representative facing-the-pitcher stance, and the resulting narrow
+       shoulder measurement then degraded every downstream 2D-anchor-based
+       correction that assumes a roughly camera-facing torso. The
+       facing_series check above exists specifically because of this
+       confirmed failure (see STANCE_MIN_FACING_RATIO's own comment for the
+       real calibration numbers across 3 distinct clips).
+    All three failure modes are real, confirmed on real clips, not
+    hypothetical - exactly why this stays capped at "low" unconditionally
+    rather than ever being trusted as "high," and why a FOURTH such failure
+    mode remains plausible - a coach-facing UI must not present this as a
+    reliable marker."""
     quiet_run_frames = max(1, round(quiet_run_s * fps))
     swing_start = min([f for f in (load_frame, stride_frame) if f is not None], default=contact_frame)
-    i0 = phase_search_window(contact_frame, fps, n, pre_s=search_s)[0]
+    i0 = 0
     run_len = 0
     last_quiet_frame = None
     for i in range(i0, swing_start + 1):
-        v = rotation_series[i]
-        quiet = v is not None and v < ROTATION_MIN_DEG
+        rot = rotation_series[i]
+        hip_speed = hip_translation_series[i]
+        facing = facing_series[i]
+        quiet = (
+            rot is not None and rot < ROTATION_MIN_DEG
+            and hip_speed is not None and hip_speed < STANCE_MAX_HIP_TRANSLATION_HIP_WIDTHS_PER_S
+            and facing is not None and facing >= STANCE_MIN_FACING_RATIO
+        )
         if quiet:
             run_len += 1
             if run_len >= quiet_run_frames:
@@ -562,18 +659,21 @@ def find_stance_frame(rotation_series, load_frame, stride_frame, contact_frame, 
         return {
             "frame": None, "time_s": None,
             "method": f"last frame of a >= {quiet_run_frames}-frame quiet run (rotation activity "
-                      f"< {ROTATION_MIN_DEG} deg) before swing onset, in a {search_s}s backward "
-                      "window from contact",
+                      f"< {ROTATION_MIN_DEG} deg AND hip translation < "
+                      f"{STANCE_MAX_HIP_TRANSLATION_HIP_WIDTHS_PER_S} hip-widths/s AND facing ratio "
+                      f">= {STANCE_MIN_FACING_RATIO}) before swing onset, searched from the start "
+                      "of the clip",
             "confidence": None,
-            "detail": {"reason": "no sustained quiet run found before swing onset in window"},
+            "detail": {"reason": "no sustained quiet run found before swing onset anywhere in the clip"},
         }
     return {
         "frame": last_quiet_frame, "time_s": None,
         "method": f"last frame of a >= {quiet_run_frames}-frame quiet run (rotation activity < "
-                  f"{ROTATION_MIN_DEG} deg) before swing onset, in a {search_s}s backward window "
-                  "from contact - a state-boundary heuristic, not a true detected instant; "
-                  "structurally indistinguishable from mid-clip dead time or an earlier pitch's "
-                  "stance",
+                  f"{ROTATION_MIN_DEG} deg AND hip translation < "
+                  f"{STANCE_MAX_HIP_TRANSLATION_HIP_WIDTHS_PER_S} hip-widths/s AND facing ratio >= "
+                  f"{STANCE_MIN_FACING_RATIO}) before swing onset, searched from the start of the "
+                  "clip - a state-boundary heuristic, not a true detected instant; structurally "
+                  "indistinguishable from mid-clip dead time or an earlier pitch's stance",
         "confidence": "low",
         "detail": {},
     }
@@ -596,6 +696,26 @@ def hip_midpoint_series(pose_2d_frames):
             continue
         lh, rh = kp[L_HIP_2D], kp[R_HIP_2D]
         out.append(((lh[0] + rh[0]) / 2, (lh[1] + rh[1]) / 2) if lh[2] > 0.15 and rh[2] > 0.15 else None)
+    return out
+
+
+def hip_translation_series(pose_2d_frames, fps, hip_px):
+    """Per-frame hip-midpoint speed in hip-widths/s (centered finite
+    difference, same convention as bat_speeds/keypoint_speed_series) - see
+    STANCE_MAX_HIP_TRANSLATION_HIP_WIDTHS_PER_S's comment for why
+    find_stance_frame needs this alongside rotation_series: a batter running
+    in a straight line has near-zero ANGULAR motion (what rotation_series
+    measures) despite obviously not standing still. None where hip_px is
+    falsy or either neighbor frame is untracked."""
+    if not hip_px:
+        return [None] * len(pose_2d_frames)
+    mids = hip_midpoint_series(pose_2d_frames)
+    out = [None] * len(mids)
+    for i in range(1, len(mids) - 1):
+        a, b = mids[i - 1], mids[i + 1]
+        if a is None or b is None:
+            continue
+        out[i] = dist(a, b) / (2.0 / fps) / hip_px
     return out
 
 
@@ -870,8 +990,10 @@ def run(clip_dir):
     stride_phase = find_stride_frame(p2_frames, fps, front, hip_px, contact_frame, n)
     follow_through = find_follow_through_frame(rotation_series, contact_frame, fps, n)
     load = find_load_frame(p2_frames, front, contact_frame, fps, n)
-    stance = find_stance_frame(rotation_series, load["frame"], stride_phase["frame"],
-                                contact_frame, fps, n)
+    hip_translation = hip_translation_series(p2_frames, fps, hip_px)
+    facing = facing_camera_series(p2_frames, shoulder_px)
+    stance = find_stance_frame(rotation_series, hip_translation, facing, load["frame"],
+                                stride_phase["frame"], contact_frame, fps, n)
 
     for phase in (extension, stride_phase, follow_through, load, stance):
         if phase["frame"] is not None:

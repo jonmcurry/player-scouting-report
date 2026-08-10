@@ -205,29 +205,38 @@ export async function processOnePendingClip(): Promise<boolean> {
 
     await markClipReady(clip.videoClipId);
     console.log(`[process-upload-queue] Clip "${clip.clipSlug}" ready.`);
-
-    // Only the raw downloaded copy, not outDir - GCS still has the
-    // authoritative raw video (safe to re-download if ever needed), so this
-    // local copy is pure redundant disk usage once processing succeeds.
-    // outDir's outputs stay: overlay.mp4 is what a coach needs to watch to
-    // approve/reject the public skeleton render (see NEXT_STEPS.md), and
-    // pose_3d.json/metrics.json let ingest-phases/ingest-pose3d-frames
-    // re-run later without repeating the expensive pipeline run. Without
-    // this, videos/_uploads/ grows without bound as more clips process -
-    // real disk exhaustion risk at hundreds/thousands of videos.
-    try {
-      fs.unlinkSync(localRawPath);
-    } catch (cleanupErr) {
-      console.error(
-        `[process-upload-queue] Clip "${clip.clipSlug}" ready, but couldn't remove local raw copy ${localRawPath}: ${
-          cleanupErr instanceof Error ? cleanupErr.message : cleanupErr
-        }`,
-      );
-    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[process-upload-queue] Clip "${clip.clipSlug}" failed: ${message}`);
     await markClipFailed(clip.videoClipId, message);
+  } finally {
+    // Only the raw downloaded copy, not outDir - GCS still has the
+    // authoritative raw video (safe to re-download if ever needed), so this
+    // local copy is pure redundant disk usage once processing finishes,
+    // success OR failure. outDir's outputs stay: overlay.mp4 is what a
+    // coach needs to watch to approve/reject the public skeleton render
+    // (see NEXT_STEPS.md), and pose_3d.json/metrics.json let
+    // ingest-phases/ingest-pose3d-frames re-run later without repeating the
+    // expensive pipeline run. This used to only run on the success path -
+    // a real, confirmed leak: every failed clip (a download error, a
+    // pipeline crash, a bad ingest) left its full raw video sitting in
+    // videos/_uploads/ forever, since the catch block jumped straight to
+    // markClipFailed and never reached this cleanup. Real disk exhaustion
+    // risk, worse than the success-path case this comment already reasoned
+    // about, since failed clips can retry/reprocess repeatedly. Guarded
+    // with existsSync since a failure before the download completes means
+    // there's nothing to remove.
+    if (fs.existsSync(localRawPath)) {
+      try {
+        fs.unlinkSync(localRawPath);
+      } catch (cleanupErr) {
+        console.error(
+          `[process-upload-queue] Clip "${clip.clipSlug}": couldn't remove local raw copy ${localRawPath}: ${
+            cleanupErr instanceof Error ? cleanupErr.message : cleanupErr
+          }`,
+        );
+      }
+    }
   }
   return true;
 }

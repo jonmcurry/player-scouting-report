@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BarrelIQ — Coach Login</title>
-<link rel="stylesheet" href="./coach.css?v=de5bbdbd45">
+<link rel="stylesheet" href="./coach.css?v=b11dd8c7a8">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -57,7 +57,7 @@
 <!-- Dev-only, gitignored, silently absent in a real deploy - see coach/config.js -->
 <script src="./config.local.js"></script>
 <script type="module">
-  import { supabase } from "./shared.js";
+  import { supabase, escapeHtml } from "./shared.js";
 
   const loginView = document.getElementById("loginView");
   const signupView = document.getElementById("signupView");
@@ -88,7 +88,7 @@
       .select("role, teams(slug, name)");
     if (error) {
       document.getElementById("teamsList").innerHTML =
-        `<p class="error-text">Couldn't load your teams: ${error.message}</p>`;
+        `<p class="error-text">Couldn't load your teams: ${escapeHtml(error.message)}</p>`;
       return true;
     }
 
@@ -106,8 +106,8 @@
       const div = document.createElement("div");
       div.className = "card";
       div.innerHTML = `
-        <div style="font-family:var(--font-display);font-weight:600;font-size:18px;text-transform:uppercase;margin-bottom:10px;">${a.teams.name}</div>
-        <a class="tap-target" style="display:inline-flex;align-items:center;" href="./team.html?team=${a.teams.slug}">Open team view →</a>
+        <div style="font-family:var(--font-display);font-weight:600;font-size:18px;text-transform:uppercase;margin-bottom:10px;">${escapeHtml(a.teams.name)}</div>
+        <a class="tap-target" style="display:inline-flex;align-items:center;" href="./team.html?team=${encodeURIComponent(a.teams.slug)}">Open team view →</a>
       `;
       teamsList.appendChild(div);
     }
@@ -201,9 +201,25 @@
     if (error) {
       errorMsg.textContent = error.message.includes("duplicate key")
         ? `That URL slug is already taken - try a different one.`
-        : error.message.includes("invalid access code")
-          ? `That access code isn't right - ask your BarrelIQ contact for the team setup code.`
-          : error.message;
+        : error.message;
+      return;
+    }
+    // create_team returns a SQL NULL of its `teams` row type (not a thrown
+    // error) for both "wrong code" and "rate limited" - see
+    // 00021_team_creation_rate_limit.sql's own comment on why a thrown
+    // exception can't carry this information reliably. Real, confirmed
+    // PostgREST behavior, checked directly against the live RPC response
+    // (not assumed): a NULL of a composite/row type does NOT serialize as
+    // bare JSON `null` over the RPC endpoint - it comes back as an object
+    // with every column individually null ({id: null, slug: null, ...}),
+    // so `data` itself is truthy and `!data` never catches this. Checking
+    // the row's own primary key is the reliable signal. Can't distinguish
+    // wrong-code from rate-limited from here (deliberately - the function
+    // doesn't say which), so this covers both with one message.
+    if (!data?.id) {
+      errorMsg.textContent =
+        `That access code isn't right, or you've tried too many times - wait a few minutes and try again, ` +
+        `or ask your BarrelIQ contact for the team setup code.`;
       return;
     }
     window.location.href = `./team.html?team=${data.slug}`;

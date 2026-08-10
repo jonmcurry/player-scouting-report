@@ -68,17 +68,31 @@ const BONE_CHAIN = [
 // tracked direction between the two named H36M joints. No twist reference -
 // H36M gives us no forearm/shin rotation-about-its-own-axis data, so leaving
 // twist at whatever the rest pose has is the honest choice, not a guess.
-// Bones not listed here (spine1, spine2, lShoulder, rShoulder, lHand, rHand,
-// lFoot, rFoot, headTop) are deliberately left at their REST local rotation -
-// either because H36M has no corresponding joint (fingers, toes - H36M-17
-// has no foot joints at all) or because the rotation is already fully
-// accounted for by a parent bone (spine1/spine2 stay rigid relative to
-// spine, matching H36M's own single hip->thorax segment assumption).
+// Bones not listed here (spine1, spine2, lHand, rHand, lFoot, rFoot,
+// headTop) are deliberately left at their REST local rotation - either
+// because H36M has no corresponding joint (fingers, toes - H36M-17 has no
+// foot joints at all) or because the rotation is already fully accounted
+// for by a parent bone (spine1/spine2 stay rigid relative to spine,
+// matching H36M's own single hip->thorax segment assumption).
+//
+// lShoulder/rShoulder ARE retargeted (a real fix, not always true here) -
+// leaving them at rest was a real, measured bug: the Mixamo character's own
+// rest-pose shoulder separation is a fraction of Emily's real tracked
+// shoulder width (confirmed directly via live bone-position dumps: ~0.084
+// world units retargeted vs. ~0.21 in the real tracked data, less than
+// half), because nothing upstream of lArm/rArm ever re-aims the clavicle
+// itself toward where her real shoulders actually are - the whole arm chain
+// was hanging off anchor points narrower than her real proportions,
+// independent of and compounding on top of the leveling-angle bug above.
+// THORAX->shoulder is the best available proxy for "clavicle direction"
+// H36M-17 offers (no separate clavicle-root landmark exists).
 const AIM_RETARGET = {
   neck: { child: "head", from: NECK, to: HEAD },
   head: { child: "headTop", from: HEAD, to: HEAD_TOP },
+  lShoulder: { child: "lArm", from: THORAX, to: L_SHOULDER },
   lArm: { child: "lForeArm", from: L_SHOULDER, to: L_ELBOW },
   lForeArm: { child: "lHand", from: L_ELBOW, to: L_WRIST },
+  rShoulder: { child: "rArm", from: THORAX, to: R_SHOULDER },
   rArm: { child: "rForeArm", from: R_SHOULDER, to: R_ELBOW },
   rForeArm: { child: "rHand", from: R_ELBOW, to: R_WRIST },
   lUpLeg: { child: "lLeg", from: L_HIP, to: L_KNEE },
@@ -335,14 +349,32 @@ export async function createSkeletonScene(canvasEl, opts = {}) {
    * angles the resulting "vertical" axis is measurably wrong. Confirmed
    * directly against a real clip's overlay video (2D tracking accurate,
    * genuinely upright stance the whole time) vs. its reconstructed
-   * torso_tilt_from_vertical_deg (48-65deg for the ENTIRE clip). Estimates
-   * the clip's own average torso-up direction and rotates the WHOLE clip
-   * rigidly (same correction every frame, so all real relative motion is
-   * fully preserved) so it reads close to upright. Display-only - does not
-   * touch stored video_clip_metrics angles, see NEXT_STEPS.md. */
+   * torso_tilt_from_vertical_deg (48-65deg for the ENTIRE clip).
+   *
+   * Calibrates from only the FIRST ~20% of the clip's frames, not the whole
+   * clip - a real, measured bug found while chasing a persistent "stance
+   * doesn't look upright" report: averaging over every frame (stance through
+   * follow-through) lets the swing's own genuine dynamic forward lean
+   * (load/stride/contact/extension routinely lean 15-20+ deg past the
+   * calibration clip's early portion) drag the "average up" direction away
+   * from true vertical, which then gets baked into EVERY frame's correction
+   * - including the genuinely-upright stance frame at the start. The
+   * swing-locate pre-pass (scripts/pose3d/locate_swing.py) guarantees every
+   * clip opens with real pre-swing stance/load time before the dynamic
+   * swing takes over, so the early portion is a trustworthy "what does
+   * upright look like on this uncalibrated camera" reference. Measured on a
+   * real clip (Emily_C_AB11): full-clip calibration left the stance frame
+   * ~6-7deg off vertical; first-20% calibration brought it under 1deg, while
+   * correctly leaving contact/extension's real forward lean visible (~15-22
+   * deg) instead of averaging it away. Same single rigid correction applied
+   * to every frame either way, so real relative motion across the swing is
+   * still fully preserved - only which frames choose the correction changed.
+   * Display-only - does not touch stored video_clip_metrics angles, see
+   * NEXT_STEPS.md. */
   function setClipFrames(frames) {
+    const calibrationFrames = frames.slice(0, Math.max(1, Math.ceil(frames.length * 0.2)));
     const avgUp = new THREE.Vector3();
-    for (const f of frames) {
+    for (const f of calibrationFrames) {
       const j = f.joints;
       const hipMid = [
         (j[L_HIP][0] + j[R_HIP][0]) / 2,

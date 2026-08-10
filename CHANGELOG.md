@@ -4,6 +4,55 @@ All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file starts 2026-08-01 — see
 `NEXT_STEPS.md` (and its own git history) for the detailed narrative of everything before that.
 
+## [0.10.0] - 2026-08-10
+
+### Fixed
+- Major 3D skeleton rendering fix: the two hands were never constrained to stay together on the
+  bat - every frame of the reconstructed swing had wrists 0.5-6 shoulder-widths apart (anatomically
+  impossible for a two-handed grip), the real driver behind renders that "didn't look like a real
+  batter." Each arm is now solved as a 2-bone IK chain converging on a shared grip point, using
+  already-trusted bone lengths and the model's own elbow-bend direction. `correct_limb_depth.py`.
+- Stance-frame detection now also rejects frames where the batter is turned away from
+  square-to-camera (a 2D-shoulder-width facing-ratio gate), on top of the existing rotation/
+  hip-translation checks - closes a real failure mode on longer, multi-pitch clips. `metrics.py`.
+- The 3D scrub slider (`coach/components/skeletonComparison.js`) silently hijacked page-scroll
+  touches, jumping the displayed swing frame to an arbitrary instant whenever a scroll gesture
+  happened to start on it - `touch-action: pan-y` fix.
+- Camera "auto-level" correction now calibrates from the first 20% of a clip instead of the whole
+  clip, removing a systematic tilt bias the swing's own dynamic motion was introducing into every
+  frame's correction, including the genuinely-upright stance frame. `skeletonScene.js`.
+- Shoulder bones are now retargeted to the real tracked player's shoulder width instead of staying
+  locked at the character model's rest pose (was rendering less than half the real width).
+
+### Security
+- Fixed stored XSS: coach-entered free text (player/team names, notes, opponent, comp cues) was
+  interpolated unescaped into `innerHTML` across the coach app, including `report.html`'s public,
+  unauthenticated share-link page. Added a real `escapeHtml()` helper (`coach/shared.js`), applied
+  at every injection point found.
+- Fixed a silent-error data-loss path: a failed checklist load used to fall back to an empty
+  placeholder row, and scoring that checkpoint would then silently overwrite a real AI
+  draft/notes/coach-review with nulls. `loadChecklist()` now shows a real error and disables
+  scoring until the load succeeds.
+- Player share links now expire after 90 days (`expires_at`, checked by `get-player-report`).
+- `create_team`'s access-code check is now rate-limited (5 attempts/15min per coach).
+
+### Added
+- Failed clip processing now auto-retries up to 3 times with backoff (2/10/30min) before falling
+  back to requiring the existing manual "Retry" button - closes a real gap where a transient
+  failure (a momentary GCS blip) had no automatic recovery at all.
+- First automated test coverage in the repo (`npm test`, zero new dependencies): real integration
+  tests against local Supabase for the upload-queue claim race guard and the checklist
+  reviewed-by overwrite protection - previously the two most safety-critical pieces of backend
+  logic with zero coverage.
+
+### Changed
+- `detect_2d.py` no longer crashes on a frame-count mismatch between its two independent decode
+  passes (matched an existing guard used elsewhere in the same file).
+- Fixed real disk leaks: a failed clip upload no longer strands its downloaded raw video
+  (`processUploadQueue.ts` cleanup moved to a `finally`), and pipeline working-video/audio copies
+  (`_stage0_audio.wav`, `_trimmed_input.mp4`, etc.) are now removed on every pipeline exit path,
+  not left behind indefinitely (`run_pipeline.py`).
+
 ## [0.9.0] - 2026-08-04
 
 ### Added

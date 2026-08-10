@@ -28,7 +28,7 @@
   // the get-player-report Edge Function, which validates the token
   // server-side using service_role - see that function's own header
   // comment for why this is the app's one intentional public-read boundary.
-  import { supabase, qs } from "./shared.js";
+  import { supabase, qs, escapeHtml } from "./shared.js";
 
   const root = document.getElementById("reportRoot");
   const token = qs("token");
@@ -47,17 +47,17 @@
     if (error || !data || data.error) {
       root.innerHTML = `
         <h1 style="text-align:center;">Report not available</h1>
-        <p class="hint" style="text-align:center;">${data?.error ?? "This link may have been revoked or is no longer valid."}</p>
+        <p class="hint" style="text-align:center;">${escapeHtml(data?.error ?? "This link may have been revoked or is no longer valid.")}</p>
       `;
       return;
     }
 
     root.innerHTML = `
       <div class="card" style="text-align:center;margin-top:20px;">
-        <div class="jersey-badge lg" style="margin:0 auto 10px;">${data.jerseyNumber}</div>
-        <div style="font-family:var(--font-display);font-weight:600;font-size:22px;text-transform:uppercase;">${data.playerName}</div>
-        <div class="hint">${data.teamName}</div>
-        <p class="hint" style="margin-top:10px;">${data.loggedAtBats} logged at-bat(s)</p>
+        <div class="jersey-badge lg" style="margin:0 auto 10px;">${escapeHtml(data.jerseyNumber)}</div>
+        <div style="font-family:var(--font-display);font-weight:600;font-size:22px;text-transform:uppercase;">${escapeHtml(data.playerName)}</div>
+        <div class="hint">${escapeHtml(data.teamName)}</div>
+        <p class="hint" style="margin-top:10px;">${escapeHtml(data.loggedAtBats)} logged at-bat(s)</p>
       </div>
 
       <h2 style="margin-top:24px;">Swing Checklist</h2>
@@ -71,8 +71,8 @@
         (cp) => `
       <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
         <div>
-          <div style="font-weight:600;">${cp.label}</div>
-          ${cp.reviewedBy ? `<span class="hint">Reviewed by ${cp.reviewedBy}</span>` : `<span class="hint">Not yet scored</span>`}
+          <div style="font-weight:600;">${escapeHtml(cp.label)}</div>
+          ${cp.reviewedBy ? `<span class="hint">Reviewed by ${escapeHtml(cp.reviewedBy)}</span>` : `<span class="hint">Not yet scored</span>`}
         </div>
         <div class="block ${scoreClass(cp.score)}" style="width:28px;height:14px;flex:none;"></div>
       </div>

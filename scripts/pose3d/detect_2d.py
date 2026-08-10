@@ -515,7 +515,17 @@ def run(video_path, out_dir):
 
         hand_pts = batter_hand_positions(entry)
         if hand_pts:
-            match, locked_track_id = select_bat_box(bat_frames[i], hand_pts, gate_dist, locked_track_id)
+            # pose_2d and bat_frames come from two independent streaming
+            # decodes over the same file (pose_model.predict vs.
+            # bat_model.track) - their frame counts aren't guaranteed equal
+            # (a truncated/corrupt trailing frame, a transient decode hiccup
+            # on a real coach-phone upload). build_batter_track (above) and
+            # overlay.py both already guard this same mismatch; this loop
+            # didn't, and would crash the whole pipeline on an unhandled
+            # IndexError instead of degrading gracefully like every other
+            # bat-frames access in this file.
+            bats_i = bat_frames[i] if i < len(bat_frames) else []
+            match, locked_track_id = select_bat_box(bats_i, hand_pts, gate_dist, locked_track_id)
         else:
             match, locked_track_id = None, None
         if match is not None:
