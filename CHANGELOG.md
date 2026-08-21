@@ -4,6 +4,32 @@ All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file starts 2026-08-01 — see
 `NEXT_STEPS.md` (and its own git history) for the detailed narrative of everything before that.
 
+## [0.11.0] - 2026-08-21
+
+### Fixed
+- The 3D skeleton's neck/head no longer renders from VideoPose3D's raw neck/head/head-top
+  estimates, which were measurably unreliable for this activity (a real 115deg-from-vertical
+  neck angle on a well-tracked frame) - the head now rides neutrally with the torso's own
+  (reliable) orientation instead of independently rotating into "thrown back, looking up" poses.
+  `skeletonScene.js`'s `AIM_RETARGET`.
+- The Tier-2 comparison view's drag-to-rotate camera could reach a near-top-down/bottom-up angle
+  where any standing figure foreshortens into an unrecognizable blob (root cause of a
+  "physically impossible"-looking render that turned out to be a camera-angle bug, not bad pose
+  data - confirmed by reproducing it on demand via a real drag gesture on an already-verified-
+  clean frame). `OrbitControls`' polar-angle bounds tightened from ~22deg off either pole to
+  ~50-104deg.
+- `ingestPhases.ts` hardcoded `position: 0` whenever it created a new `video_clips` row, silently
+  scrambling a multi-clip at-bat's pitch-switcher order if it ran before `ingest-pose3d-frames`
+  for the same clip. Now takes its own `--position` flag, matching its sibling command.
+
+### Added
+- Each swing-phase checkpoint's underlying 3D reconstruction reliability is now checked (reusing
+  `correct_limb_depth.py`'s own edge-on-to-camera anchor-condition test) and surfaced in the coach
+  UI - a checkpoint landing on an unreliable frame (e.g. Load, when she's turned nearly edge-on to
+  the camera) now shows an explicit "less reliable" caveat instead of a confidently-wrong render.
+  New `swing_phases.reconstruction_reliable` column (migration `00023`), threaded through
+  `metrics.py` -> `ingestPhases.ts` -> `compModal.js`.
+
 ## [0.10.0] - 2026-08-10
 
 ### Fixed

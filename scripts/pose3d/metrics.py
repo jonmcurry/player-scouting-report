@@ -57,6 +57,10 @@ import json
 import math
 import pathlib
 
+import numpy as np
+
+from correct_limb_depth import _anchor_condition_ok, TORSO_ANCHORS, ANCHOR_CONF_MIN
+
 ALIGNMENT_TOLERANCE_S = 0.5
 ROTATION_MIN_DEG = 3.0
 
@@ -340,6 +344,36 @@ def attack_angle_at(bat_frames, fps, idx, half_window_s=ATTACK_ANGLE_WINDOW_S):
     if dx == 0 and dy == 0:
         return None
     return round(math.degrees(math.atan2(dy, dx)), 1)
+
+
+def frame_reconstruction_reliable(pose_2d_frames, frame_idx):
+    """True if this frame's torso anchors are spread out enough for
+    correct_limb_depth.py's 2D-reprojection depth correction to have run
+    reliably on it - see that module's MIN_ANCHOR_EIG_RATIO for the real,
+    measured failure mode this catches (a batter turned nearly edge-on to
+    the camera, e.g. Emily_C_AB11-1785696124000 frames ~233-245: shoulders
+    3.7px apart in a 1920x1080 image). When this is False, the frame's
+    elbow/wrist/knee/ankle positions are the model's raw, uncorrected
+    estimate, which correct_limb_depth.py's own docstring documents as
+    having a real systematic depth bias for those exact joints - a
+    checkpoint landing on a frame like this can render an arm that looks
+    like it's collapsed into the torso even though every individual bone
+    length/joint angle measures as anatomically valid in isolation. Reuses
+    correct_limb_depth.py's own anchor-condition check rather than
+    re-deriving the threshold, so the two stay in agreement by construction.
+    Returns None (not applicable) when frame_idx is None or untracked."""
+    if frame_idx is None:
+        return None
+    kp = pose_2d_frames[frame_idx]["keypoints"]
+    if kp is None:
+        return False
+    pts = []
+    for _h_idx, coco_idx in TORSO_ANCHORS:
+        x, y, c = kp[coco_idx]
+        if c < ANCHOR_CONF_MIN:
+            return False
+        pts.append([x, y])
+    return bool(_anchor_condition_ok(np.array(pts)))
 
 
 def phase_search_window(contact_frame, fps, n, pre_s=0.0, post_s=0.0):
@@ -998,6 +1032,18 @@ def run(clip_dir):
     for phase in (extension, stride_phase, follow_through, load, stance):
         if phase["frame"] is not None:
             phase["time_s"] = round(p2_frames[phase["frame"]]["time_s"], 4)
+
+    # `reconstruction_reliable`: a separate axis from each phase's own
+    # "confidence" above. "confidence" says whether the detector picked the
+    # right MOMENT; this says whether the 3D pose DATA at that moment is
+    # trustworthy at all - see frame_reconstruction_reliable()'s docstring
+    # for the real failure mode (an edge-on-to-camera frame where a limb can
+    # render collapsed into the torso while every individual bone length/
+    # joint angle still measures as anatomically valid). False here is a
+    # real, checkable fact about this specific frame, independent of how
+    # confident the phase detector itself is.
+    for phase in (extension, stride_phase, follow_through, load, stance, result["contact"]):
+        phase["reconstruction_reliable"] = frame_reconstruction_reliable(p2_frames, phase["frame"])
 
     # NOTE on ordering: stance/load/stride/contact are guaranteed non-
     # decreasing when all present (each searches backward from the previous

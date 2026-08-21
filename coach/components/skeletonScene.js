@@ -14,7 +14,7 @@ import { OrbitControls } from "https://esm.sh/three@0.185.1/examples/jsm/control
 import { FBXLoader } from "https://esm.sh/three@0.185.1/examples/jsm/loaders/FBXLoader.js";
 import { clone as cloneSkinned } from "https://esm.sh/three@0.185.1/examples/jsm/utils/SkeletonUtils.js";
 import {
-  H36M_JOINT_NAMES, L_SHOULDER, R_SHOULDER, L_HIP, R_HIP, THORAX, NECK, HEAD, HEAD_TOP,
+  H36M_JOINT_NAMES, L_SHOULDER, R_SHOULDER, L_HIP, R_HIP, THORAX,
   L_WRIST, R_WRIST, L_ELBOW, R_ELBOW, L_KNEE, R_KNEE, L_ANKLE, R_ANKLE,
 } from "./h36mSkeleton.js";
 
@@ -68,12 +68,44 @@ const BONE_CHAIN = [
 // tracked direction between the two named H36M joints. No twist reference -
 // H36M gives us no forearm/shin rotation-about-its-own-axis data, so leaving
 // twist at whatever the rest pose has is the honest choice, not a guess.
-// Bones not listed here (spine1, spine2, lHand, rHand, lFoot, rFoot,
-// headTop) are deliberately left at their REST local rotation - either
-// because H36M has no corresponding joint (fingers, toes - H36M-17 has no
-// foot joints at all) or because the rotation is already fully accounted
-// for by a parent bone (spine1/spine2 stay rigid relative to spine,
-// matching H36M's own single hip->thorax segment assumption).
+// Bones not listed here (spine1, spine2, neck, head, lHand, rHand, lFoot,
+// rFoot, headTop) are deliberately left at their REST local rotation -
+// either because H36M has no corresponding joint (fingers, toes - H36M-17
+// has no foot joints at all), because the rotation is already fully
+// accounted for by a parent bone (spine1/spine2 stay rigid relative to
+// spine, matching H36M's own single hip->thorax segment assumption), or -
+// neck/head specifically - because the underlying data isn't reliable
+// enough to render at all (see below).
+//
+// neck/head were retargeted from the raw NECK->HEAD / HEAD->HEAD_TOP H36M
+// vectors until a real, measured investigation found those two joints
+// specifically are a much weaker signal than every other joint this
+// pipeline renders: a real checkpoint frame measured 115deg-from-vertical
+// for neck->head (the head reading as thrown backward, confirmed visually
+// broken in the live app), and a full 2D-reprojection fix - the exact
+// technique that successfully fixed the wrist/bat-grip and shoulder-width
+// bugs elsewhere in this file - was tried and DISPROVED by direct A/B
+// evidence rather than assumed to help: on the one checkpoint frame with
+// the best available 2D tracking (where the correction actually fires), it
+// made the angle WORSE (98deg, still visibly wrong); on every other
+// checkpoint frame, where 2D confidence was too low to trigger the
+// correction at all, the model's own raw estimate already looked more
+// reasonable (45-68deg) - a decisive signal the reprojection technique
+// itself doesn't generalize to the head, not a data-quality problem to
+// chase further (scripts/pose3d/correct_limb_depth.py's LIMB_CHAIN
+// deliberately does NOT include head, matching this decision).
+//
+// Only 1 of this app's 11 checklist checkpoints (`head-eyes`) evaluates
+// head/eye position at all, and it doesn't render the real 3D model today
+// (Tier 3/illustration-only, compModal.js) - so for every checkpoint that
+// DOES render this model, head orientation was never load-bearing for what
+// a coach is actually judging. Leaving neck/head untouched means the head
+// rides along with spine2's own real, already-trusted orientation (genuine
+// torso lean/rotation from reliable tracked data) instead of independently
+// rendering noisy per-frame joint data - it still leans forward with a real
+// forward lean at contact, it just can no longer swing into an anatomically
+// impossible "looking backward" pose on its own. A neutral head beats a
+// confidently wrong one.
 //
 // lShoulder/rShoulder ARE retargeted (a real fix, not always true here) -
 // leaving them at rest was a real, measured bug: the Mixamo character's own
@@ -87,8 +119,6 @@ const BONE_CHAIN = [
 // THORAX->shoulder is the best available proxy for "clavicle direction"
 // H36M-17 offers (no separate clavicle-root landmark exists).
 const AIM_RETARGET = {
-  neck: { child: "head", from: NECK, to: HEAD },
-  head: { child: "headTop", from: HEAD, to: HEAD_TOP },
   lShoulder: { child: "lArm", from: THORAX, to: L_SHOULDER },
   lArm: { child: "lForeArm", from: L_SHOULDER, to: L_ELBOW },
   lForeArm: { child: "lHand", from: L_ELBOW, to: L_WRIST },
@@ -189,8 +219,22 @@ export async function createSkeletonScene(canvasEl, opts = {}) {
   controls.dampingFactor = 0.12;
   controls.minDistance = 0.5;
   controls.maxDistance = 10;
-  controls.minPolarAngle = Math.PI * 0.12;
-  controls.maxPolarAngle = Math.PI * 0.85;
+  // Bounds tightened from an earlier 0.12-0.85 range (~22 degrees off either
+  // pole) after a real, confirmed bug report: a coach dragging the Tier-2
+  // comparison view (compModal.js) far enough to hit that old limit put the
+  // camera near top-down, where ANY standing human figure foreshortens into
+  // a confusing blob - reproduced directly by dispatching a real drag on a
+  // known-good, anatomically-valid frame (Emily_C_AB11-1785696124000's
+  // Stance checkpoint, frame 65) and getting exactly the "bat sticking
+  // straight up out of her head" look the coach screenshotted, with a drag
+  // as small as 60px on a ~164px-tall canvas already saturating the old
+  // clamp. Not a data/retargeting bug - purely a camera-angle range that let
+  // a curious rotate reach an unhelpful view. New range (~50-104 degrees
+  // from the top) still lets a coach tilt a real amount around the default
+  // eye-ish-level view (Math.PI/2 - 0.17, ~80 degrees) without ever reaching
+  // a foreshortening-degenerate angle.
+  controls.minPolarAngle = Math.PI * 0.28;
+  controls.maxPolarAngle = Math.PI * 0.58;
   controls.enablePan = false;
 
   let defaultCamera = { azimuth: -0.52, polar: Math.PI / 2 - 0.17, distance: 3, target: new THREE.Vector3(0, 1, 0) };

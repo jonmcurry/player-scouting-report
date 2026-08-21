@@ -98,6 +98,7 @@ export interface PhaseUpsertInput {
   timeS: number | null;
   method: string | null;
   confidence: "high" | "low" | null;
+  reconstructionReliable: boolean | null;
   detail: Record<string, unknown>;
 }
 
@@ -191,6 +192,7 @@ export async function upsertSwingPhase(input: PhaseUpsertInput): Promise<void> {
       time_s: input.timeS,
       method: input.method,
       confidence: input.confidence,
+      reconstruction_reliable: input.reconstructionReliable,
       detail: input.detail,
     },
     { onConflict: "video_clip_id,phase_type_id" },

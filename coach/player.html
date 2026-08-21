@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=b11dd8c7a8">
+<link rel="stylesheet" href="./coach.css?v=f4a593f96a">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -790,7 +790,7 @@
 
     const { data: phaseRows } = await supabase
       .from("swing_phases")
-      .select("frame, time_s, confidence, swing_phase_types!inner(slug, label, sort_order)")
+      .select("frame, time_s, confidence, reconstruction_reliable, swing_phase_types!inner(slug, label, sort_order)")
       .eq("video_clip_id", clip.id)
       .order("sort_order", { referencedTable: "swing_phase_types" });
 
@@ -799,6 +799,7 @@
       label: r.swing_phase_types.label,
       timeS: r.time_s,
       confidence: r.confidence,
+      reconstructionReliable: r.reconstruction_reliable,
     }));
 
     const correctedFrames = buildExtensionCorrectedFrames(pose3dData.frames, pose3dData.lead_side, extensionScore);

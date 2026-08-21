@@ -213,6 +213,11 @@ export function openCompModal(checkpointSlug, checkpointLabel, clipContext) {
         </div>
         <p class="hint" style="text-align:center;">Left side: a real 3D pose reconstructed from her filmed swing, rendered as a
           skeleton, not a video frame. Right side: illustrative diagram only — not a photo of any real player or athlete.</p>
+        ${
+          phase.reconstructionReliable === false
+            ? `<p class="hint" style="text-align:center;color:var(--status-warning);">⚠ She's turned nearly edge-on to the camera at this exact moment, so this 3D pose is less reliable than usual — an arm or leg may look off even though the swing itself is fine. Judge this checkpoint from the notes below, not the model.</p>`
+            : ""
+        }
       `
           : `
         <div style="width:100%;max-width:220px;margin:0 auto;">

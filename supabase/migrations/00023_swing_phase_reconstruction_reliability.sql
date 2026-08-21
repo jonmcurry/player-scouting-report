@@ -1,0 +1,12 @@
+-- A phase's existing `confidence` column says whether the detector picked the
+-- right MOMENT (e.g. Load's lead-wrist-retraction heuristic has no independent
+-- cross-check, so it's never "high"). This is a separate axis: whether the 3D
+-- pose DATA at that moment is trustworthy at all. Real, measured failure mode
+-- (Emily_C_AB11-1785696124000's Load checkpoint, frame 238): the batter is
+-- turned nearly edge-on to the camera (shoulders 3.7px apart in a 1920x1080
+-- image), so scripts/pose3d/correct_limb_depth.py's depth correction is
+-- deliberately skipped as unreliable for that frame - the raw, uncorrected
+-- 3D estimate can then render a limb visually collapsed into the torso even
+-- though every individual bone length/joint angle still measures as
+-- anatomically valid. NULL means "not applicable" (phase's frame is null).
+alter table swing_phases add column reconstruction_reliable boolean;

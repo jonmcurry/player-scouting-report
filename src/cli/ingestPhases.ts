@@ -22,6 +22,12 @@
  *   npm run ingest-phases -- --team latham-lady-bison-white-10u --player emily_c \
  *     --date 2026-07-25 --opponent "EG Xpress Hurricanes" --ab 1 \
  *     --clipDir "frames/emily_c/Emily_C_AB1 (4)"
+ *
+ * For an at-bat with multiple clips (e.g. several pitches), pass --position
+ * (0-indexed) for each one, no matter which order you run this and
+ * ingest-pose3d-frames in - see this file's own findOrCreateVideoClip call
+ * for why passing the real value here matters even though ingest-pose3d-
+ * frames also takes --position.
  */
 import { Command } from "commander";
 import fs from "node:fs";
@@ -43,6 +49,7 @@ interface RawPhaseEntry {
   time_s: number | null;
   method: string | null;
   confidence: "high" | "low" | null;
+  reconstruction_reliable: boolean | null;
   detail?: Record<string, unknown>;
   [extra: string]: unknown;
 }
@@ -62,10 +69,22 @@ function normalizePhase(raw: RawPhaseEntry): {
   timeS: number | null;
   method: string | null;
   confidence: "high" | "low" | null;
+  reconstructionReliable: boolean | null;
   detail: Record<string, unknown>;
 } {
-  const { frame, time_s, method, confidence, detail, ...rest } = raw;
-  return { frame, timeS: time_s, method, confidence, detail: detail ?? rest };
+  // reconstruction_reliable is destructured out explicitly for the same
+  // reason detail is above: it's a metrics.py top-level sibling field (like
+  // confidence), not phase-specific evidence, so it must not fall into
+  // `...rest` and get silently dropped by `detail ?? rest` below.
+  const { frame, time_s, method, confidence, reconstruction_reliable, detail, ...rest } = raw;
+  return {
+    frame,
+    timeS: time_s,
+    method,
+    confidence,
+    reconstructionReliable: reconstruction_reliable ?? null,
+    detail: detail ?? rest,
+  };
 }
 
 export async function ingestPhases(
@@ -75,6 +94,7 @@ export async function ingestPhases(
   opponent: string | null,
   ab: number,
   clipDir: string,
+  position = 0,
 ): Promise<void> {
   if (!fs.existsSync(clipDir)) {
     throw new Error(`Clip dir not found: ${clipDir}`);
@@ -105,11 +125,19 @@ export async function ingestPhases(
   const phaseTypeIds = await loadPhaseTypeSlugToId();
 
   const clipSlug = path.basename(clipDir);
+  // Defaults to 0 (single-clip at-bats, the common case), but a real
+  // multi-clip at-bat needs its real position passed here too - findOrCreate
+  // VideoClip only PRESERVES an existing row's position, it doesn't fix a
+  // wrong one up later. A real bug this caused: ingesting all 4 clips of one
+  // at-bat by running this command before ingest-pose3d-frames for each
+  // pinned every one of them at position 0 (whichever ingester runs first
+  // for a brand-new clip wins the create), scrambling the multi-clip
+  // switcher order until manually corrected in the DB.
   const videoClipId = await findOrCreateVideoClip(gameLogEntryId, {
     clipSlug,
     fps: pose2d.meta.fps,
     nFrames: pose2d.meta.n_frames,
-    position: 0,
+    position,
   });
 
   let written = 0;
@@ -154,7 +182,8 @@ async function main() {
     .requiredOption("--date <date>", "Game date (YYYY-MM-DD), matches an existing game_log_entries row")
     .option("--opponent <name>", "Opponent, matches an existing game_log_entries row - omit for a practice session (opponent is a real SQL NULL there, not an empty string)")
     .requiredOption("--ab <number>", "At-bat number, matches an existing game_log_entries row")
-    .requiredOption("--clipDir <path>", 'Path to the pose3d output dir, e.g. "frames/emily_c/Emily_C_AB1 (4)"');
+    .requiredOption("--clipDir <path>", 'Path to the pose3d output dir, e.g. "frames/emily_c/Emily_C_AB1 (4)"')
+    .option("--position <number>", "This clip's position among multiple clips for the same at-bat (0-indexed) - matches ingest-pose3d-frames' own --position, pass the real value here too for a multi-clip at-bat regardless of ingestion order", "0");
   program.parse(process.argv);
   const opts = program.opts<{
     team: string;
@@ -163,10 +192,19 @@ async function main() {
     opponent?: string;
     ab: string;
     clipDir: string;
+    position: string;
   }>();
 
   try {
-    await ingestPhases(opts.team, opts.player, opts.date, opts.opponent ?? null, Number(opts.ab), opts.clipDir);
+    await ingestPhases(
+      opts.team,
+      opts.player,
+      opts.date,
+      opts.opponent ?? null,
+      Number(opts.ab),
+      opts.clipDir,
+      Number(opts.position),
+    );
   } catch (err) {
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);
