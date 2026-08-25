@@ -11,7 +11,7 @@
 // all for exactly this reason, on an already-installed app, even after a
 // full rebuild+reinstall. Confirmed the fix was correct all along; only the
 // cache-bust was missing.
-const CACHE_NAME = "barreliq-coach-f4a593f96a";
+const CACHE_NAME = "barreliq-coach-f8e3152b8c";
 // Separate, unversioned cache for cross-origin CDN libs (currently just
 // Three.js, see skeletonScene.js) - kept apart from CACHE_NAME so a normal
 // app-shell version bump doesn't force re-downloading a large lib that
@@ -22,7 +22,7 @@ const ASSETS = [
   "./team.html",
   "./player.html",
   "./report.html",
-  "./coach.css?v=f4a593f96a",
+  "./coach.css?v=f8e3152b8c",
   "./shared.js",
   "./config.js",
   "./manifest.json",
@@ -68,6 +68,19 @@ self.addEventListener("activate", (evt) => {
 });
 
 self.addEventListener("fetch", (evt) => {
+  // Never intercept a non-GET request - caching/cache.match() makes no sense
+  // for a mutation anyway, but the real bug this found: relaying a large-body
+  // POST/PUT (e.g. a coach uploading a video clip straight to GCS) through
+  // fetch(evt.request) forces the service worker to buffer that whole body
+  // itself, and on a memory-constrained WebView that reliably OOM-crashed the
+  // renderer process outright - confirmed by reproducing it directly (a 41MB
+  // upload killed the app every time, even after quadrupling the emulator's
+  // RAM, which ruled out "just needs more memory" and pointed at this
+  // architectural issue instead). Letting the browser handle non-GET
+  // requests directly (no respondWith() call at all) avoids the SW ever
+  // touching the body.
+  if (evt.request.method !== "GET") return;
+
   const url = new URL(evt.request.url);
   if (url.hostname === "esm.sh") {
     // The actual CDN this app loads from (Three.js, supabase-js) - cache-first,

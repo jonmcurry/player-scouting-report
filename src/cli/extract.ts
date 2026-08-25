@@ -42,6 +42,46 @@ function runFfmpeg(input: string, outputOptions: string[], output: string): Prom
   });
 }
 
+export interface PhaseTimestamp {
+  slug: string;
+  timeS: number;
+}
+
+/** Grabs one still per given phase timestamp, seeking directly to each
+ * moment rather than extractFrames()'s dense fixed-fps dump. Built for
+ * processUploadQueue.ts's automatic post-upload analysis step: metrics.json
+ * already computes each swing phase's real timestamp (stance/load/stride/
+ * contact/extension/follow-through), so there's no need to extract and hand
+ * an AI vision call hundreds of mostly-irrelevant frames (confirmed a real,
+ * slow, manual problem when done by hand on a 62s/624-frame clip - the
+ * actual swing was compressed into about 15 frames near the end) when the
+ * pipeline already knows exactly which instant matters for each phase.
+ * seekInput (before -i) trades a little frame-accuracy for speed - fine
+ * here, a coach-facing diagnostic still doesn't need frame-perfect
+ * precision the way the pose3d correction pipeline does. */
+export async function extractPhaseStills(
+  videoPath: string,
+  phases: PhaseTimestamp[],
+  outDir: string,
+): Promise<{ slug: string; path: string }[]> {
+  fs.mkdirSync(outDir, { recursive: true });
+  const results: { slug: string; path: string }[] = [];
+  for (const phase of phases) {
+    const outPath = path.join(outDir, `phase_${phase.slug}.png`);
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(videoPath)
+        .seekInput(Math.max(0, phase.timeS))
+        .outputOptions(["-frames:v", "1"])
+        .output(outPath)
+        .on("end", () => resolve())
+        .on("error", (err: Error) => reject(err))
+        .run();
+    });
+    results.push({ slug: phase.slug, path: outPath });
+  }
+  return results;
+}
+
 export async function extractFrames(opts: ExtractOptions): Promise<string> {
   if (!fs.existsSync(opts.video)) {
     throw new Error(`Video not found: ${opts.video}`);

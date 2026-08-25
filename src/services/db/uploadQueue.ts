@@ -34,6 +34,8 @@ export interface ClipContext {
   date: string;
   opponent: string | null;
   ab: number;
+  pitch: string | null;
+  result: string | null;
 }
 
 /**
@@ -92,7 +94,7 @@ async function findClipContext(
   const { data, error } = await supabase
     .from("video_clips")
     .select(
-      "game_log_entries!inner(date, opponent, ab, players!inner(slug, teams!inner(slug)))",
+      "game_log_entries!inner(date, opponent, ab, pitch, result, players!inner(slug, teams!inner(slug)))",
     )
     .eq("id", videoClipId)
     .single();
@@ -103,6 +105,8 @@ async function findClipContext(
     date: string;
     opponent: string | null;
     ab: number;
+    pitch: string | null;
+    result: string | null;
     players: { slug: string; teams: { slug: string } };
   };
   return {
@@ -114,6 +118,8 @@ async function findClipContext(
     date: entry.date,
     opponent: entry.opponent,
     ab: entry.ab,
+    pitch: entry.pitch,
+    result: entry.result,
   };
 }
 

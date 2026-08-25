@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=f4a593f96a">
+<link rel="stylesheet" href="./coach.css?v=f8e3152b8c">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -502,14 +502,20 @@
     ]);
 
     const compEl = document.getElementById("compList");
+    // notesHtml used to only render inside the "has at least one comp row"
+    // branch - a real bug this surfaced: an analysis that deliberately finds
+    // NO fitting comp (honest, not a failure - see analyze.ts's own comment
+    // on why forcing a bad comp match is worse than none) still writes a
+    // comp_notes row explaining that call, and a coach had no way to ever
+    // see it. Notes render regardless of whether there are any comp rows.
+    const notesHtml = (notes ?? [])
+      .map((n) => `<p class="comp-note">${escapeHtml(n.note)}</p>`)
+      .join("");
     if (!comps || comps.length === 0) {
-      compEl.innerHTML = `<p class="hint">Comp cues will be picked once the specific issue is identified from film.</p>`;
+      compEl.innerHTML = notesHtml || `<p class="hint">Comp cues will be picked once the specific issue is identified from film.</p>`;
     } else {
       const rows = comps
         .map((c) => `<tr><td>${escapeHtml(c.comp_name)}</td><td>${escapeHtml(c.cue)}</td></tr>`)
-        .join("");
-      const notesHtml = (notes ?? [])
-        .map((n) => `<p class="comp-note">${escapeHtml(n.note)}</p>`)
         .join("");
       compEl.innerHTML = `<table class="comp-table"><tbody>${rows}</tbody></table>${notesHtml}`;
     }

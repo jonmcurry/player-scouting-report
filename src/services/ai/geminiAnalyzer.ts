@@ -25,61 +25,37 @@
  * credential type actually provided - an AI-Studio-style key, not a GCP
  * service account) - NOT Vertex AI IAM/ADC auth. See this project's README
  * for the documented future-upgrade path to Vertex mode.
+ *
+ * Intended as the production analyzer (see processUploadQueue.ts's
+ * AI_ANALYZER env var) - claudeCliAnalyzer.ts is the local-testing
+ * alternative for when no working Gemini key is available, sharing this
+ * file's prompt/schema/types via swingAnalysisShared.ts so the two backends
+ * can't silently drift on what they're asked to produce.
  */
 import { GoogleGenAI, Type } from "@google/genai";
 import "dotenv/config";
 import { CHECKPOINTS } from "../../types/scouting.js";
-import type { DraftSource, Score } from "../../types/scouting.js";
+import {
+  SOFTBALL_COMP_BANK,
+  SWING_ANALYSIS_SYSTEM_PROMPT as SYSTEM_PROMPT,
+  type ChecklistDraft,
+  type IssueDraft,
+  type CompDraft,
+  type DrillDraft,
+  type SwingAnalysisResult,
+} from "./swingAnalysisShared.js";
 
 const GEMINI_MODEL = "gemini-1.5-flash";
 
-const SOFTBALL_COMP_BANK = [
-  "Alo",
-  "Chamberlain",
-  "Chidester",
-  "Romero",
-  "Watley",
-  "McCleney",
-];
-
-const SYSTEM_PROMPT = `You are a youth softball (10U) swing-mechanics coach reviewing frame
-stills from one at-bat. Rate all ${CHECKPOINTS.length} checkpoints listed below (the last one,
-"Swing decisions (pitch selection)", judges plate discipline from the pitch-location context
-given, not swing shape) plus draft any distinct mechanical issues you see.
-
-Checkpoints (score each 1-3: 1=Needs work, 2=Developing, 3=Solid):
-${CHECKPOINTS.map((c) => `- ${c.slug}: ${c.label}`).join("\n")}
-
-Critical context rule: always weigh the outcome against the pitch location provided. A rollover
-or weak contact on an outside/low pitch is often a normal, expected result of that pitch, NOT a
-swing flaw - the same rollover on a middle-middle pitch IS worth flagging as a mechanical issue.
-Never diagnose a flaw from outcome alone without checking whether the pitch location already
-explains it.
-
-Reference comps: when citing a comparable hitter's cue, only use this softball-specific bank -
-${SOFTBALL_COMP_BANK.join(", ")}. Never cite an MLB/baseball player as a comp. If none of these
-softball comps actually fits the specific flaw, don't cite a named comp at all.
-
-Output strictly matches the provided JSON schema. Every checklist entry's "notes" field must cite
-concrete visual evidence from the frames (posture, joint angles, timing) - never a bare score with
-no justification.`;
-
-export interface GeminiChecklistDraft {
-  checkpointSlug: string;
-  score: Score;
-  notes: string;
-}
-export interface GeminiIssueDraft {
-  issue: string;
-  seenInAtBats: string;
-  likelyCause: string;
-  effect: string;
-}
-export interface GeminiAnalysisResult {
-  checklist: GeminiChecklistDraft[];
-  issues: GeminiIssueDraft[];
-  source: DraftSource;
-}
+// Re-exported under their original "Gemini*"-prefixed names for every
+// existing importer (analyze.ts etc.) - the underlying types now live in
+// swingAnalysisShared.ts so claudeCliAnalyzer.ts can share them without
+// duplicating (and risking drifting from) this file's own copy.
+export type GeminiChecklistDraft = ChecklistDraft;
+export type GeminiIssueDraft = IssueDraft;
+export type GeminiCompDraft = CompDraft;
+export type GeminiDrillDraft = DrillDraft;
+export type GeminiAnalysisResult = SwingAnalysisResult;
 
 export interface FrameImage {
   data: Buffer;
@@ -117,8 +93,31 @@ const RESPONSE_SCHEMA = {
         required: ["issue", "seenInAtBats", "likelyCause", "effect"],
       },
     },
+    comps: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          compName: { type: Type.STRING, enum: SOFTBALL_COMP_BANK },
+          cue: { type: Type.STRING },
+        },
+        required: ["compName", "cue"],
+      },
+    },
+    compNotes: { type: Type.ARRAY, items: { type: Type.STRING } },
+    drills: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          description: { type: Type.STRING },
+        },
+        required: ["title", "description"],
+      },
+    },
   },
-  required: ["checklist", "issues"],
+  required: ["checklist", "issues", "comps", "compNotes", "drills"],
 };
 
 let client: GoogleGenAI | null = null;
@@ -165,6 +164,12 @@ export async function analyzeSwing(
   if (!text) {
     throw new Error("Gemini returned no text content");
   }
-  const parsed = JSON.parse(text) as { checklist: GeminiChecklistDraft[]; issues: GeminiIssueDraft[] };
+  const parsed = JSON.parse(text) as {
+    checklist: GeminiChecklistDraft[];
+    issues: GeminiIssueDraft[];
+    comps: GeminiCompDraft[];
+    compNotes: string[];
+    drills: GeminiDrillDraft[];
+  };
   return { ...parsed, source: "gemini" };
 }

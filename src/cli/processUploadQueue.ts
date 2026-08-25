@@ -21,6 +21,16 @@
  * src/services/pose3d/smoothJoints.ts, empirically tuned against real
  * data) and store it, not to transcode/upload a browser-playable video.
  *
+ * Also runs AI diagnosis automatically once a clip is ready: extracts one
+ * still per located swing phase (extractPhaseStills, seeking metrics.json's
+ * own phase timestamps directly rather than dumping a dense fixed-fps frame
+ * sequence) and hands them to analyze.ts's analyzeAndSync (Gemini today -
+ * see geminiAnalyzer.ts for the current API-key status). Wrapped in its own
+ * try/catch, separate from the pipeline/ingestion try/catch above - a
+ * diagnosis failure must never undo an otherwise-successful clip or mark it
+ * failed, since the pose3d/checklist/skeleton data is the core value and is
+ * already saved by that point.
+ *
  * Usage:
  *   npm run process-upload-queue
  *   (Ctrl-C to stop; polls every POLL_INTERVAL_MS, processes one clip at a
@@ -51,6 +61,8 @@ import { smoothJoints, SMOOTHING_METHOD_LABEL, type Pose3dFrame } from "../servi
 import { rigidifySkeleton, RIGID_METHOD_LABEL } from "../services/pose3d/rigidifySkeleton.js";
 import { extractLongestTrackedRun, MIN_TRACKED_FRAMES } from "../services/pose3d/trackedFrames.js";
 import { ingestPhases } from "./ingestPhases.js";
+import { extractPhaseStills, type PhaseTimestamp } from "./extract.js";
+import { analyzeAndSync } from "./analyze.js";
 
 const POLL_INTERVAL_MS = 10_000;
 const VENV_PYTHON = path.join(".venv_pose3d", "Scripts", "python.exe");
@@ -182,6 +194,7 @@ export async function processOnePendingClip(): Promise<boolean> {
     // this real value on a real clip.
     const metrics = JSON.parse(fs.readFileSync(path.join(outDir, "metrics.json"), "utf-8")) as {
       lead_side_guess?: "l" | "r" | null;
+      phases?: Record<string, { time_s: number | null }>;
     };
     const trackedFrames = extractLongestTrackedRun(pose3d.frames);
     if (trackedFrames.length < MIN_TRACKED_FRAMES) {
@@ -205,6 +218,43 @@ export async function processOnePendingClip(): Promise<boolean> {
 
     await markClipReady(clip.videoClipId);
     console.log(`[process-upload-queue] Clip "${clip.clipSlug}" ready.`);
+
+    // AI diagnosis (checklist draft + issues + comps + drills) - own try/
+    // catch deliberately separate from the block above: this clip's pose3d/
+    // checklist/skeleton data is the core value and is already saved and
+    // marked ready by this point, so a diagnosis failure (e.g. an invalid
+    // GEMINI_API_KEY - a real, current gap, see .env) must never undo that
+    // or mark an otherwise-successful clip as failed. Runs automatically on
+    // every upload per the coach's own request - "everything should run as
+    // soon as a video is uploaded" - rather than needing a human to run
+    // extract.ts + analyze.ts by hand afterward.
+    try {
+      const phaseEntries = Object.entries(metrics.phases ?? {})
+        .filter((entry): entry is [string, { time_s: number }] => entry[1].time_s !== null)
+        .map(([slug, phase]): PhaseTimestamp => ({ slug, timeS: phase.time_s }));
+      if (phaseEntries.length === 0) {
+        console.log(`[process-upload-queue] Clip "${clip.clipSlug}": no located swing phases, skipping AI diagnosis.`);
+      } else {
+        const stillsDir = path.join(outDir, "phase_stills");
+        console.log(`[process-upload-queue] Extracting ${phaseEntries.length} phase still(s) for AI diagnosis`);
+        await extractPhaseStills(localRawPath, phaseEntries, stillsDir);
+        const pitchContext = [clip.pitch, clip.result].filter(Boolean).join(" - ") || "No pitch/result details recorded for this at-bat.";
+        // AI_ANALYZER selects the backend - defaults to Gemini (the intended
+        // production path); set to "claude-cli" for local testing to use
+        // claudeCliAnalyzer.ts instead, which needs no separate API key (see
+        // that file's own docstring - reuses the machine's Claude
+        // subscription login). Never the reverse default: a dev's local
+        // subscription login isn't a real server-side credential, so
+        // production must keep defaulting to Gemini even if this env var is
+        // simply unset there.
+        const useClaudeCli = process.env.AI_ANALYZER === "claude-cli";
+        console.log(`[process-upload-queue] Running AI diagnosis for "${clip.clipSlug}" via ${useClaudeCli ? "claude CLI" : "Gemini"}`);
+        await analyzeAndSync(clip.teamSlug, clip.playerSlug, stillsDir, pitchContext, false, null, useClaudeCli);
+      }
+    } catch (diagErr) {
+      const message = diagErr instanceof Error ? diagErr.message : String(diagErr);
+      console.error(`[process-upload-queue] AI diagnosis for "${clip.clipSlug}" failed (clip itself is still ready): ${message}`);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[process-upload-queue] Clip "${clip.clipSlug}" failed: ${message}`);

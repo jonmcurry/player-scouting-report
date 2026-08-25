@@ -24,8 +24,10 @@ export const PATTERN_AVG_THRESHOLD = 2.0;
 export type Score = 1 | 2 | 3;
 
 /** Who/what produced an AI-drafted score or issue - lets the UI distinguish Gemini's
- * read from the pose3d pipeline's measured-angle read when they disagree. */
-export type DraftSource = "gemini" | "pose3d";
+ * read from the pose3d pipeline's measured-angle read when they disagree. "claude" is
+ * a direct Claude vision read of the extracted frame stills, same shape as a Gemini
+ * draft - used when analyze.ts's Gemini path isn't usable (see migration 00024). */
+export type DraftSource = "gemini" | "pose3d" | "claude";
 
 export interface GameLogEntry {
   id: string;

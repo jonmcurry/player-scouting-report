@@ -4,6 +4,41 @@ All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file starts 2026-08-01 — see
 `NEXT_STEPS.md` (and its own git history) for the detailed narrative of everything before that.
 
+## [0.12.0] - 2026-08-23
+
+### Added
+- AI-drafted swing diagnosis (checklist scores, issues, reference comps, drill recommendations)
+  now runs automatically the moment an uploaded clip finishes processing - previously required a
+  human to manually run `extract.ts` + `analyze.ts` afterward. `processUploadQueue.ts` extracts one
+  still per located swing phase (seeking metrics.json's own phase timestamps directly, instead of
+  dumping a dense fixed-fps frame sequence) and hands them to the analyzer automatically, in its own
+  try/catch so a diagnosis failure can never undo or fail an otherwise-successful clip.
+- Comp/drill recommendations were never part of the AI analysis pipeline at all before now -
+  `comp_recommendations`, `comp_notes`, and `drill_recommendations` are new outputs of both analyzer
+  backends, using full-replace semantics on each run (those tables have no reviewed-by protection
+  concept, unlike checklist_scores/issues).
+- New local-testing analyzer backend (`claudeCliAnalyzer.ts`): shells out to the `claude` CLI
+  instead of calling the Gemini API, reusing the developer's own Claude subscription login rather
+  than a separate metered key. Selected via `AI_ANALYZER=claude-cli` (local dev only - production
+  stays on Gemini by default). Verified end-to-end against a real clip.
+
+### Fixed
+- `analyze.ts` re-running for the same player was pure `INSERT` for the `issues` table, silently
+  duplicating every unreviewed issue on each run - now clears unreviewed drafts first, the same
+  protection `checklist_scores` already has for coach-confirmed work.
+- `coach/player.html`'s "Reference Comp" section only ever rendered a `comp_notes` entry when there
+  was *also* at least one `comp_recommendations` row - an honest "no comp fits" note had nowhere to
+  display. Notes now render regardless.
+- `coach/sw.js`'s service worker intercepted every cross-origin request, including large video
+  uploads - relaying a large-body POST/PUT through `fetch(evt.request)` forced the worker to buffer
+  the whole body itself, reliably OOM-crashing the WebView renderer on a real 41MB upload (confirmed
+  even after quadrupling the test emulator's RAM, ruling out a resource-constraint explanation).
+  Non-GET requests are no longer intercepted at all.
+- A real, confirmed shell-escaping bug in the initial `claudeCliAnalyzer.ts` implementation:
+  `child_process.spawn` with `shell: true` and an args array does not escape those args, only
+  concatenates them - passing a large multi-line prompt as an argv element got mangled badly enough
+  that `claude` received no usable prompt at all. Fixed by piping the prompt via stdin instead.
+
 ## [0.11.0] - 2026-08-21
 
 ### Fixed
