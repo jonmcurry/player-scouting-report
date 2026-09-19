@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.14.0] - 2026-09-19
+
+### Added
+
+- Longitudinal player-development model (migrations 00025-00027): `at_bat_pitches` (many pitches per at-bat, each with its own clip(s)), `player_priorities` with status history, `player_priority_drills`, coach-authored `player_priority_observations`, `practice_sessions` / `practice_repetitions` (baseline / drill / post-drill grouping, coach outcome), and a small curated `drill_library`. RLS on every new table, with tests. Existing clips migrated onto Pitch 1 / practice reps with no data loss; triggers keep the older log-at-bat and attach-video flows consistent with the new model.
+- Player Development page: current priorities with evidence, assigned drills, follow-ups, game-transfer check, coaching-loop steps, next focus, chronological timeline, game-vs-practice mix, and lazy robust-metric trends.
+- Simplified coach review page (`review.html?clip=&phase=`): what I see / what to work on / what to look for next time / track progress, with Approve, Edit, Reject, Promote to priority, Assign drill, and Mark progress. Technical details (analysis quality, metrics, 3D, detailed checklist) are collapsed. Phase deep links seek the video.
+- Swing comparison page: pick any two swings (game, practice, mixed), video mode synced on a chosen phase, Frame A/B mode with Load to Contact, Plant to Contact, Contact to Finish presets, robust-only metric comparison, priority trend, and 3D A | 3D B with a shared viewpoint and trails.
+- At-bat page (pitch add/edit/delete, per-pitch video attach, count progression, facts-only summary) and practice session page (goal, focus priority, drill, rep grouping, usable/rejected, baseline vs post-drill compare, coach outcome).
+- Team dashboard (needs review, follow-ups due, active priorities, recent progress/practice/game swings) and per-team attention line on the home screen.
+- Ingest-time analysis quality (pose/bat coverage, contact confidence, reconstruction, occlusion, handedness) stored on `video_clip_metrics`, plus `npm run backfill-analysis-quality`.
+- 3D motion trails (hands, bat barrel, pelvis, sternum) with short configurable windows, and shoulder/hip axis overlays.
+
+### Changed
+
+- AI diagnosis now drafts observation / evidence / why it may matter / coaching cue / suggested drill / what to look for next time / confidence. Re-running analysis never overwrites a coach-reviewed issue and never creates or resolves a priority.
+- Player page: active priorities shown up top; the 11-checkpoint checklist is now an advanced, collapsed section.
+- Public player report simplified to strengths, what we're working on and why, drill, progress over time, and relevant video; the server whitelists coach-confirmed content only (no internal diagnostics) and serves video only for clips a coach linked as evidence.
+- `uploadRawClip` can attach a clip directly to a pitch or practice rep.
+
+## [0.13.0] - 2026-09-19
+
+### Added
+
+- Added a deterministic five-video validation runner with private diagnostic videos, reconstruction quality gates, versioned confidence summaries, and regression metadata.
+- Added canonical reconstruction math for coordinates, short-gap interpolation, bone stabilization, foot planting, handedness evidence, and animation validation, with tests.
+- Added original-video plus 3D coach review, frame stepping, named reconstructed camera views, and a secure short-lived private-video read endpoint.
+
+### Changed
+
+- Labels video-derived measurements separately from monocular 3D estimates and strengthens AI-draft precision/source-of-truth constraints.
+- Uses a named FBX retarget map and preserves 3D failure as a non-blocking video/2D fallback.
+
+### Fixed
+
+- Prevented optional FFmpeg audio/decimation helpers from crashing the visual pipeline when executables are unavailable.
+- Reduced limb-length variation and planted-foot sliding, and corrected arbitrary global lifter tilt with one sequence-level stance transform.
+
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This file starts 2026-08-01 — see
 `NEXT_STEPS.md` (and its own git history) for the detailed narrative of everything before that.

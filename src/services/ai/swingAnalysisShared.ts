@@ -21,6 +21,22 @@ stills from one at-bat. Rate all ${CHECKPOINTS.length} checkpoints listed below 
 given, not swing shape) plus draft any distinct mechanical issues you see, plus drill
 recommendations and (only when genuinely apt) a reference comp for each issue.
 
+Evidence hierarchy: the original game video/frame stills are the source of truth. Automated pose,
+bat tracks, metrics, and any 3D reconstruction are supporting evidence only. Never infer a scouting
+conclusion solely from the 3D avatar. Do not state exact joint angles, hip/shoulder rotation, bat
+speed, exit velocity, or real-world distances unless calibrated measured data with confidence was
+explicitly supplied. When referring to a sufficiently supported reconstructed observation, say
+"the reconstruction suggests" and preserve its confidence/caveat. This output is an AI draft for
+coach editing or rejection, never a final assessment.
+
+Coaching structure for every issue you draft (these are suggestions the coach will approve, edit or
+reject - never final): OBSERVATION (issue: one plain-language sentence a coach would say), EVIDENCE
+(what is visible in which frame/phase that supports it), WHY IT MAY MATTER (effect), COACHING CUE
+(one short cue the coach could say to the player), SUGGESTED DRILL (name only, from drills a coach
+would recognise), WHAT TO LOOK FOR NEXT TIME (one concrete thing to watch in the next swing), and
+CONFIDENCE (high|medium|low - low whenever evidence rests on one swing or one frame). Never claim
+certainty the frames don't support, and never rest an observation on the 3D avatar alone.
+
 Checkpoints (score each 1-3: 1=Needs work, 2=Developing, 3=Solid):
 ${CHECKPOINTS.map((c) => `- ${c.slug}: ${c.label}`).join("\n")}
 
@@ -55,11 +71,22 @@ export interface ChecklistDraft {
   score: Score;
   notes: string;
 }
+/** Coaching-format issue draft. `issue` is the OBSERVATION, `evidence` what is
+ * visibly supporting it, `effect` WHY IT MAY MATTER. Everything past `effect`
+ * is optional so older draft files (and older stored rows) stay valid. */
+export type DraftConfidence = "high" | "medium" | "low";
 export interface IssueDraft {
   issue: string;
   seenInAtBats: string;
   likelyCause: string;
   effect: string;
+  evidence?: string;
+  coachingCue?: string;
+  suggestedDrill?: string;
+  lookForNext?: string;
+  confidence?: DraftConfidence;
+  /** Swing phase the evidence is from (stance, load, stride, contact, extension, follow_through). */
+  phase?: string;
 }
 export interface CompDraft {
   compName: string;
@@ -88,7 +115,7 @@ explanation before or after it - matching exactly this shape:
 
 {
   "checklist": [{ "checkpointSlug": string (one of: ${CHECKPOINTS.map((c) => c.slug).join(", ")}), "score": 1|2|3, "notes": string }],
-  "issues": [{ "issue": string, "seenInAtBats": string, "likelyCause": string, "effect": string }],
+  "issues": [{ "issue": string (the observation), "seenInAtBats": string, "likelyCause": string, "effect": string (why it may matter), "evidence": string, "coachingCue": string, "suggestedDrill": string, "lookForNext": string (what to look for next time), "confidence": "high"|"medium"|"low", "phase": string (optional: stance|load|stride|contact|extension|follow_through) }],
   "comps": [{ "compName": string (one of: ${SOFTBALL_COMP_BANK.join(", ")}), "cue": string }],
   "compNotes": [string],
   "drills": [{ "title": string, "description": string }]

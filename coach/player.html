@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=f8e3152b8c">
+<link rel="stylesheet" href="./coach.css?v=7de56c9b15">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -12,14 +12,19 @@
 <body>
 <header class="app-bar" id="appBar"></header>
 <div class="wrap">
+  <nav id="devTabs"></nav>
   <div id="trendBanner"></div>
   <div class="stats-row" id="statsRow"></div>
 
-  <div style="display:flex;justify-content:space-between;align-items:center;">
-    <h2 style="margin-top:0;">Swing Checklist</h2>
-    <span class="hint">11 Checkpoints</span>
-  </div>
-  <div id="checklistCards"></div>
+  <div id="priorityStrip"></div>
+
+  <details class="drawer" id="checklistDrawer">
+    <summary><span>Detailed checklist scoring <span class="hint" id="checklistHint">11 checkpoints · advanced</span></span></summary>
+    <div class="drawer-body">
+      <p class="hint">Optional detail. You don't need to confirm every score - use the review page for what matters most, and the development page for what to work on.</p>
+      <div id="checklistCards"></div>
+    </div>
+  </details>
 
   <h2>Diagnosis, Comps &amp; Plan</h2>
   <details class="drawer" open>
@@ -223,6 +228,14 @@
       }
     });
     await loadShareLinks();
+
+    const devQuery = `team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}`;
+    const tabsEl = document.getElementById("devTabs");
+    tabsEl.className = "dev-tabs";
+    tabsEl.innerHTML = [["Report", "player"], ["Development", "development"], ["Compare", "compare"], ["Practice", "session"]]
+      .map(([label, page]) => `<a href="./${page}.html?${devQuery}" ${page === "player" ? 'aria-current="page"' : ""}>${label}</a>`)
+      .join("");
+    await loadPriorityStrip(devQuery);
 
     const reportHref = `./player.html?team=${teamSlug}&player=${playerSlug}`;
     renderBottomNav(document.getElementById("bottomNav"), {
@@ -459,6 +472,27 @@
         renderTrendChart(card.querySelector(".trend-mount"), scoreHistory);
       }
     });
+    const pending = (rows ?? []).filter((r) => r.score !== null && !r.reviewed_by).length;
+    document.getElementById("checklistHint").textContent = pending
+      ? `${pending} AI draft${pending === 1 ? "" : "s"} unconfirmed · advanced`
+      : "11 checkpoints · advanced";
+  }
+
+  /** Top-of-page answer to "what are we working on": active priorities and
+   * how many AI drafts still need a coach decision. Links out; owns no state. */
+  async function loadPriorityStrip(devQuery) {
+    const el = document.getElementById("priorityStrip");
+    const [{ data: pri }, { count: drafts }] = await Promise.all([
+      supabase.from("player_priorities").select("id, title, status").eq("player_id", playerId).in("status", ["active", "monitoring"]).order("priority_order").limit(3),
+      supabase.from("issues").select("id", { count: "exact", head: true }).eq("player_id", playerId).eq("review_status", "draft"),
+    ]);
+    const list = pri ?? [];
+    el.innerHTML = `<div class="dev-card">
+      <div class="dev-row between"><b>Working on</b><a href="./development.html?${devQuery}">Open development →</a></div>
+      ${list.length ? `<ol style="margin:6px 0 0;padding-left:20px;">${list.map((p) => `<li>${escapeHtml(p.title)}${p.status === "monitoring" ? ' <span class="hint">(monitoring)</span>' : ""}</li>`).join("")}</ol>`
+        : `<p class="hint" style="margin:6px 0 0;">No active priorities yet. Review a swing and promote an observation to begin tracking development.</p>`}
+      ${drafts ? `<p class="hint" style="margin:6px 0 0;">${drafts} AI observation${drafts === 1 ? "" : "s"} waiting for your review.</p>` : ""}
+    </div>`;
   }
 
   async function loadIssues() {
@@ -596,6 +630,7 @@
         </div>
         <p class="hint">${escapeHtml(g.pitch ?? "—")}${zoneBits ? ` <span style="color:var(--clay);">(${escapeHtml(zoneBits)})</span>` : ""}</p>
         <p>${escapeHtml(g.result)}</p>
+        <p class="hint" style="margin:0 0 6px;"><a href="./atbat.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}&entry=${g.id}">Pitches &amp; at-bat summary</a></p>
         <div class="scrubber-mount" data-game-log-entry="${g.id}"></div>
       </div>
     `;
@@ -639,6 +674,7 @@
           <b>${escapeHtml(g.date)}${g.session_note ? ` — ${escapeHtml(g.session_note)}` : ""}, Rep ${escapeHtml(g.ab)}</b>
           <button class="tap-target btn-danger subtle" style="flex:none;" data-delete-at-bat="${g.id}" title="Delete practice session">🗑</button>
         </div>
+        <p class="hint" style="margin:0 0 6px;"><a href="./session.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}">Practice sessions</a></p>
         <div class="scrubber-mount" data-game-log-entry="${g.id}"></div>
       </div>
     `,
@@ -817,7 +853,10 @@
 
     const canvasContainer = document.createElement("div");
     clipMount.appendChild(canvasContainer);
-    renderSkeletonComparison(canvasContainer, { realFrames: pose3dData.frames, correctedFrames, phases, note });
+    let videoUrl = null;
+    const { data: videoResult } = await supabase.functions.invoke("get-video-url", { body: { videoClipId: clip.id } });
+    if (videoResult?.url) videoUrl = videoResult.url;
+    renderSkeletonComparison(canvasContainer, { realFrames: pose3dData.frames, correctedFrames, phases, note, videoUrl });
 
     const metricsRow = await loadSwingMetrics(clip.id);
     if (metricsRow) {

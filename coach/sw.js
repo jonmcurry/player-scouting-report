@@ -11,7 +11,7 @@
 // all for exactly this reason, on an already-installed app, even after a
 // full rebuild+reinstall. Confirmed the fix was correct all along; only the
 // cache-bust was missing.
-const CACHE_NAME = "barreliq-coach-f8e3152b8c";
+const CACHE_NAME = "barreliq-coach-7de56c9b15";
 // Separate, unversioned cache for cross-origin CDN libs (currently just
 // Three.js, see skeletonScene.js) - kept apart from CACHE_NAME so a normal
 // app-shell version bump doesn't force re-downloading a large lib that
@@ -22,7 +22,12 @@ const ASSETS = [
   "./team.html",
   "./player.html",
   "./report.html",
-  "./coach.css?v=f8e3152b8c",
+  "./development.html",
+  "./review.html",
+  "./compare.html",
+  "./atbat.html",
+  "./session.html",
+  "./coach.css?v=7de56c9b15",
   "./shared.js",
   "./config.js",
   "./manifest.json",
@@ -37,6 +42,11 @@ const ASSETS = [
   "./components/videoUpload.js",
   "./components/pitchZonePicker.js",
   "./components/swingMetricsPanel.js",
+  "./components/avatar-retarget-map.js",
+  "./components/developmentLogic.js",
+  "./components/devUi.js",
+  "./components/devActions.js",
+  "./components/teamDashboard.js",
   "./assets/models/batter.fbx",
 ];
 

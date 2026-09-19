@@ -127,21 +127,38 @@ def _skip(video_path):
 
 
 def video_duration_s(video_path):
-    out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=noprint_wrappers=1:nokey=1", str(video_path)],
-        capture_output=True, text=True,
-    )
-    return float(out.stdout.strip())
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(video_path)],
+            capture_output=True, text=True,
+        )
+        return float(out.stdout.strip())
+    except (FileNotFoundError, ValueError):
+        # The audio pre-pass is an optimization, not a hard dependency. Use
+        # OpenCV container metadata so a machine without ffprobe can still
+        # run the full visual pipeline and honestly fall back below.
+        import cv2
+        cap = cv2.VideoCapture(str(video_path))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        cap.release()
+        if fps <= 0 or frames <= 0:
+            raise ValueError("neither ffprobe nor OpenCV could read video duration")
+        return frames / fps
 
 
 def has_audio_stream(video_path):
-    out = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "a",
-         "-show_entries", "stream=index", "-of", "csv=p=0", str(video_path)],
-        capture_output=True, text=True,
-    )
-    return bool(out.stdout.strip())
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "a",
+             "-show_entries", "stream=index", "-of", "csv=p=0", str(video_path)],
+            capture_output=True, text=True,
+        )
+        return bool(out.stdout.strip())
+    except FileNotFoundError:
+        print("[locate_swing] ffprobe unavailable; skipping optional audio localization")
+        return False
 
 
 def extract_audio(video_path, wav_path):

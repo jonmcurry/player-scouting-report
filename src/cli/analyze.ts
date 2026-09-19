@@ -65,6 +65,7 @@ export async function analyzeAndSync(
   force = false,
   claudeDraftPath: string | null = null,
   useClaudeCli = false,
+  videoClipId: string | null = null,
 ): Promise<void> {
   let result: Pick<GeminiAnalysisResult, "checklist" | "issues" | "comps" | "compNotes" | "drills">;
   let source: DraftSource;
@@ -126,15 +127,38 @@ export async function analyzeAndSync(
     .from("issues")
     .delete()
     .eq("player_id", playerId)
-    .is("reviewed_by", null);
+    .is("reviewed_by", null)
+    .eq("review_status", "draft");
   if (delIssuesErr) throw new Error(`Clearing old unreviewed issues: ${delIssuesErr.message}`);
-  if (result.issues.length > 0) {
-    const rows = result.issues.map((i) => ({
+
+  // A finding a coach already approved/edited/rejected is a decision, not a
+  // draft: never duplicate an approved one and never resurrect a rejected one
+  // as a fresh unreviewed draft just because the model saw it again.
+  const { data: decided, error: decidedErr } = await supabase
+    .from("issues")
+    .select("issue")
+    .eq("player_id", playerId);
+  if (decidedErr) throw new Error(`Reading coach-reviewed issues: ${decidedErr.message}`);
+  const norm = (t: string) => t.trim().toLowerCase().replace(/\s+/g, " ");
+  const alreadyDecided = new Set((decided ?? []).map((r) => norm(String(r.issue))));
+  const freshIssues = result.issues.filter((i) => !alreadyDecided.has(norm(i.issue)));
+
+  if (freshIssues.length > 0) {
+    const rows = freshIssues.map((i) => ({
       player_id: playerId,
       issue: i.issue,
       seen_in_at_bats: i.seenInAtBats,
       likely_cause: i.likelyCause,
       effect: i.effect,
+      evidence: i.evidence ?? "",
+      coaching_cue: i.coachingCue ?? "",
+      suggested_drill: i.suggestedDrill ?? null,
+      look_for_next: i.lookForNext ?? "",
+      confidence: i.confidence ?? null,
+      phase: i.phase ?? null,
+      video_clip_id: videoClipId,
+      suggested_priority_title: i.issue,
+      review_status: "draft",
       reviewed_by: null,
       source,
     }));
@@ -175,7 +199,7 @@ export async function analyzeAndSync(
 
   console.log(
     `Analyzed ${playerSlug}: ${updated} checkpoint(s) updated, ${skipped} skipped (already reviewed), ` +
-      `${result.issues.length} issue(s), ${result.comps.length} comp(s), ${result.drills.length} drill(s) drafted.`,
+      `${freshIssues.length} new issue draft(s), ${result.comps.length} comp(s), ${result.drills.length} drill(s) drafted.`,
   );
 }
 

@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>BarrelIQ — Compare Swings</title>
+<link rel="stylesheet" href="./coach.css?v=7de56c9b15">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/icon-192.svg">
+<meta name="theme-color" content="#121418">
+</head>
+<body>
+<header class="app-bar" id="appBar"></header>
+<div class="wrap wide">
+  <nav id="devTabs"></nav>
+  <p class="hint" id="loading">Loading swings…</p>
+  <div id="content" hidden>
+    <h2>1. Pick two swings</h2>
+    <div class="dev-card">
+      <div class="dev-row">
+        <div class="dev-field" style="margin:0;flex:1 1 120px;"><label>Source</label>
+          <select id="fContext"><option value="">Games + practice</option><option value="game">Games</option><option value="practice">Practice</option></select></div>
+        <div class="dev-field" style="margin:0;flex:1 1 120px;"><label>Swing / take</label>
+          <select id="fSwung"><option value="">All</option><option value="swing">Swings</option><option value="take">Takes</option></select></div>
+        <div class="dev-field" style="margin:0;flex:1 1 140px;"><label>Priority</label><select id="fPriority"><option value="">Any</option></select></div>
+        <div class="dev-field" style="margin:0;flex:1 1 120px;"><label>Practice group</label>
+          <select id="fGrouping"><option value="">Any</option></select></div>
+        <div class="dev-field" style="margin:0;flex:1 1 120px;"><label>Reviewed</label>
+          <select id="fReviewed"><option value="">Any</option><option value="reviewed">Reviewed</option><option value="unreviewed">Unreviewed</option></select></div>
+      </div>
+      <div class="dev-row" style="margin-top:8px;">
+        <span class="hint" id="pickHint">Tap a swing to set Swing A, then another for Swing B.</span>
+        <button class="tap-target" id="clearPick">Clear</button>
+      </div>
+    </div>
+    <div class="swing-list" id="swingList"></div>
+    <div class="dev-btns"><button class="tap-target" id="loadMore" hidden>Load older swings</button></div>
+
+    <div id="compareArea" hidden>
+      <h2>2. Compare</h2>
+      <div class="dev-tabs" id="modeTabs">
+        <a href="#" data-mode="video" aria-current="page">Video</a>
+        <a href="#" data-mode="frame">Frame A/B</a>
+        <a href="#" data-mode="metrics">Metrics</a>
+        <a href="#" data-mode="trend">Trend</a>
+      </div>
+      <div id="modeBody"></div>
+      <div class="dev-btns"><button class="primary tap-target" id="markProgress">Mark progress from this comparison</button></div>
+    </div>
+    <div id="noSelection"></div>
+  </div>
+</div>
+<nav class="bottom-nav" id="bottomNav"></nav>
+
+<script src="./config.local.js"></script>
+<script type="module">
+  import {
+    L, supabase, qs, loadContext, renderHeader, loadPriorities, loadObservations, loadSwingRecords, loadPhases, getVideoUrl,
+    emptyState, pill, escapeHtml, toast, fmtDate, lastComparisonKey,
+  } from "./components/devUi.js";
+  import { openObservationSheet } from "./components/devActions.js";
+  import { loadSwingMetrics } from "./components/swingMetricsPanel.js";
+  import { loadClipSkeletonData, renderSkeletonComparison } from "./components/skeletonComparison.js";
+
+  const PAGE = 40;
+  let ctx, swings = [], priorities = [], offset = 0, exhausted = false;
+  let A = null, B = null, mode = "video", phaseSlug = "contact";
+  const cache = new Map(); // clipId -> { phases, metrics, quality, videoUrl, skeleton }
+  const viewers = [];      // live 3D viewers to dispose on re-render
+  let frameSel = { a: { which: "A", phase: "load" }, b: { which: "A", phase: "contact" } };
+
+  async function main() {
+    ctx = await loadContext();
+    if (!ctx) return;
+    await renderHeader(ctx, "compare");
+    priorities = await loadPriorities(ctx.player.id, ["active", "monitoring", "resolved"]);
+    document.getElementById("fPriority").innerHTML = '<option value="">Any</option>' + priorities.map((p) => `<option value="${p.id}">${escapeHtml(p.title)}</option>`).join("");
+    document.getElementById("fGrouping").innerHTML = '<option value="">Any</option>' + L.PRACTICE_GROUPINGS.map((g) => `<option value="${g}">${escapeHtml(L.GROUPING_LABELS[g])}</option>`).join("");
+    await fetchMore();
+    restoreSelection();
+    wire();
+    document.getElementById("loading").hidden = true;
+    document.getElementById("content").hidden = false;
+    renderList();
+    renderCompare();
+  }
+
+  async function fetchMore() {
+    const rows = await loadSwingRecords(ctx.player.id, { limit: PAGE, offset });
+    offset += PAGE;
+    if (rows.length < PAGE) exhausted = true;
+    const seen = new Set(swings.map((s) => s.clipId));
+    swings.push(...rows.filter((r) => !seen.has(r.clipId)));
+  }
+
+  function restoreSelection() {
+    // Explicit ?a=&b= (evidence links) win over the remembered comparison.
+    let ids = [qs("a"), qs("b")];
+    if (!ids[0] && !ids[1]) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(lastComparisonKey(ctx.player.id)) ?? "null");
+        ids = saved ? [saved.a, saved.b] : [];
+      } catch { ids = []; }
+    }
+    A = swings.find((s) => s.clipId === ids[0]) ?? null;
+    B = swings.find((s) => s.clipId === ids[1]) ?? null;
+    if (qs("phase")) phaseSlug = qs("phase");
+    if (qs("mode")) mode = qs("mode");
+    const pri = qs("priority");
+    if (pri) document.getElementById("fPriority").value = pri;
+  }
+
+  function remember() {
+    try {
+      localStorage.setItem(lastComparisonKey(ctx.player.id), JSON.stringify({
+        a: A?.clipId ?? null, b: B?.clipId ?? null,
+        label: A && B ? `${L.describeSwing(A)}  vs  ${L.describeSwing(B)}` : "Last comparison",
+      }));
+    } catch { /* storage unavailable - comparison just isn't remembered */ }
+  }
+
+  function filters() {
+    return {
+      context: document.getElementById("fContext").value || undefined,
+      swung: document.getElementById("fSwung").value || undefined,
+      priorityId: document.getElementById("fPriority").value || undefined,
+      grouping: document.getElementById("fGrouping").value || undefined,
+      reviewed: document.getElementById("fReviewed").value || undefined,
+    };
+  }
+
+  function renderList() {
+    const list = L.filterSwings(swings, filters());
+    const el = document.getElementById("swingList");
+    document.getElementById("loadMore").hidden = exhausted;
+    if (!swings.length) {
+      el.innerHTML = emptyState("No swings yet.", "Upload a game at-bat or practice clip to start comparing.", `<a class="dev-btn" href="${ctx.url("player")}">Go to Report</a>`);
+      return;
+    }
+    if (!list.length) { el.innerHTML = emptyState("No swings match these filters.", "Clear a filter to see more swings."); return; }
+    el.innerHTML = list.map((s) => {
+      const sel = A?.clipId === s.clipId ? "sel-a" : B?.clipId === s.clipId ? "sel-b" : "";
+      const tag = sel === "sel-a" ? "A" : sel === "sel-b" ? "B" : "";
+      const grp = s.grouping ? ` · ${escapeHtml(L.GROUPING_LABELS[s.grouping])}` : "";
+      const st = s.status !== "ready" ? ` · <i>${escapeHtml(s.status)}</i>` : "";
+      return `<button class="swing-pick ${sel}" data-id="${s.clipId}" ${s.status !== "ready" ? "disabled" : ""}>${tag ? `<b>[${tag}]</b> ` : ""}${escapeHtml(L.describeSwing(s))}${grp}${s.swung === false ? " · take" : ""}${st}</button>`;
+    }).join("");
+  }
+
+  function wire() {
+    for (const id of ["fContext", "fSwung", "fPriority", "fGrouping", "fReviewed"]) document.getElementById(id).addEventListener("change", renderList);
+    document.getElementById("swingList").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-id]");
+      if (!b) return;
+      const s = swings.find((x) => x.clipId === b.dataset.id);
+      if (A?.clipId === s.clipId) A = null;
+      else if (B?.clipId === s.clipId) B = null;
+      else if (!A) A = s;
+      else if (!B) B = s;
+      else { A = B; B = s; }
+      remember(); renderList(); renderCompare();
+    });
+    document.getElementById("clearPick").onclick = () => { A = B = null; remember(); renderList(); renderCompare(); };
+    document.getElementById("loadMore").onclick = async () => { await fetchMore(); renderList(); };
+    document.getElementById("modeTabs").addEventListener("click", (e) => {
+      const a = e.target.closest("[data-mode]");
+      if (!a) return;
+      e.preventDefault();
+      mode = a.dataset.mode;
+      renderCompare();
+    });
+    document.getElementById("markProgress").onclick = () => {
+      if (!priorities.length) return toast("Create a priority first from the Development page.");
+      const open = priorities.filter((p) => p.status !== "resolved");
+      const pri = open.find((p) => p.id === document.getElementById("fPriority").value) ?? open[0];
+      if (!pri) return toast("No active priority to mark.");
+      openObservationSheet(ctx, pri, { clipId: B.clipId, pitchId: B.pitchId, repId: B.repId, sessionId: B.sessionId, phase: phaseSlug }, () => renderCompare());
+    };
+  }
+
+  async function detail(s) {
+    if (cache.has(s.clipId)) return cache.get(s.clipId);
+    const [phases, metrics, q3] = await Promise.all([
+      loadPhases(s.clipId),
+      loadSwingMetrics(s.clipId),
+      supabase.from("video_clip_pose3d").select("id").eq("video_clip_id", s.clipId).maybeSingle(),
+    ]);
+    const qRaw = metrics?.analysis_quality ?? L.deriveQualityFromPhases(phases, !!q3.data);
+    const d = { phases, metrics, quality: L.analysisQualityLabels(qRaw), videoUrl: null, hasPose3d: !!q3.data };
+    cache.set(s.clipId, d);
+    return d;
+  }
+  async function videoUrl(s) {
+    const d = await detail(s);
+    if (d.videoUrl === null) d.videoUrl = (await getVideoUrl(s.clipId)) ?? "";
+    return d.videoUrl;
+  }
+
+  function disposeViewers() { while (viewers.length) viewers.pop().dispose?.(); }
+
+  async function renderCompare() {
+    disposeViewers();
+    document.querySelectorAll("#modeTabs a").forEach((a) => (a.dataset.mode === mode ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
+    const sel = L.validateComparisonSelection(A, B);
+    document.getElementById("compareArea").hidden = !sel.ok;
+    document.getElementById("noSelection").innerHTML = sel.ok ? "" : emptyState("No comparison selected.", A ? "Pick a second swing to compare against." : "Pick two swings above - from any game or practice.");
+    if (!sel.ok) return;
+    const body = document.getElementById("modeBody");
+    body.innerHTML = '<p class="hint">Loading…</p>';
+    const token = (renderCompare.token = (renderCompare.token ?? 0) + 1);
+    const [dA, dB] = await Promise.all([detail(A), detail(B)]);
+    if (token !== renderCompare.token) return;
+    if (mode === "video") await renderVideoMode(body, dA, dB);
+    else if (mode === "frame") await renderFrameMode(body, dA, dB);
+    else if (mode === "metrics") renderMetricsMode(body, dA, dB);
+    else await renderTrendMode(body);
+  }
+
+  const phaseOptions = (sel) => L.PHASES.map((p) => `<option value="${p.slug}" ${p.slug === sel ? "selected" : ""}>${p.label}</option>`).join("");
+  const label = (s, tag) => `<div class="label"><b>${tag}</b> · ${escapeHtml(L.describeSwing(s))}${s.grouping ? " · " + escapeHtml(L.GROUPING_LABELS[s.grouping]) : ""}</div>`;
+
+  // ---- VIDEO mode: synced playback aligned on one phase ----------------
+  async function renderVideoMode(body, dA, dB) {
+    const [uA, uB] = await Promise.all([videoUrl(A), videoUrl(B)]);
+    const align = L.alignAroundPhase(dA.phases, dB.phases, phaseSlug, 0.4);
+    body.innerHTML = `
+      <div class="dev-row"><div class="dev-field" style="margin:0;"><label>Align on</label><select id="alignPhase">${phaseOptions(phaseSlug)}</select></div>
+        <div class="dev-btns" style="margin:0;"><button class="primary tap-target" id="playBoth">▶ Play both</button><button class="tap-target" id="stepBack">◀ Frame</button><button class="tap-target" id="stepFwd">Frame ▶</button>
+        <select id="rate" class="tap-target"><option value="0.25">0.25x</option><option value="0.5" selected>0.5x</option><option value="1">1x</option></select></div></div>
+      ${align ? "" : `<p class="hint">One of these swings has no detected ${escapeHtml(phaseSlug)} moment, so they can't be aligned on it. Playing from the start instead.</p>`}
+      <div class="compare-grid">
+        <div>${label(A, "A")}${uA ? `<video id="vA" src="${uA}" playsinline muted preload="auto"></video>` : "<p class='hint'>Video unavailable.</p>"}</div>
+        <div>${label(B, "B")}${uB ? `<video id="vB" src="${uB}" playsinline muted preload="auto"></video>` : "<p class='hint'>Video unavailable.</p>"}</div>
+      </div>
+      <p class="hint">Original video is the source of truth. Alignment uses automatically detected moments${[dA, dB].some((d) => d.quality?.contact === "poor") ? "; contact confidence is low on at least one swing" : ""}.</p>
+      ${threeDToggle()}<div id="threeDArea"></div>`;
+    const vA = body.querySelector("#vA"), vB = body.querySelector("#vB");
+    const vids = [vA, vB].filter(Boolean);
+    const startFor = (v) => (align ? (v === vA ? align.startA : align.startB) : 0);
+    const seekStart = () => vids.forEach((v) => { const go = () => { v.currentTime = startFor(v); }; v.readyState >= 1 ? go() : v.addEventListener("loadedmetadata", go, { once: true }); });
+    seekStart();
+    const rate = () => vids.forEach((v) => { v.playbackRate = Number(body.querySelector("#rate").value); });
+    body.querySelector("#rate").onchange = rate;
+    body.querySelector("#playBoth").onclick = () => { seekStart(); rate(); vids.forEach((v) => v.play()); };
+    const step = (d) => vids.forEach((v) => { v.pause(); v.currentTime = Math.max(0, v.currentTime + d / 30); });
+    body.querySelector("#stepBack").onclick = () => step(-1);
+    body.querySelector("#stepFwd").onclick = () => step(1);
+    body.querySelector("#alignPhase").onchange = (e) => { phaseSlug = e.target.value; renderCompare(); };
+    wire3D(body, dA, dB, () => [L.phaseTime(dA.phases, phaseSlug), L.phaseTime(dB.phases, phaseSlug)]);
+  }
+
+  // ---- FRAME mode: Frame A / Frame B with presets ------------------------
+  async function renderFrameMode(body, dA, dB) {
+    const swingFor = (w) => (w === "A" ? { s: A, d: dA } : { s: B, d: dB });
+    const [uA, uB] = await Promise.all([videoUrl(A), videoUrl(B)]);
+    const sideHtml = (key, title) => `
+      <div>
+        <div class="dev-row"><b>${title}</b>
+          <select data-k="${key}-which"><option value="A" ${frameSel[key].which === "A" ? "selected" : ""}>Swing A</option><option value="B" ${frameSel[key].which === "B" ? "selected" : ""}>Swing B</option></select>
+          <select data-k="${key}-phase">${phaseOptions(frameSel[key].phase)}</select></div>
+        <video data-frame="${key}" playsinline muted preload="auto"></video>
+        <div class="hint" data-cap="${key}"></div>
+      </div>`;
+    body.innerHTML = `
+      <div class="dev-btns" id="presets">${L.FRAME_PRESETS.map((p) => `<button class="tap-target" data-p="${p.id}">${p.label}</button>`).join("")}<span class="hint">Presets use Swing A. Change the dropdowns to compare across swings.</span></div>
+      <div class="compare-grid">${sideHtml("a", "Frame A")}${sideHtml("b", "Frame B")}</div>
+      <div id="frameMetrics"></div>
+      ${threeDToggle()}<div id="threeDArea"></div>`;
+    const apply = () => {
+      for (const k of ["a", "b"]) {
+        const { s, d } = swingFor(frameSel[k].which);
+        const url = frameSel[k].which === "A" ? uA : uB;
+        const v = body.querySelector(`[data-frame=${k}]`);
+        const t = L.phaseTime(d.phases, frameSel[k].phase);
+        const cap = body.querySelector(`[data-cap=${k}]`);
+        if (v.getAttribute("src") !== url && url) v.src = url;
+        if (t == null) { cap.textContent = `No ${frameSel[k].phase} moment detected in this swing.`; continue; }
+        cap.textContent = `${L.PHASES.find((p) => p.slug === frameSel[k].phase)?.label ?? frameSel[k].phase} at ${t.toFixed(2)}s`;
+        const go = () => { v.currentTime = t; };
+        v.readyState >= 1 ? go() : v.addEventListener("loadedmetadata", go, { once: true });
+      }
+      const ma = swingFor(frameSel.a.which).d.metrics, mb = swingFor(frameSel.b.which).d.metrics;
+      const rows = L.metricComparison(ma, mb, swingFor(frameSel.a.which).d.quality, swingFor(frameSel.b.which).d.quality);
+      body.querySelector("#frameMetrics").innerHTML = rows.length ? `<details class="drawer"><summary><span>Relevant metrics</span></summary><div class="drawer-body">${metricTable(rows, "Frame A", "Frame B")}</div></details>` : "";
+    };
+    apply();
+    body.querySelector("#presets").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-p]"); if (!b) return;
+      const p = L.FRAME_PRESETS.find((x) => x.id === b.dataset.p);
+      frameSel = { a: { which: "A", phase: p.a }, b: { which: "A", phase: p.b } };
+      body.querySelectorAll("[data-k]").forEach((el) => { const [k, f] = el.dataset.k.split("-"); el.value = frameSel[k][f]; });
+      apply();
+    });
+    body.querySelectorAll("[data-k]").forEach((el) => el.addEventListener("change", () => { const [k, f] = el.dataset.k.split("-"); frameSel[k][f] = el.value; apply(); }));
+    wire3D(body, dA, dB, () => [
+      L.phaseTime(swingFor(frameSel.a.which).d.phases, frameSel.a.phase),
+      L.phaseTime(swingFor(frameSel.b.which).d.phases, frameSel.b.phase),
+    ], () => [swingFor(frameSel.a.which).s, swingFor(frameSel.b.which).s]);
+  }
+
+  // ---- 3D A | B with shared viewpoint ------------------------------------
+  function threeDToggle() {
+    return `<details class="drawer" id="td"><summary><span>3D A | 3D B</span></summary><div class="drawer-body">
+      <p class="hint">3D is a reconstructed estimate from one camera - use it to explain, not to judge.</p>
+      <div class="dev-btns" id="sharedView"><span class="hint">Same viewpoint:</span>${["Source", "Front", "Side", "Rear", "Pitcher", "Batter"].map((v) => `<button class="tap-target" data-v="${v}">${v}</button>`).join("")}</div>
+      <div class="compare-grid"><div id="td-a"></div><div id="td-b"></div></div></div></details>`;
+  }
+
+  function wire3D(body, dA, dB, times, swingsFn = () => [A, B]) {
+    const td = body.querySelector("#td");
+    let loaded = false;
+    td.addEventListener("toggle", async () => {
+      if (!td.open || loaded) return;
+      loaded = true;
+      const [sa, sb] = swingsFn();
+      const [ta, tb] = times();
+      const targets = [["a", sa, dA, ta], ["b", sb, dB, tb]];
+      for (const [k, s, d, t] of targets) {
+        const el = body.querySelector(`#td-${k}`);
+        el.innerHTML = '<p class="hint">Loading 3D…</p>';
+        const data = await loadClipSkeletonData(s.clipId);
+        if (!data?.frames?.length) { el.innerHTML = emptyState("No 3D for this swing", "The video comparison above is still valid."); continue; }
+        el.innerHTML = "";
+        viewers.push(await renderSkeletonComparison(el, { realFrames: data.frames, correctedFrames: null, phases: d.phases, note: d.quality?.reconstruction === "poor" ? "Reconstruction quality is poor for this swing - treat the shape as rough." : "", videoUrl: null, initialTimeS: t, trailControls: true }));
+      }
+    });
+    body.querySelector("#sharedView")?.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-v]"); if (!b) return;
+      body.querySelectorAll(`[data-camera-presets] [data-view="${b.dataset.v}"]`).forEach((x) => x.click());
+    });
+  }
+
+  // ---- METRICS mode -------------------------------------------------------
+  function metricTable(rows, la = "A", lb = "B") {
+    const f = (v) => (v == null ? "—" : Number(v).toFixed(1));
+    return `<table class="metric-table"><thead><tr><th>Metric</th><th>${la}</th><th>${lb}</th><th></th></tr></thead><tbody>${rows.map((r) => `
+      <tr><td>${escapeHtml(r.label)}<div class="hint">${escapeHtml(r.source)}${r.note ? " · " + escapeHtml(r.note) : ""}</div></td><td>${f(r.a)}</td><td>${f(r.b)}</td><td class="hint">${escapeHtml(r.unit)}</td></tr>`).join("")}</tbody></table>`;
+  }
+  function renderMetricsMode(body, dA, dB) {
+    const rows = L.metricComparison(dA.metrics, dB.metrics, dA.quality, dB.quality);
+    const swingSecs = (d) => { const c = L.phaseTime(d.phases, "load"), k = L.phaseTime(d.phases, "contact"); return c != null && k != null ? k - c : null; };
+    const extra = [{ label: "Load → contact time", a: swingSecs(dA), b: swingSecs(dB), unit: "s", source: "Direct video measurement", note: "Automatically detected moments" }].filter((r) => r.a != null || r.b != null);
+    const all = [...extra, ...rows];
+    body.innerHTML = all.length ? `${metricTable(all)}<p class="hint">Only measurements that are reliable enough are shown. Reconstructed (3D) numbers are hidden when reconstruction quality is poor.</p>` : emptyState("No comparable metrics yet.", "Metrics appear after both swings finish processing.");
+  }
+
+  // ---- TREND mode: did the priority improve? -----------------------------
+  async function renderTrendMode(body) {
+    const pid = document.getElementById("fPriority").value;
+    const p = priorities.find((x) => x.id === pid) ?? priorities.find((x) => x.status !== "resolved");
+    if (!p) { body.innerHTML = emptyState("No active priorities yet.", "Review a swing and promote an observation to begin tracking development."); return; }
+    const obs = await loadObservations([p.id]);
+    if (!obs.length) { body.innerHTML = emptyState(`No coach observations for “${p.title}” yet.`, "Use 'Mark progress' after comparing to record what you see."); return; }
+    const series = L.progressSeries(obs);
+    body.innerHTML = `<div class="dev-card"><b>${escapeHtml(p.title)}</b> ${pill(p.status, p.status)}
+      <ul class="timeline" style="margin-top:8px;">${series.map((s) => `<li class="observation"><div class="t-date">${fmtDate(s.date)}</div><div class="t-title">${escapeHtml(s.label)}</div>${s.note ? `<div class="t-detail">“${escapeHtml(s.note)}”</div>` : ""}</li>`).join("")}</ul>
+      <p class="hint">Coach-confirmed observations only.</p></div>`;
+  }
+
+  main().catch((e) => { console.error(e); document.getElementById("loading").textContent = `Couldn't load: ${e.message}`; });
+</script>
+</body>
+</html>

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Scouting Report</title>
-<link rel="stylesheet" href="./coach.css?v=f8e3152b8c">
+<link rel="stylesheet" href="./coach.css?v=7de56c9b15">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -52,33 +52,66 @@
       return;
     }
 
+    const priorities = data.priorities ?? [];
     root.innerHTML = `
       <div class="card" style="text-align:center;margin-top:20px;">
         <div class="jersey-badge lg" style="margin:0 auto 10px;">${escapeHtml(data.jerseyNumber)}</div>
         <div style="font-family:var(--font-display);font-weight:600;font-size:22px;text-transform:uppercase;">${escapeHtml(data.playerName)}</div>
         <div class="hint">${escapeHtml(data.teamName)}</div>
-        <p class="hint" style="margin-top:10px;">${escapeHtml(data.loggedAtBats)} logged at-bat(s)</p>
       </div>
 
-      <h2 style="margin-top:24px;">Swing Checklist</h2>
-      <div id="checkpointList"></div>
+      <h2 style="margin-top:24px;">What you're doing well</h2>
+      ${(data.strengths ?? []).length
+        ? `<div class="card"><ul style="margin:0;padding-left:20px;">${data.strengths.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul></div>`
+        : `<p class="hint">Your coach hasn't confirmed strengths yet.</p>`}
+
+      <h2>What we're working on</h2>
+      ${priorities.length ? priorities.map(priorityCard).join("") : `<p class="hint">No focus areas have been set yet - check back after your coach reviews your swings.</p>`}
+
+      <details class="drawer" style="margin-top:20px;"><summary><span>Full swing checklist</span></summary>
+        <div class="drawer-body" id="checkpointList"></div></details>
 
       <p class="hint" style="text-align:center;margin-top:24px;">Shared read-only view from BarrelIQ. No login required.</p>
     `;
 
     document.getElementById("checkpointList").innerHTML = data.checkpoints
-      .map(
-        (cp) => `
-      <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
-        <div>
-          <div style="font-weight:600;">${escapeHtml(cp.label)}</div>
-          ${cp.reviewedBy ? `<span class="hint">Reviewed by ${escapeHtml(cp.reviewedBy)}</span>` : `<span class="hint">Not yet scored</span>`}
-        </div>
+      .map((cp) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
+        <div><div style="font-weight:600;">${escapeHtml(cp.label)}</div>
+          <span class="hint">${cp.reviewedBy ? `Reviewed by ${escapeHtml(cp.reviewedBy)}` : "Not yet scored"}</span></div>
         <div class="block ${scoreClass(cp.score)}" style="width:28px;height:14px;flex:none;"></div>
-      </div>
-    `,
-      )
+      </div>`)
       .join("");
+
+    root.addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-clip]");
+      if (!b) return;
+      b.disabled = true;
+      const { data: v } = await supabase.functions.invoke("get-player-report", { body: { token, videoClipId: b.dataset.clip } });
+      b.disabled = false;
+      if (!v?.url) { b.textContent = "Video unavailable"; return; }
+      const wrap = b.closest(".card").querySelector("[data-video]");
+      wrap.innerHTML = `<video src="${escapeHtml(v.url)}" controls playsinline style="width:100%;border-radius:8px;background:#000;"></video>`;
+    });
+  }
+
+  function priorityCard(p) {
+    return `
+      <div class="card" style="margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <b style="font-size:17px;">${escapeHtml(p.title)}</b>
+          <span class="pill ${escapeHtml(p.status)}">${escapeHtml(p.statusLabel)}</span>
+        </div>
+        ${p.why ? `<p style="margin:8px 0 0;"><span class="hint">Why:</span> ${escapeHtml(p.why)}</p>` : ""}
+        ${p.drills.length ? `<div style="margin-top:10px;"><div class="hint">Drill to do</div>${p.drills.map((d) => `
+          <div style="margin-top:4px;"><b>${escapeHtml(d.name)}</b>${d.purpose ? ` - ${escapeHtml(d.purpose)}` : ""}
+            ${d.instructions ? `<div class="hint">${escapeHtml(d.instructions)}</div>` : ""}
+            ${d.equipment ? `<div class="hint">You'll need: ${escapeHtml(d.equipment)}</div>` : ""}
+            ${d.coachNote ? `<div class="hint">Coach: "${escapeHtml(d.coachNote)}"</div>` : ""}</div>`).join("")}</div>` : ""}
+        ${p.progress.length ? `<div style="margin-top:10px;"><div class="hint">Progress</div>
+          <ul class="timeline" style="margin-top:6px;">${p.progress.map((o) => `<li class="observation"><div class="t-date">${escapeHtml(o.date)}</div><div class="t-title">${escapeHtml(o.label)}</div>${o.note ? `<div class="t-detail">"${escapeHtml(o.note)}"</div>` : ""}</li>`).join("")}</ul></div>` : ""}
+        ${p.clips.length ? `<div style="margin-top:8px;" class="dev-btns">${p.clips.map((c) => `<button type="button" class="tap-target" data-clip="${escapeHtml(c.clipId)}">Watch swing · ${escapeHtml(c.date)}</button>`).join("")}</div><div data-video style="margin-top:8px;"></div>` : ""}
+      </div>`;
   }
 
   main();

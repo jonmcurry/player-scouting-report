@@ -206,6 +206,8 @@ export interface MetricsUpsertInput {
    * this just maps metrics.py's own already-documented top-level fields
    * onto video_clip_metrics' columns. */
   metrics: Record<string, any>;
+  /** From analysisQuality.ts; omitted when the caller couldn't compute it. */
+  analysisQuality?: Record<string, unknown> | null;
 }
 
 /** Surfaces metrics.json's summary fields (bat speed, attack angle,
@@ -241,6 +243,7 @@ export async function upsertVideoClipMetrics(input: MetricsUpsertInput): Promise
       stride_direction_deg: m.stride?.direction_deg ?? null,
       stride_note: m.stride?.note ?? null,
       movement_flags: m.movement_flags ?? {},
+      ...(input.analysisQuality ? { analysis_quality: input.analysisQuality } : {}),
     },
     { onConflict: "video_clip_id" },
   );

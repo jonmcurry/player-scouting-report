@@ -1,0 +1,6 @@
+{
+  "note": "Private local manifest shape. Do not commit athlete video paths or identities.",
+  "videos": [
+    { "path": "videos/private/swing-01.mp4", "athlete_height_m": null, "handedness_override": null }
+  ]
+}

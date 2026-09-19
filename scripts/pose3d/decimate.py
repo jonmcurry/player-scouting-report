@@ -44,14 +44,23 @@ DECIMATION_TARGET_FPS = 30.0
 
 
 def _video_fps(video_path):
-    out = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=r_frame_rate", "-of", "default=noprint_wrappers=1:nokey=1",
-         str(video_path)],
-        capture_output=True, text=True,
-    )
-    num, _, den = out.stdout.strip().partition("/")
-    return float(num) / float(den or 1)
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=r_frame_rate", "-of", "default=noprint_wrappers=1:nokey=1",
+             str(video_path)],
+            capture_output=True, text=True,
+        )
+        num, _, den = out.stdout.strip().partition("/")
+        return float(num) / float(den or 1)
+    except (FileNotFoundError, ValueError, ZeroDivisionError):
+        import cv2
+        cap = cv2.VideoCapture(str(video_path))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        cap.release()
+        if fps <= 0:
+            raise ValueError("neither ffprobe nor OpenCV could read source fps")
+        return fps
 
 
 def _video_duration_s(video_path):
@@ -82,7 +91,7 @@ def run(video_path, out_dir):
 
     try:
         source_fps = _video_fps(video_path)
-    except (ValueError, ZeroDivisionError, subprocess.SubprocessError) as exc:
+    except (OSError, ValueError, ZeroDivisionError, subprocess.SubprocessError) as exc:
         result = _no_decimation(video_path, f"could not read source fps ({exc})")
         (out_dir / "decimate.json").write_text(json.dumps(result, indent=2))
         return result

@@ -4,6 +4,8 @@ videos/*
 !videos/.gitkeep
 frames/*
 !frames/.gitkeep
+validation/*manifest*.json
+!validation/validation-manifest.example.json
 
 # Pose-estimation output (annotated videos/frames of real players) and the
 # downloaded MediaPipe model file - same policy as videos/frames above, plus

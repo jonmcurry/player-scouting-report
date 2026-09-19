@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>BarrelIQ — Player Development</title>
+<link rel="stylesheet" href="./coach.css?v=7de56c9b15">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/icon-192.svg">
+<meta name="theme-color" content="#121418">
+</head>
+<body>
+<header class="app-bar" id="appBar"></header>
+<div class="wrap">
+  <nav id="devTabs"></nav>
+  <p class="hint" id="loading">Loading development summary…</p>
+  <div id="content" hidden>
+    <div id="nextFocus"></div>
+
+    <div class="dev-row between"><h2 style="margin:6px 0;">Current priorities</h2>
+      <button class="dev-btn primary tap-target" id="addPriorityBtn">＋ Priority</button></div>
+    <div id="priorities"></div>
+
+    <div id="aiSuggestionsWrap"></div>
+
+    <h2>Game transfer</h2>
+    <div id="transfer"></div>
+
+    <h2>Recent activity</h2>
+    <div id="timelineWrap"></div>
+    <div class="dev-btns"><button class="tap-target" id="moreTimeline" hidden>Show older activity</button></div>
+
+    <h2>Game vs practice</h2>
+    <div id="mix"></div>
+
+    <h2>Recent swings</h2>
+    <div id="recentSwings"></div>
+
+    <h2>Assigned drills</h2>
+    <div id="drills"></div>
+
+    <h2>Latest coach note</h2>
+    <div id="latestNote"></div>
+
+    <h2>Metric trends</h2>
+    <details class="drawer" id="trendsDrawer"><summary><span>Measured trends over time</span></summary>
+      <div class="drawer-body" id="trendsBody"><p class="hint">Loading…</p></div></details>
+
+    <h2>Recent comparison</h2>
+    <div id="recentComparison"></div>
+  </div>
+</div>
+<nav class="bottom-nav" id="bottomNav"></nav>
+
+<script src="./config.local.js"></script>
+<script type="module">
+  import {
+    L, supabase, loadContext, renderHeader, loadPriorities, loadObservations, loadDrillLibrary,
+    loadDrillAssignments, loadSwingRecords, emptyState, pill, fmtDate, escapeHtml, lastComparisonKey, toast,
+  } from "./components/devUi.js";
+  import {
+    openAddPrioritySheet, openPromoteSheet, openAssignDrillSheet, openObservationSheet, openFollowUpSheet,
+    openStatusSheet, reviewIssue,
+  } from "./components/devActions.js";
+
+  let ctx;
+  let library = [];
+  let timelineLimit = 15;
+
+  async function main() {
+    ctx = await loadContext();
+    if (!ctx) return;
+    await renderHeader(ctx, "development");
+    library = await loadDrillLibrary(ctx.team.id);
+    await refresh();
+    document.getElementById("loading").hidden = true;
+    document.getElementById("content").hidden = false;
+
+    document.getElementById("addPriorityBtn").addEventListener("click", () => openAddPrioritySheet(ctx, refresh));
+    document.getElementById("moreTimeline").addEventListener("click", async () => { timelineLimit += 20; await renderTimeline(); });
+  }
+
+  let state = {};
+
+  async function refresh() {
+    try {
+      const priorities = await loadPriorities(ctx.player.id);
+      const ids = priorities.map((p) => p.id);
+      const [observations, assignments, followCtx, aiIssues] = await Promise.all([
+        loadObservations(ids),
+        loadDrillAssignments(ids),
+        loadFollowUpContext(),
+        loadAiIssues(),
+      ]);
+      const obsBy = groupBy(observations, "player_priority_id");
+      const asgBy = groupBy(assignments, "player_priority_id");
+      state = { priorities, observations, assignments, obsBy, asgBy, followCtx, aiIssues };
+      renderNextFocus();
+      renderPriorities();
+      renderAiSuggestions();
+      renderTransfer();
+      await Promise.all([renderTimeline(), renderMix(), renderRecentSwings()]);
+      renderDrills();
+      renderLatestNote();
+      renderRecentComparison();
+    } catch (e) {
+      console.error(e);
+      document.getElementById("content").innerHTML = emptyState("Couldn't load this page", e.message);
+    }
+  }
+
+  function groupBy(rows, key) {
+    const m = new Map();
+    for (const r of rows) { if (!m.has(r[key])) m.set(r[key], []); m.get(r[key]).push(r); }
+    return m;
+  }
+
+  async function loadFollowUpContext() {
+    const pid = ctx.player.id;
+    const [sess, games, clips] = await Promise.all([
+      supabase.from("practice_sessions").select("session_date").eq("player_id", pid).order("session_date", { ascending: false }).limit(30),
+      supabase.from("game_log_entries").select("date").eq("player_id", pid).eq("session_type", "game").order("date", { ascending: false }).limit(60),
+      supabase.from("video_clips").select("created_at, game_log_entries!inner(player_id)").eq("game_log_entries.player_id", pid).order("created_at", { ascending: false }).limit(200),
+    ]);
+    return {
+      now: new Date(),
+      practiceSessionDates: (sess.data ?? []).map((r) => r.session_date),
+      gameDates: (games.data ?? []).map((r) => r.date),
+      swingDates: (clips.data ?? []).map((r) => r.created_at),
+    };
+  }
+
+  async function loadAiIssues() {
+    const { data } = await supabase
+      .from("issues")
+      .select("*")
+      .eq("player_id", ctx.player.id)
+      .neq("review_status", "rejected")
+      .order("created_at", { ascending: false })
+      .limit(12);
+    return data ?? [];
+  }
+
+  const progressOf = (p) => L.deriveProgress(state.obsBy.get(p.id) ?? []);
+
+  function renderNextFocus() {
+    const progress = Object.fromEntries(state.priorities.map((p) => [p.id, progressOf(p)]));
+    const dueIds = state.priorities.filter((p) => L.isFollowUpDue(p, state.followCtx)).map((p) => p.id);
+    const nf = L.nextFocus(state.priorities, progress, dueIds);
+    document.getElementById("nextFocus").innerHTML = nf
+      ? `<div class="dev-card" style="border-color:var(--clay);"><div class="hint">Work on next</div>
+           <h3>${escapeHtml(nf.priority.title)}</h3><div class="hint">${escapeHtml(nf.reason)}</div></div>`
+      : "";
+  }
+
+  function priorityCard(p) {
+    const obs = state.obsBy.get(p.id) ?? [];
+    const asg = (state.asgBy.get(p.id) ?? []).filter((a) => a.active);
+    const prog = progressOf(p);
+    const due = L.isFollowUpDue(p, state.followCtx);
+    const cat = L.PRIORITY_CATEGORIES.find((c) => c.slug === p.category)?.label;
+    const evidence = obs.slice(0, 3).map((o) => {
+      const link = o.video_clip_id
+        ? `<a href="${ctx.url("review", { clip: o.video_clip_id, ...(o.phase ? { phase: o.phase } : {}) })}">view swing</a>`
+        : "";
+      return `<li>${fmtDate(o.observed_at)} — ${escapeHtml(L.OBSERVATION_LABELS[o.status])}${o.context ? ` (${o.context})` : ""} ${link}${o.coach_note ? `<div class="hint">“${escapeHtml(o.coach_note)}”</div>` : ""}</li>`;
+    }).join("");
+    const loop = L.coachingLoop(p, obs, state.asgBy.get(p.id) ?? []);
+    return `
+    <div class="dev-card" data-pid="${p.id}">
+      <div class="dev-row between"><h3>${escapeHtml(p.title)}</h3>
+        <span class="dev-row">${pill(p.status, p.status)} ${pill(prog.status ?? "needs-review", prog.label)}</span></div>
+      <div class="hint">${cat ? escapeHtml(cat) + " · " : ""}First identified ${fmtDate(p.first_identified_at)} · ${p.last_observed_at ? `last observed ${fmtDate(p.last_observed_at)}` : "not observed yet"}</div>
+      ${p.description ? `<p>${escapeHtml(p.description)}</p>` : ""}
+      ${evidence ? `<div class="hint" style="margin-top:6px;">Evidence (${obs.length})</div><ul style="margin:2px 0 6px 18px;padding:0;">${evidence}</ul>` : `<p class="hint">No swings linked yet. Review a swing and log progress to build evidence.</p>`}
+      <div class="hint">${asg.length ? `Drill: <b>${asg.map((a) => escapeHtml(a.drill_library?.name ?? "")).join(", ")}</b>` : "No drill assigned yet."}</div>
+      ${p.follow_up_kind ? `<div class="hint">${escapeHtml(L.followUpLabel(p))} ${due ? pill("due", "Due") : ""}${p.follow_up_note ? ` — ${escapeHtml(p.follow_up_note)}` : ""}</div>` : ""}
+      <div class="loop">${loop.map((s) => `<div class="step ${s.state}">${escapeHtml(s.label)}</div>`).join("")}</div>
+      <div class="dev-btns">
+        <button class="primary tap-target" data-act="observe">Log progress</button>
+        <button class="tap-target" data-act="drill">Assign drill</button>
+        <button class="tap-target" data-act="followup">Follow-up</button>
+        <button class="tap-target" data-act="status">Status</button>
+      </div>
+    </div>`;
+  }
+
+  function renderPriorities() {
+    const open = state.priorities.filter((p) => p.status === "active" || p.status === "monitoring");
+    const closed = state.priorities.filter((p) => p.status === "resolved");
+    const el = document.getElementById("priorities");
+    el.innerHTML = open.length
+      ? open.map(priorityCard).join("")
+      : emptyState("No active priorities yet.", "Review a swing and promote an observation to begin tracking development.", `<a class="dev-btn primary" href="${ctx.url("player")}">Review swings</a>`);
+    if (closed.length) {
+      el.innerHTML += `<details class="drawer"><summary><span>Resolved (${closed.length})</span></summary><div class="drawer-body">${closed.map((p) => `<div class="dev-row between"><b>${escapeHtml(p.title)}</b><span class="hint">resolved ${fmtDate(p.resolved_at)}</span></div>`).join("")}</div></details>`;
+    }
+    el.onclick = (e) => {
+      const btn = e.target.closest("[data-act]");
+      const card = e.target.closest("[data-pid]");
+      if (!btn || !card) return;
+      const p = state.priorities.find((x) => x.id === card.dataset.pid);
+      const assigned = (state.asgBy.get(p.id) ?? []).map((a) => a.drill_id);
+      switch (btn.dataset.act) {
+        case "observe": return openObservationSheet(ctx, p, {}, refresh);
+        case "drill": return openAssignDrillSheet(ctx, p, library, assigned, refresh);
+        case "followup": return openFollowUpSheet(p, refresh);
+        case "status": return openStatusSheet(p, refresh);
+      }
+    };
+  }
+
+  function renderAiSuggestions() {
+    const promotedIds = new Set(state.priorities.map((p) => p.source_issue_id).filter(Boolean));
+    const list = state.aiIssues.filter((i) => !promotedIds.has(i.id));
+    const wrap = document.getElementById("aiSuggestionsWrap");
+    if (!list.length) { wrap.innerHTML = ""; return; }
+    wrap.innerHTML = `<h2>Suggested by AI — needs your review</h2>` + list.slice(0, 5).map((i) => `
+      <div class="dev-card" data-iid="${i.id}">
+        <div class="dev-row between"><b>${escapeHtml(i.issue)}</b>${i.confidence ? pill(i.confidence === "high" ? "good" : i.confidence === "medium" ? "limited" : "poor", `${i.confidence} confidence`) : ""}</div>
+        ${i.evidence ? `<div class="hint">${escapeHtml(i.evidence)}</div>` : ""}
+        <div class="hint">${i.review_status === "draft" ? "AI draft — unconfirmed" : "Coach-reviewed"}</div>
+        <div class="dev-btns">
+          <button class="primary tap-target" data-a="promote">Promote to priority</button>
+          ${i.video_clip_id ? `<a class="dev-btn" style="display:inline-flex;align-items:center;text-decoration:none;" href="${ctx.url("review", { clip: i.video_clip_id, ...(i.phase ? { phase: i.phase } : {}) })}">Review swing</a>` : ""}
+          ${i.review_status === "draft" ? '<button class="tap-target" data-a="reject">Not an issue</button>' : ""}
+        </div>
+      </div>`).join("");
+    wrap.onclick = async (e) => {
+      const b = e.target.closest("[data-a]"); const card = e.target.closest("[data-iid]");
+      if (!b || !card) return;
+      const issue = state.aiIssues.find((x) => x.id === card.dataset.iid);
+      if (b.dataset.a === "promote") openPromoteSheet(ctx, issue, refresh);
+      if (b.dataset.a === "reject") { try { await reviewIssue(ctx, issue, "reject"); toast("Dismissed"); refresh(); } catch (err) { toast(err.message); } }
+    };
+  }
+
+  function renderTransfer() {
+    const el = document.getElementById("transfer");
+    const rows = [];
+    for (const p of state.priorities.filter((x) => x.status === "active" || x.status === "monitoring")) {
+      const t = L.gameTransfer(state.obsBy.get(p.id) ?? []);
+      if (t.length) rows.push({ p, t: t[t.length - 1] });
+    }
+    if (!rows.length) {
+      el.innerHTML = emptyState("Nothing to check yet.", "Once you log progress on a priority from practice, the next game observation shows here as a transfer check.");
+      return;
+    }
+    el.innerHTML = rows.map(({ p, t }) => `
+      <div class="dev-card"><b>${escapeHtml(p.title)}</b>
+        <div class="hint">Practice ${fmtDate(t.practice.observed_at)}: ${escapeHtml(L.OBSERVATION_LABELS[t.practice.status])}</div>
+        <div class="hint">${t.game ? `Game ${fmtDate(t.game.observed_at)}: ${escapeHtml(L.OBSERVATION_LABELS[t.game.status])}` : "Next game: not observed yet"}</div>
+        <div>${pill(t.result === "carried_over" || t.result === "improved_in_game" ? "good" : t.result === "not_carried_over" ? "poor" : "limited", L.TRANSFER_LABELS[t.result])}</div>
+      </div>`).join("");
+  }
+
+  async function renderTimeline() {
+    const pid = ctx.player.id;
+    const ids = state.priorities.map((p) => p.id);
+    const titleOf = Object.fromEntries(state.priorities.map((p) => [p.id, p.title]));
+    const [games, sessions, history, notes] = await Promise.all([
+      supabase.from("game_log_entries").select("id, date, opponent, ab, at_bat_pitches(count), video_clips(status)").eq("player_id", pid).eq("session_type", "game").order("date", { ascending: false }).limit(timelineLimit),
+      supabase.from("practice_sessions").select("id, session_date, session_goal, outcome, outcome_note, focus_priority_id, assigned_drill_id, drill_library(name), practice_repetitions(id, game_log_entry_id)").eq("player_id", pid).order("session_date", { ascending: false }).limit(timelineLimit),
+      ids.length ? supabase.from("player_priority_status_history").select("*").in("player_priority_id", ids).order("changed_at", { ascending: false }).limit(timelineLimit * 2) : { data: [] },
+      Promise.resolve({ data: [] }),
+    ]);
+    const swingCountByEntry = new Map();
+    const entryIds = [...(games.data ?? []).map((g) => g.id), ...(sessions.data ?? []).flatMap((s) => (s.practice_repetitions ?? []).map((r) => r.game_log_entry_id))];
+    if (entryIds.length) {
+      const { data: clips } = await supabase.from("video_clips").select("game_log_entry_id, status").in("game_log_entry_id", entryIds);
+      for (const c of clips ?? []) if (c.status === "ready") swingCountByEntry.set(c.game_log_entry_id, (swingCountByEntry.get(c.game_log_entry_id) ?? 0) + 1);
+    }
+    const events = L.buildTimeline({
+      games: (games.data ?? []).map((g) => ({ id: g.id, date: g.date, opponent: g.opponent, ab: g.ab, swingsAnalyzed: swingCountByEntry.get(g.id) ?? 0 })),
+      practiceSessions: (sessions.data ?? []).map((s) => ({
+        id: s.id, session_date: s.session_date, outcome: s.outcome, outcome_note: s.outcome_note,
+        drillName: s.drill_library?.name ?? null, focusTitle: titleOf[s.focus_priority_id] ?? null,
+        swingCount: (s.practice_repetitions ?? []).reduce((n, r) => n + (swingCountByEntry.get(r.game_log_entry_id) ?? 0), 0),
+      })),
+      priorities: state.priorities.map((p) => ({ title: p.title, description: p.description, first_identified_at: p.first_identified_at })),
+      drillAssignments: state.assignments.map((a) => ({ assigned_at: a.assigned_at, drillName: a.drill_library?.name ?? "Drill", priorityTitle: titleOf[a.player_priority_id] })),
+      statusHistory: (history.data ?? []).map((h) => ({ ...h, priorityTitle: titleOf[h.player_priority_id] })),
+      observations: state.observations.map((o) => ({ ...o, priorityTitle: titleOf[o.player_priority_id] })),
+      notes: notes.data ?? [],
+    });
+    const shown = events.slice(0, timelineLimit);
+    const wrap = document.getElementById("timelineWrap");
+    if (!shown.length) {
+      wrap.innerHTML = emptyState("No activity yet.", "Games, practices, priorities and coach notes appear here as you add them.");
+      document.getElementById("moreTimeline").hidden = true;
+      return;
+    }
+    wrap.innerHTML = `<ul class="timeline">${shown.map((e) => {
+      const link = e.href ? (e.href.page === "session" ? ctx.url("session", { session: e.href.id }) : ctx.url("atbat", { entry: e.href.id })) : null;
+      return `<li class="${e.kind}"><div class="t-date">${fmtDate(e.at)}</div><div class="t-title">${link ? `<a href="${link}">${escapeHtml(e.title)}</a>` : escapeHtml(e.title)}</div>${e.detail ? `<div class="t-detail">${escapeHtml(e.detail)}</div>` : ""}</li>`;
+    }).join("")}</ul>`;
+    document.getElementById("moreTimeline").hidden = events.length <= timelineLimit;
+  }
+
+  async function renderMix() {
+    const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const [g, p] = await Promise.all([
+      supabase.from("game_log_entries").select("id", { count: "exact", head: true }).eq("player_id", ctx.player.id).eq("session_type", "game").gte("date", since),
+      supabase.from("practice_sessions").select("id", { count: "exact", head: true }).eq("player_id", ctx.player.id).gte("session_date", since),
+    ]);
+    document.getElementById("mix").innerHTML = `
+      <div class="stats-row" style="grid-template-columns:1fr 1fr;">
+        <div class="stat-tile"><span class="stat-label">Games (30 days)</span><div class="stat-value">${g.count ?? 0} <span class="hint">at-bats</span></div></div>
+        <div class="stat-tile"><span class="stat-label">Practices (30 days)</span><div class="stat-value">${p.count ?? 0} <span class="hint">sessions</span></div></div>
+      </div>`;
+  }
+
+  async function renderRecentSwings() {
+    const swings = (await loadSwingRecords(ctx.player.id, { limit: 6 }));
+    const el = document.getElementById("recentSwings");
+    el.innerHTML = swings.length
+      ? swings.map((s) => `<a class="dev-card" style="display:block;color:inherit;text-decoration:none;" href="${ctx.url("review", { clip: s.clipId })}">
+          <div class="dev-row between"><b>${escapeHtml(L.describeSwing(s))}</b>${pill(s.context === "game" ? "active" : "monitoring", s.context)}</div>
+          <div class="hint">${s.reviewed ? "Reviewed" : "Not reviewed yet"}${s.status !== "ready" ? ` · ${escapeHtml(s.status)}` : ""}</div></a>`).join("")
+      : emptyState("No swings yet.", "Attach a video to a pitch or a practice rep to start building development history.");
+  }
+
+  function renderDrills() {
+    const titleOf = Object.fromEntries(state.priorities.map((p) => [p.id, p.title]));
+    const active = state.assignments.filter((a) => a.active && ["active", "monitoring"].includes(state.priorities.find((p) => p.id === a.player_priority_id)?.status));
+    document.getElementById("drills").innerHTML = active.length
+      ? active.map((a) => `<div class="dev-card"><b>${escapeHtml(a.drill_library?.name ?? "")}</b> <span class="hint">for ${escapeHtml(titleOf[a.player_priority_id] ?? "")}</span>
+          <div class="hint">${escapeHtml(a.drill_library?.purpose ?? "")}</div>
+          <details><summary>How to run it</summary><p>${escapeHtml(a.drill_library?.instructions ?? "")}</p>${a.drill_library?.equipment ? `<p class="hint">Equipment: ${escapeHtml(a.drill_library.equipment)}</p>` : ""}${a.coach_note ? `<p class="hint">Note: ${escapeHtml(a.coach_note)}</p>` : ""}</details></div>`).join("")
+      : emptyState("No drills assigned.", "Assign a drill to a priority and it will show here.");
+  }
+
+  function renderLatestNote() {
+    const withNote = state.observations.find((o) => o.coach_note);
+    const el = document.getElementById("latestNote");
+    if (!withNote) { el.innerHTML = emptyState("No coach notes yet.", "Notes you add when logging progress show here."); return; }
+    const p = state.priorities.find((x) => x.id === withNote.player_priority_id);
+    el.innerHTML = `<div class="dev-card"><div class="hint">${fmtDate(withNote.observed_at)} · ${escapeHtml(p?.title ?? "")}</div><p style="margin:4px 0 0;">“${escapeHtml(withNote.coach_note)}”</p></div>`;
+  }
+
+  function renderRecentComparison() {
+    const el = document.getElementById("recentComparison");
+    let last = null;
+    try { last = JSON.parse(localStorage.getItem(lastComparisonKey(ctx.player.id)) || "null"); } catch { /* storage unavailable */ }
+    el.innerHTML = last
+      ? `<a class="dev-card" style="display:block;color:inherit;text-decoration:none;" href="${ctx.url("compare", { a: last.a, b: last.b })}"><b>${escapeHtml(last.label ?? "Last comparison")}</b><div class="hint">Open again</div></a>`
+      : emptyState("No comparison selected.", "Pick two swings to see what changed.", `<a class="dev-btn primary" href="${ctx.url("compare")}">Compare swings</a>`);
+  }
+
+  // Robust, direct measurements only (no reconstructed 3D angles) - see L.TREND_METRICS.
+  // Lazy: nothing is fetched until the coach opens the drawer.
+  let trendsLoaded = false;
+  document.getElementById("trendsDrawer").addEventListener("toggle", async (e) => {
+    if (!e.target.open || trendsLoaded) return;
+    trendsLoaded = true;
+    const body = document.getElementById("trendsBody");
+    try {
+      const { data: clips } = await supabase.from("video_clips")
+        .select("id, game_log_entries!inner(date, player_id)").eq("game_log_entries.player_id", ctx.player.id).eq("status", "ready")
+        .order("created_at", { ascending: false }).limit(60);
+      const ids = (clips ?? []).map((c) => c.id);
+      if (!ids.length) { body.innerHTML = emptyState("No analyzed swings yet.", "Trends appear after a few swings have been processed."); return; }
+      const [{ data: metrics }, { data: phases }] = await Promise.all([
+        supabase.from("video_clip_metrics").select("*").in("video_clip_id", ids),
+        supabase.from("swing_phases").select("video_clip_id, time_s, swing_phase_types!inner(slug)").in("video_clip_id", ids).in("swing_phase_types.slug", ["load", "contact"]),
+      ]);
+      const mBy = new Map((metrics ?? []).map((m) => [m.video_clip_id, m]));
+      const tBy = new Map();
+      for (const p of phases ?? []) { if (!tBy.has(p.video_clip_id)) tBy.set(p.video_clip_id, {}); tBy.get(p.video_clip_id)[p.swing_phase_types.slug] = p.time_s; }
+      const rows = (clips ?? []).filter((c) => mBy.has(c.id)).map((c) => {
+        const t = tBy.get(c.id) ?? {};
+        return { date: c.game_log_entries.date, clipId: c.id, metrics: mBy.get(c.id), quality: mBy.get(c.id).analysis_quality,
+          loadToContactS: t.load != null && t.contact != null ? t.contact - t.load : null };
+      });
+      const trends = L.robustMetricTrends(rows).filter((t) => t.shown);
+      body.innerHTML = trends.length
+        ? trends.map(trendCard).join("") + `<p class="hint">Only measurements that are reliable enough are charted. Reconstructed 3D joint angles are intentionally left out - they're estimates from one camera.</p>`
+        : emptyState("Not enough measurements yet.", "A trend needs at least two swings with reliable data.");
+    } catch (err) { body.innerHTML = emptyState("Couldn't load trends", err.message); }
+  });
+
+  function trendCard(t) {
+    const vals = t.points.map((p) => p.value);
+    const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
+    const W = 240, H = 44;
+    const xy = t.points.map((p, i) => [4 + (i * (W - 8)) / (t.points.length - 1), H - 6 - ((p.value - min) / span) * (H - 12)]);
+    const last = xy[xy.length - 1];
+    return `<div class="dev-card"><div class="dev-row between"><b>${escapeHtml(t.label)}</b><span class="hint">${vals.at(-1).toFixed(t.unit === "%" ? 0 : 2)} ${escapeHtml(t.unit)} latest</span></div>
+      <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="${escapeHtml(t.label)} over ${t.points.length} swings">
+        <polyline fill="none" stroke="var(--clay)" stroke-width="2" points="${xy.map((p) => p.map((n) => n.toFixed(1)).join(",")).join(" ")}"/>
+        <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3.5" fill="var(--clay)"/></svg>
+      <div class="hint">${escapeHtml(fmtDate(t.points[0].date))} → ${escapeHtml(fmtDate(t.points.at(-1).date))} · ${t.points.length} swings</div></div>`;
+  }
+
+  main();
+</script>
+</body>
+</html>

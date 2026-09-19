@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>BarrelIQ — At-Bat</title>
+<link rel="stylesheet" href="./coach.css?v=7de56c9b15">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/icon-192.svg">
+<meta name="theme-color" content="#121418">
+</head>
+<body>
+<header class="app-bar" id="appBar"></header>
+<div class="wrap">
+  <nav id="devTabs"></nav>
+  <p class="hint" id="loading">Loading at-bat…</p>
+  <div id="content" hidden>
+    <div id="summary"></div>
+    <h2>Pitches</h2>
+    <div id="pitches"></div>
+    <div class="dev-btns"><button class="primary tap-target" id="addPitch">+ Add pitch</button></div>
+    <h2>Summary</h2>
+    <div id="facts"></div>
+  </div>
+</div>
+<nav class="bottom-nav" id="bottomNav"></nav>
+
+<script src="./config.local.js"></script>
+<script type="module">
+  import {
+    L, supabase, qs, buildContext, PLAYER_SELECT, renderHeader, loadPhases, showNotFound,
+    emptyState, pill, escapeHtml, toast, fmtDate, openSheet,
+  } from "./components/devUi.js";
+  import { getMyDisplayName, requireSession } from "./shared.js";
+  import { uploadRawClip } from "./components/videoUpload.js";
+
+  const entryId = qs("entry");
+  let ctx, entry, pitches = [], clips = [], analyzedIds = new Set(), phasesByClip = new Map();
+
+  const opt = (v, t, sel) => `<option value="${escapeHtml(v)}" ${sel ? "selected" : ""}>${escapeHtml(t)}</option>`;
+
+  async function main() {
+    const session = await requireSession();
+    if (!session) return;
+    if (!entryId) return showNotFound("No at-bat selected.");
+    const { data, error } = await supabase.from("game_log_entries")
+      .select(`id, date, opponent, ab, result, session_type, ai_summary, ai_summary_generated_at, players!inner(${PLAYER_SELECT})`)
+      .eq("id", entryId).single();
+    if (error || !data) return showNotFound("This at-bat wasn't found or you don't have access to it.");
+    if (data.session_type !== "game") return void (location.replace(`./session.html?${new URLSearchParams({ team: data.players.teams.slug, player: data.players.slug })}`));
+    entry = data;
+    ctx = buildContext(session, await getMyDisplayName(session.user.id), data.players);
+    await renderHeader(ctx, "report");
+    await reload();
+    document.getElementById("loading").hidden = true;
+    document.getElementById("content").hidden = false;
+    document.getElementById("addPitch").onclick = addPitch;
+  }
+
+  async function reload() {
+    const [{ data: p }, { data: c }] = await Promise.all([
+      supabase.from("at_bat_pitches").select("*").eq("game_log_entry_id", entryId).order("pitch_number"),
+      supabase.from("video_clips").select("id, status, error_message, at_bat_pitch_id, created_at").eq("game_log_entry_id", entryId).order("created_at"),
+    ]);
+    pitches = p ?? []; clips = c ?? [];
+    const ids = clips.filter((x) => x.status === "ready").map((x) => x.id);
+    analyzedIds = new Set();
+    if (ids.length) {
+      const { data: m } = await supabase.from("video_clip_metrics").select("video_clip_id").in("video_clip_id", ids);
+      (m ?? []).forEach((r) => analyzedIds.add(r.video_clip_id));
+      await Promise.all(ids.filter((i) => analyzedIds.has(i) && !phasesByClip.has(i)).map(async (i) => phasesByClip.set(i, await loadPhases(i))));
+    }
+    render();
+  }
+
+  function build() {
+    const cl = clips.map((c) => ({ ...c, analyzed: analyzedIds.has(c.id) }));
+    return { summary: L.summarizeAtBat(entry, pitches, cl), clips: cl };
+  }
+
+  function render() {
+    const { summary, clips: cl } = build();
+    const unassigned = cl.filter((c) => !c.at_bat_pitch_id);
+    document.getElementById("summary").innerHTML = `
+      <div class="dev-card"><div class="dev-row between"><b>${fmtDate(entry.date)} vs ${escapeHtml(entry.opponent ?? "")} · At-bat ${escapeHtml(entry.ab)}</b>${entry.result ? pill("active", entry.result) : ""}</div>
+        <div class="hint">${summary.pitchCount} pitch${summary.pitchCount === 1 ? "" : "es"} · ${summary.swings} swing${summary.swings === 1 ? "" : "s"} · ${summary.takes} take${summary.takes === 1 ? "" : "s"} · ${summary.analyzedSwings} analyzed</div>
+        <div class="hint"><a href="${ctx.url("development")}">Player development</a> · <a href="${ctx.url("compare")}">Compare swings</a></div></div>`;
+    const el = document.getElementById("pitches");
+    if (!summary.rows.length) {
+      el.innerHTML = emptyState("No pitches recorded yet.", "Add each pitch in the at-bat, then attach the video for the ones you filmed.");
+    } else {
+      el.innerHTML = summary.rows.map((r) => {
+        const p = r.pitch;
+        const clip = r.clips[0];
+        const status = r.videoStatus === "none" ? '<span class="hint">No video</span>' : r.videoStatus === "processing" ? pill("limited", "Processing") : r.videoStatus === "failed" ? pill("poor", "Failed") : r.swingAnalyzed ? pill("good", "Swing analyzed") : pill("active", "Video ready");
+        return `<div class="dev-card" data-pid="${p.id}">
+          <div class="dev-row between"><b>Pitch ${p.pitch_number}</b><span>${escapeHtml(r.count)}${r.countInferred ? '<span class="hint"> (from earlier pitches)</span>' : ""}</span></div>
+          <div>${escapeHtml(r.outcomeLabel)}${r.swung === true ? " · swing" : r.swung === false ? " · take" : ""}${p.pitch_type ? " · " + escapeHtml(p.pitch_type) : ""}${p.pitch_location ? " · " + escapeHtml(p.pitch_location) : ""}</div>
+          ${p.notes ? `<div class="hint">${escapeHtml(p.notes)}</div>` : ""}
+          <div class="dev-row" style="margin-top:6px;">${status}${r.clips.length > 1 ? `<span class="hint">${r.clips.length} clips</span>` : ""}</div>
+          <div class="dev-btns">
+            ${clip && clip.status === "ready" ? `<a class="dev-btn primary" style="display:inline-flex;align-items:center;text-decoration:none;" href="./review.html?clip=${clip.id}&team=${ctx.teamSlug}&player=${ctx.playerSlug}">Review swing</a>` : ""}
+            <button class="tap-target" data-a="attach">${clip ? "Add another video" : "Attach video"}</button>
+            <button class="tap-target" data-a="edit">Edit</button>
+            <button class="tap-target" data-a="delete">Delete</button>
+          </div></div>`;
+      }).join("");
+    }
+    if (unassigned.length) {
+      el.insertAdjacentHTML("beforeend", `<div class="dev-card"><b>Unassigned video</b><div class="hint">${unassigned.length} clip(s) on this at-bat aren't attached to a pitch yet.</div>
+        ${unassigned.map((c) => `<div class="dev-row" data-cid="${c.id}"><span>Clip · ${escapeHtml(c.status)}</span><select data-a="assign">${'<option value="">Assign to pitch…</option>' + pitches.map((p) => opt(p.id, `Pitch ${p.pitch_number}`)).join("")}</select></div>`).join("")}</div>`);
+    }
+    el.onclick = onPitchClick;
+    el.onchange = onAssign;
+    renderFacts(summary);
+  }
+
+  function renderFacts(summary) {
+    const swingFacts = summary.rows.filter((r) => r.swingAnalyzed).map((r) => {
+      const ph = phasesByClip.get(r.clips.find((c) => c.analyzed)?.id) ?? [];
+      return { phaseTimes: { load: L.phaseTime(ph, "load"), contact: L.phaseTime(ph, "contact") } };
+    });
+    const text = L.atBatFactsSummary(summary, swingFacts);
+    const saved = entry.ai_summary;
+    document.getElementById("facts").innerHTML = `<div class="dev-card"><p style="margin:0 0 6px;">${escapeHtml(text)}</p>
+      <p class="hint">Built only from what's recorded here - no pitch type, location, intent or strategy is assumed.</p>
+      ${saved && saved !== text ? `<p class="hint">Saved earlier (${fmtDate(entry.ai_summary_generated_at)}): ${escapeHtml(saved)}</p>` : ""}
+      <div class="dev-btns"><button class="tap-target" id="saveSummary">${saved === text ? "Summary saved" : "Save summary to at-bat"}</button></div></div>`;
+    document.getElementById("saveSummary").onclick = async () => {
+      const { error } = await supabase.from("game_log_entries").update({ ai_summary: text, ai_summary_generated_at: new Date().toISOString() }).eq("id", entryId);
+      if (error) return toast(`Couldn't save: ${error.message}`);
+      entry.ai_summary = text; entry.ai_summary_generated_at = new Date().toISOString();
+      toast("Summary saved"); renderFacts(summary);
+    };
+  }
+
+  async function onAssign(e) {
+    const sel = e.target.closest('select[data-a="assign"]');
+    if (!sel || !sel.value) return;
+    const cid = sel.closest("[data-cid]").dataset.cid;
+    const { error } = await supabase.from("video_clips").update({ at_bat_pitch_id: sel.value }).eq("id", cid);
+    if (error) return toast(`Couldn't assign: ${error.message}`);
+    toast("Video attached"); await reload();
+  }
+
+  async function onPitchClick(e) {
+    const b = e.target.closest("[data-a]"); const card = e.target.closest("[data-pid]");
+    if (!b || !card || b.tagName === "SELECT") return;
+    const p = pitches.find((x) => x.id === card.dataset.pid);
+    if (b.dataset.a === "edit") return openEdit(p);
+    if (b.dataset.a === "attach") return attach(p);
+    if (b.dataset.a === "delete") {
+      if (!confirm(`Delete pitch ${p.pitch_number}? Any video stays on the at-bat, unassigned.`)) return;
+      const { error } = await supabase.from("at_bat_pitches").delete().eq("id", p.id);
+      if (error) return toast(`Couldn't delete: ${error.message}`);
+      await reload();
+    }
+  }
+
+  async function addPitch() {
+    const { error } = await supabase.from("at_bat_pitches").insert({ game_log_entry_id: entryId, pitch_number: L.nextPitchNumber(pitches) });
+    if (error) return toast(`Couldn't add pitch: ${error.message}`);
+    await reload();
+  }
+
+  function attach(p) {
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = "video/*";
+    input.onchange = async () => {
+      const f = input.files[0]; if (!f) return;
+      toast("Uploading video…");
+      try { await uploadRawClip(entryId, f, { pitchId: p.id }); toast("Uploaded - processing will start automatically"); await reload(); }
+      catch (err) { toast(err.message); }
+    };
+    input.click();
+  }
+
+  function openEdit(p) {
+    const outcomes = Object.entries(L.PITCH_OUTCOME_LABELS);
+    const b = openSheet(`Pitch ${p.pitch_number}`, `
+      <div class="dev-field"><label>Outcome</label><select id="eOut"><option value="">Not recorded</option>${outcomes.map(([k, v]) => opt(k, v, p.pitch_outcome === k)).join("")}</select></div>
+      <div class="dev-field"><label>Swing or take</label><select id="eSwung"><option value="">Infer from outcome</option>${opt("true", "Swing", p.swung === true)}${opt("false", "Take", p.swung === false)}</select></div>
+      <div class="dev-row"><div class="dev-field" style="flex:1"><label>Balls before</label><select id="eB"><option value="">Auto</option>${[0, 1, 2, 3].map((n) => opt(String(n), n, p.count_before_balls === n)).join("")}</select></div>
+        <div class="dev-field" style="flex:1"><label>Strikes before</label><select id="eS"><option value="">Auto</option>${[0, 1, 2].map((n) => opt(String(n), n, p.count_before_strikes === n)).join("")}</select></div></div>
+      <div class="dev-field"><label>Pitch type (optional)</label><input id="eType" value="${escapeHtml(p.pitch_type ?? "")}"></div>
+      <div class="dev-field"><label>Location (optional)</label><input id="eLoc" value="${escapeHtml(p.pitch_location ?? "")}"></div>
+      <div class="dev-field"><label>Notes</label><textarea id="eNotes">${escapeHtml(p.notes ?? "")}</textarea></div>
+      <div class="dev-btns"><button class="primary tap-target" id="eSave">Save</button></div>`);
+    b.querySelector("#eSave").onclick = async () => {
+      const bv = b.querySelector("#eB").value, sv = b.querySelector("#eS").value;
+      if ((bv === "") !== (sv === "")) return toast("Set both balls and strikes, or leave both on Auto.");
+      const sw = b.querySelector("#eSwung").value;
+      const { error } = await supabase.from("at_bat_pitches").update({
+        pitch_outcome: b.querySelector("#eOut").value || null,
+        swung: sw === "" ? null : sw === "true",
+        count_before_balls: bv === "" ? null : Number(bv),
+        count_before_strikes: sv === "" ? null : Number(sv),
+        pitch_type: b.querySelector("#eType").value.trim() || null,
+        pitch_location: b.querySelector("#eLoc").value.trim() || null,
+        notes: b.querySelector("#eNotes").value.trim() || null,
+      }).eq("id", p.id);
+      if (error) return toast(`Couldn't save: ${error.message}`);
+      b.querySelector(".close-btn").click(); await reload();
+    };
+  }
+
+  main().catch((e) => { console.error(e); document.getElementById("loading").textContent = `Couldn't load: ${e.message}`; });
+</script>
+</body>
+</html>

@@ -249,7 +249,7 @@ export async function processOnePendingClip(): Promise<boolean> {
         // simply unset there.
         const useClaudeCli = process.env.AI_ANALYZER === "claude-cli";
         console.log(`[process-upload-queue] Running AI diagnosis for "${clip.clipSlug}" via ${useClaudeCli ? "claude CLI" : "Gemini"}`);
-        await analyzeAndSync(clip.teamSlug, clip.playerSlug, stillsDir, pitchContext, false, null, useClaudeCli);
+        await analyzeAndSync(clip.teamSlug, clip.playerSlug, stillsDir, pitchContext, false, null, useClaudeCli, clip.videoClipId);
       }
     } catch (diagErr) {
       const message = diagErr instanceof Error ? diagErr.message : String(diagErr);

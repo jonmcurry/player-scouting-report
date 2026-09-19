@@ -15,9 +15,10 @@ function sanitizeForSlug(name) {
 /**
  * @param {string} gameLogEntryId
  * @param {File} file
+ * @param {{ pitchId?: string, repId?: string }} [link] attach the clip to a specific pitch / practice rep
  * @returns {Promise<void>}
  */
-export async function uploadRawClip(gameLogEntryId, file) {
+export async function uploadRawClip(gameLogEntryId, file, link = {}) {
   const dotIndex = file.name.lastIndexOf(".");
   const stem = dotIndex > 0 ? file.name.slice(0, dotIndex) : file.name;
   const ext = dotIndex > 0 ? file.name.slice(dotIndex) : ".mp4";
@@ -57,6 +58,8 @@ export async function uploadRawClip(gameLogEntryId, file) {
     raw_gcs_path: fnResult.gcsPath,
     status: "pending",
     position: count ?? 0,
+    ...(link.pitchId ? { at_bat_pitch_id: link.pitchId } : {}),
+    ...(link.repId ? { practice_repetition_id: link.repId } : {}),
   });
   if (insertError) {
     throw new Error(`Video uploaded, but couldn't record it: ${insertError.message}`);

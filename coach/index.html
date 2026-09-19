@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BarrelIQ — Coach Login</title>
-<link rel="stylesheet" href="./coach.css?v=f8e3152b8c">
+<link rel="stylesheet" href="./coach.css?v=7de56c9b15">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -85,7 +85,7 @@
 
     const { data: access, error } = await supabase
       .from("coach_team_access")
-      .select("role, teams(slug, name)");
+      .select("role, teams(id, slug, name)");
     if (error) {
       document.getElementById("teamsList").innerHTML =
         `<p class="error-text">Couldn't load your teams: ${escapeHtml(error.message)}</p>`;
@@ -107,11 +107,27 @@
       div.className = "card";
       div.innerHTML = `
         <div style="font-family:var(--font-display);font-weight:600;font-size:18px;text-transform:uppercase;margin-bottom:10px;">${escapeHtml(a.teams.name)}</div>
+        <div class="hint" data-team-summary style="margin-bottom:10px;">&nbsp;</div>
         <a class="tap-target" style="display:inline-flex;align-items:center;" href="./team.html?team=${encodeURIComponent(a.teams.slug)}">Open team view →</a>
       `;
       teamsList.appendChild(div);
+      fillTeamSummary(div.querySelector("[data-team-summary]"), a.teams.id);
     }
     return true;
+  }
+
+  /** Value-first one-liner per team: what needs the coach's attention. Best-effort - a failure just leaves it blank. */
+  async function fillTeamSummary(el, teamId) {
+    try {
+      const [{ count: drafts }, { count: active }] = await Promise.all([
+        supabase.from("issues").select("id, players!inner(team_id)", { count: "exact", head: true }).eq("players.team_id", teamId).eq("review_status", "draft"),
+        supabase.from("player_priorities").select("id, players!inner(team_id)", { count: "exact", head: true }).eq("players.team_id", teamId).in("status", ["active", "monitoring"]),
+      ]);
+      const parts = [];
+      parts.push(drafts ? `<b>${drafts}</b> AI observation${drafts === 1 ? "" : "s"} to review` : "Nothing waiting for review");
+      parts.push(`${active ?? 0} active priorit${active === 1 ? "y" : "ies"}`);
+      el.innerHTML = parts.join(" · ");
+    } catch { el.textContent = ""; }
   }
 
   document.getElementById("signInBtn").addEventListener("click", async () => {

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BarrelIQ — Team View</title>
-<link rel="stylesheet" href="./coach.css?v=f8e3152b8c">
+<link rel="stylesheet" href="./coach.css?v=7de56c9b15">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -13,6 +13,7 @@
 <header class="app-bar" id="appBar"></header>
 <div class="wrap">
 
+  <div id="devDash"></div>
   <div id="focusBanner"></div>
 
   <div class="roster-toolbar">
@@ -42,6 +43,7 @@
   import { supabase, requireSession, CHECKPOINTS, qs, escapeHtml } from "./shared.js";
   import { renderTeamAppBar, renderBottomNav, getLastPlayerSlug } from "./components/appShell.js";
   import { closeableModal } from "./components/compModal.js";
+  import { renderTeamDashboard } from "./components/teamDashboard.js";
 
   const MIN_ATBATS_FOR_PATTERN = 3;
   const teamSlug = qs("team");
@@ -115,6 +117,12 @@
     });
 
     renderPlayerCards(currentPlayers, currentFilter);
+    renderTeamDashboard(
+      document.getElementById("devDash"),
+      team.id,
+      teamSlug,
+      new Map(currentPlayers.map((p) => [p.id, { id: p.id, name: p.name, slug: p.slug, teamSlug }])),
+    );
 
     document.querySelectorAll(".chip").forEach((chip) => {
       chip.addEventListener("click", () => {

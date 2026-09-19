@@ -115,16 +115,17 @@ function currentPhaseLabel(phases, t) {
  *   model hasn't finished loading yet (e.g. the coach closes the modal
  *   immediately) - it cancels cleanly instead of finishing setup pointlessly.
  */
-export async function renderSkeletonComparison(mountEl, { realFrames, correctedFrames, phases, note }) {
+export async function renderSkeletonComparison(mountEl, { realFrames, correctedFrames, phases, note, videoUrl = null, initialTimeS = null, trailControls = true }) {
   const locatedPhases = phases.filter((p) => p.timeS !== null);
-  const twoPanel = !!correctedFrames;
+  const twoPanel = !!correctedFrames && !videoUrl;
 
   mountEl.innerHTML = `
     <div class="scrubber">
       <p class="hint" data-loading>Loading 3D model…</p>
       <div class="skeleton-canvases" data-canvases hidden>
+        ${videoUrl ? `<div class="skeleton-canvas-col"><p class="skeleton-canvas-label">Original video — source of truth</p><video class="review-video" data-original-video src="${videoUrl}" playsinline preload="auto"></video></div>` : ""}
         <div class="skeleton-canvas-col">
-          ${twoPanel ? `<p class="skeleton-canvas-label">Her real swing</p>` : ""}
+          ${(twoPanel || videoUrl) ? `<p class="skeleton-canvas-label">3D reconstructed estimate</p>` : ""}
           <canvas class="skeleton-canvas" data-cv-real width="360" height="420"></canvas>
         </div>
         ${
@@ -139,6 +140,8 @@ export async function renderSkeletonComparison(mountEl, { realFrames, correctedF
       ${note ? `<p class="hint">${note}</p>` : ""}
       <div class="scrubber-controls" data-controls hidden>
         <button type="button" class="tap-target" data-play>&#9654; Play</button>
+        <button type="button" class="tap-target" data-prev aria-label="Previous frame">&#9664; Frame</button>
+        <button type="button" class="tap-target" data-next aria-label="Next frame">Frame &#9654;</button>
         <select class="tap-target" data-speed>
           <option value="0.25">0.25x</option>
           <option value="0.5" selected>0.5x</option>
@@ -146,6 +149,22 @@ export async function renderSkeletonComparison(mountEl, { realFrames, correctedF
         </select>
         <button type="button" class="tap-target" data-reset-camera>&#8635; Reset View</button>
         <span class="scrubber-phase-label" data-phase-label>&mdash;</span>
+      </div>
+      ${trailControls ? `<div class="trail-controls" data-trail-controls hidden>
+        <span class="hint">Trails</span>
+        <label><input type="checkbox" data-trail="hands"> Hands</label>
+        <label><input type="checkbox" data-trail="bat"> Bat barrel</label>
+        <label><input type="checkbox" data-trail="pelvis"> Pelvis</label>
+        <label><input type="checkbox" data-trail="sternum"> Sternum</label>
+        <label><input type="checkbox" data-trail="shoulderAxis"> Shoulder axis</label>
+        <label><input type="checkbox" data-trail="hipAxis"> Hip axis</label>
+        <select class="tap-target" data-trail-window aria-label="Trail length">
+          <option value="0.15">Short (0.15s)</option><option value="0.3" selected>Medium (0.3s)</option><option value="0.6">Long (0.6s)</option>
+        </select>
+      </div>` : ""}
+      <div class="camera-presets" data-camera-presets hidden>
+        ${["Source","Front","Side","Rear","Pitcher","Batter"].map((v)=>`<button type="button" class="tap-target" data-view="${v}">${v}</button>`).join("")}
+        <span class="hint">Alternate angles are reconstructed viewpoints.</span>
       </div>
       <div class="scrubber-track-wrap" data-track hidden>
         <input type="range" class="tap-target" data-scrub min="0" max="1000" value="0" step="1">
@@ -174,6 +193,9 @@ export async function renderSkeletonComparison(mountEl, { realFrames, correctedF
   mountEl.querySelector("[data-canvases]").hidden = false;
   mountEl.querySelector("[data-controls]").hidden = false;
   mountEl.querySelector("[data-track]").hidden = false;
+  mountEl.querySelector("[data-camera-presets]").hidden = false;
+  const trailEl = mountEl.querySelector("[data-trail-controls]");
+  if (trailEl) trailEl.hidden = false;
   // The canvases were hidden (0x0) while loading, so the ResizeObserver in
   // skeletonScene.js never got a real size to work with - force one resize
   // now that they're visible, instead of waiting on the observer's next
@@ -185,6 +207,7 @@ export async function renderSkeletonComparison(mountEl, { realFrames, correctedF
   const speedSelect = mountEl.querySelector("[data-speed]");
   const phaseLabel = mountEl.querySelector("[data-phase-label]");
   const scrubInput = mountEl.querySelector("[data-scrub]");
+  const originalVideo = mountEl.querySelector("[data-original-video]");
   const ticksEl = mountEl.querySelector("[data-ticks]");
 
   const n = realFrames.length;
@@ -218,8 +241,10 @@ export async function renderSkeletonComparison(mountEl, { realFrames, correctedF
   function setFrame() {
     sceneReal.setJoints(realFrames[frame].joints);
     if (sceneCorrected) sceneCorrected.setJoints(correctedFrames[frame].joints);
+    sceneReal.updateTrails(frame);
     scrubInput.value = String(Math.round((frame / Math.max(1, n - 1)) * 1000));
     phaseLabel.textContent = currentPhaseLabel(locatedPhases, realFrames[frame].time_s);
+    if(originalVideo && Math.abs(originalVideo.currentTime-realFrames[frame].time_s) > 0.012) originalVideo.currentTime=realFrames[frame].time_s;
   }
 
   function tick(ts) {
@@ -244,6 +269,8 @@ export async function renderSkeletonComparison(mountEl, { realFrames, correctedF
     lastTick = 0;
     playBtn.textContent = playing ? "⏸ Pause" : "▶ Play";
   });
+  mountEl.querySelector("[data-prev]").addEventListener("click", () => { playing=false; playBtn.textContent="▶ Play"; frame=Math.max(0,frame-1); setFrame(); });
+  mountEl.querySelector("[data-next]").addEventListener("click", () => { playing=false; playBtn.textContent="▶ Play"; frame=Math.min(n-1,frame+1); setFrame(); });
   speedSelect.addEventListener("change", () => {
     speed = Number(speedSelect.value);
   });
@@ -257,11 +284,42 @@ export async function renderSkeletonComparison(mountEl, { realFrames, correctedF
     sceneReal.resetCamera();
     if (sceneCorrected) sceneCorrected.resetCamera();
   });
+  mountEl.querySelector("[data-camera-presets]").addEventListener("click", (event) => {
+    const btn=event.target.closest("[data-view]"); if(!btn) return;
+    sceneReal.setCameraPreset(btn.dataset.view); if(sceneCorrected) sceneCorrected.setCameraPreset(btn.dataset.view);
+  });
+
+  function applyTrailConfig() {
+    const cfg = { windowFrames: Math.max(2, Math.round(Number(mountEl.querySelector("[data-trail-window]")?.value ?? 0.3) * fps)) };
+    mountEl.querySelectorAll("[data-trail]").forEach((cb) => { cfg[cb.dataset.trail] = cb.checked; });
+    sceneReal.setTrailConfig(cfg);
+    setFrame();
+  }
+  mountEl.querySelectorAll("[data-trail], [data-trail-window]").forEach((el) => el.addEventListener("change", applyTrailConfig));
+
+  function frameForTime(t) {
+    let best = 0;
+    let bestDelta = Infinity;
+    for (let i = 0; i < n; i++) {
+      const d = Math.abs(realFrames[i].time_s - t);
+      if (d < bestDelta) { bestDelta = d; best = i; }
+    }
+    return best;
+  }
+  function seekToTime(t) {
+    playing = false;
+    playBtn.textContent = "▶ Play";
+    frame = frameForTime(t);
+    setFrame();
+  }
+  if (initialTimeS != null) frame = frameForTime(initialTimeS);
 
   setFrame();
   rafId = requestAnimationFrame(tick);
 
   return {
+    seekToTime,
+    currentTime: () => realFrames[frame].time_s,
     dispose() {
       cancelled = true;
       if (rafId !== null) cancelAnimationFrame(rafId);

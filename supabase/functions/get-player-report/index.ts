@@ -5,9 +5,12 @@
 // token. Deliberately not a table/RPC anon grant (see
 // 00019_player_share_links.sql's comment) - this function is the entire
 // public-read boundary, so it returns only what a report genuinely needs:
-// no internal ids, no ai_draft/notes/source, no video/clip data.
+// no ai_draft/notes/source, no internal metrics. Priorities/drills/progress are coach-authored
+// only (shape.ts is the whitelist); video is served only for clips a coach linked as evidence.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { Storage } from "npm:@google-cloud/storage@7";
+import { shapePlayerReport } from "./shape.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,7 +30,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { token } = await req.json();
+    const { token, videoClipId } = await req.json();
     if (!token || typeof token !== "string") {
       return jsonResponse({ error: "token is required" }, 400);
     }
@@ -61,6 +64,27 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Player not found." }, 404);
     }
 
+    // Signed video URL for a clip - only when a coach linked it as evidence on one of this
+    // player's visible priorities. The token alone is not enough to fetch arbitrary clips.
+    if (videoClipId) {
+      const { data: obs } = await supabase
+        .from("player_priority_observations")
+        .select("video_clip_id, player_priorities!inner(player_id, status)")
+        .eq("video_clip_id", videoClipId)
+        .eq("player_priorities.player_id", link.player_id)
+        .neq("player_priorities.status", "archived")
+        .limit(1);
+      if (!obs?.length) return jsonResponse({ error: "Clip not available." }, 404);
+      const { data: clip } = await supabase.from("video_clips").select("raw_gcs_path").eq("id", videoClipId).single();
+      const m = clip?.raw_gcs_path?.match(/^gs:\/\/([^/]+)\/(.+)$/);
+      if (!m) return jsonResponse({ error: "Clip not available." }, 404);
+      const emulator = Deno.env.get("GCS_EMULATOR_HOST");
+      if (emulator) return jsonResponse({ url: `${emulator}/download/storage/v1/b/${encodeURIComponent(m[1])}/o/${encodeURIComponent(m[2])}?alt=media` });
+      const storage = new Storage({ projectId: Deno.env.get("GCP_PROJECT_ID") });
+      const [url] = await storage.bucket(m[1]).file(m[2]).getSignedUrl({ version: "v4", action: "read", expires: Date.now() + 15 * 60 * 1000 });
+      return jsonResponse({ url });
+    }
+
     const { data: scores } = await supabase
       .from("checklist_scores")
       .select("score, reviewed_by, checkpoints!inner(label, sort_order)")
@@ -73,17 +97,31 @@ Deno.serve(async (req) => {
       .eq("player_id", link.player_id)
       .eq("session_type", "game");
 
-    return jsonResponse({
-      playerName: player.name,
-      jerseyNumber: player.jersey_number,
-      teamName: (player.teams as unknown as { name: string }).name,
-      loggedAtBats: loggedAtBats ?? 0,
-      checkpoints: (scores ?? []).map((s) => ({
-        label: (s.checkpoints as unknown as { label: string }).label,
-        score: s.score,
-        reviewedBy: s.reviewed_by,
-      })),
-    });
+    const { data: priorities } = await supabase
+      .from("player_priorities")
+      .select("id, title, description, status, priority_order, first_identified_at, resolved_at")
+      .eq("player_id", link.player_id)
+      .neq("status", "archived");
+    const ids = (priorities ?? []).map((p) => p.id);
+    const [{ data: drills }, { data: observations }] = ids.length
+      ? await Promise.all([
+          supabase.from("player_priority_drills").select("player_priority_id, active, coach_note, drill_library(name, purpose, instructions, equipment)").in("player_priority_id", ids),
+          supabase.from("player_priority_observations").select("player_priority_id, status, coach_note, observed_at, video_clip_id, phase").in("player_priority_id", ids),
+        ])
+      : [{ data: [] }, { data: [] }];
+
+    return jsonResponse(
+      shapePlayerReport({
+        player: { name: player.name, jersey_number: player.jersey_number, teamName: (player.teams as unknown as { name: string }).name },
+        // deno-lint-ignore no-explicit-any
+        scores: (scores ?? []) as any,
+        priorities: priorities ?? [],
+        // deno-lint-ignore no-explicit-any
+        drills: (drills ?? []) as any,
+        observations: observations ?? [],
+        loggedAtBats: loggedAtBats ?? 0,
+      }),
+    );
   } catch (err) {
     return jsonResponse({ error: String(err) }, 500);
   }

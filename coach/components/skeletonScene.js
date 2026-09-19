@@ -17,6 +17,7 @@ import {
   H36M_JOINT_NAMES, L_SHOULDER, R_SHOULDER, L_HIP, R_HIP, THORAX,
   L_WRIST, R_WRIST, L_ELBOW, R_ELBOW, L_KNEE, R_KNEE, L_ANKLE, R_ANKLE,
 } from "./h36mSkeleton.js";
+import { AVATAR_RETARGET_MAP } from "./avatar-retarget-map.js";
 
 export const DEFAULT_COLORS = {
   body: 0xcbb89a,
@@ -42,13 +43,13 @@ function toVec3(p) {
 // separator - confirmed by loading it and listing bone names, not assumed;
 // some Mixamo exports use "mixamorig:Hips", this one uses "mixamorigHips").
 const MB = {
-  hips: "mixamorigHips",
-  spine: "mixamorigSpine", spine1: "mixamorigSpine1", spine2: "mixamorigSpine2",
-  neck: "mixamorigNeck", head: "mixamorigHead", headTop: "mixamorigHeadTop_End",
-  lShoulder: "mixamorigLeftShoulder", lArm: "mixamorigLeftArm", lForeArm: "mixamorigLeftForeArm", lHand: "mixamorigLeftHand",
-  rShoulder: "mixamorigRightShoulder", rArm: "mixamorigRightArm", rForeArm: "mixamorigRightForeArm", rHand: "mixamorigRightHand",
-  lUpLeg: "mixamorigLeftUpLeg", lLeg: "mixamorigLeftLeg", lFoot: "mixamorigLeftFoot",
-  rUpLeg: "mixamorigRightUpLeg", rLeg: "mixamorigRightLeg", rFoot: "mixamorigRightFoot",
+  hips: AVATAR_RETARGET_MAP.pelvis,
+  spine: AVATAR_RETARGET_MAP.spine, spine1: "mixamorigSpine1", spine2: AVATAR_RETARGET_MAP.chest,
+  neck: AVATAR_RETARGET_MAP.neck, head: AVATAR_RETARGET_MAP.head, headTop: "mixamorigHeadTop_End",
+  lShoulder: AVATAR_RETARGET_MAP.leftShoulder, lArm: AVATAR_RETARGET_MAP.leftUpperArm, lForeArm: AVATAR_RETARGET_MAP.leftForearm, lHand: AVATAR_RETARGET_MAP.leftHand,
+  rShoulder: AVATAR_RETARGET_MAP.rightShoulder, rArm: AVATAR_RETARGET_MAP.rightUpperArm, rForeArm: AVATAR_RETARGET_MAP.rightForearm, rHand: AVATAR_RETARGET_MAP.rightHand,
+  lUpLeg: AVATAR_RETARGET_MAP.leftThigh, lLeg: AVATAR_RETARGET_MAP.leftShin, lFoot: AVATAR_RETARGET_MAP.leftFoot,
+  rUpLeg: AVATAR_RETARGET_MAP.rightThigh, rLeg: AVATAR_RETARGET_MAP.rightShin, rFoot: AVATAR_RETARGET_MAP.rightFoot,
 };
 
 // Hierarchy, parent-first (retargeting must process a bone AFTER its
@@ -384,6 +385,7 @@ export async function createSkeletonScene(canvasEl, opts = {}) {
   }
 
   let initialized = false;
+  let clipFramesRef = [];
 
   /** Called once per clip, before the first setJoints() - computes the
    * per-clip "auto-level" correction. This pipeline has no real camera
@@ -416,6 +418,7 @@ export async function createSkeletonScene(canvasEl, opts = {}) {
    * Display-only - does not touch stored video_clip_metrics angles, see
    * NEXT_STEPS.md. */
   function setClipFrames(frames) {
+    clipFramesRef = frames;
     const calibrationFrames = frames.slice(0, Math.max(1, Math.ceil(frames.length * 0.2)));
     const avgUp = new THREE.Vector3();
     for (const f of calibrationFrames) {
@@ -475,6 +478,117 @@ export async function createSkeletonScene(canvasEl, opts = {}) {
         if (contactRing) contactRing.visible = false;
       }
     }
+    if (trailCfg.shoulderAxis || trailCfg.hipAxis) updateAxisOverlays();
+  }
+
+  // ---- Motion trails + axis overlays -------------------------------------
+  // Coach-toggleable, deliberately short: a trail only covers the last
+  // `windowFrames` frames up to the shown one (default ~0.3s at 30fps), so
+  // nothing persistent ever piles up over the figure. Trail points are the
+  // RETARGETED bone positions (the same positions the avatar is drawn at), not
+  // raw joint coordinates - the avatar is rescaled to a fixed height, so raw
+  // joint space would not line up with it. Each trail therefore re-runs the
+  // (cheap) bone retarget for the window's frames, then restores the shown
+  // frame. Bat barrel is the same knob->tip geometry the bat mesh uses.
+  const TRAIL_COLORS = { hands: 0xf2b84b, bat: 0xe0584c, pelvis: 0x34d399, sternum: 0x6fa8ff };
+  const MAX_TRAIL_FRAMES = 45;
+  const trailCfg = { hands: false, bat: false, pelvis: false, sternum: false, shoulderAxis: false, hipAxis: false, windowFrames: 10 };
+  const trailLines = {};
+  for (const [name, color] of Object.entries(TRAIL_COLORS)) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array((MAX_TRAIL_FRAMES + 1) * 3), 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array((MAX_TRAIL_FRAMES + 1) * 3), 3));
+    geo.setDrawRange(0, 0);
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ vertexColors: true, linewidth: 2 }));
+    line.frustumCulled = false;
+    line.visible = false;
+    line.userData.color = new THREE.Color(color);
+    scene.add(line);
+    trailLines[name] = line;
+  }
+  const axisLines = {};
+  for (const name of ["shoulderAxis", "hipAxis"]) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: name === "shoulderAxis" ? 0x6fa8ff : 0x34d399 }));
+    line.frustumCulled = false;
+    line.visible = false;
+    scene.add(line);
+    axisLines[name] = line;
+  }
+
+  function bonePos(key) {
+    return new THREE.Vector3().setFromMatrixPosition(bones[key].matrixWorld);
+  }
+  function batBarrelTip() {
+    const lHand = bonePos("lHand");
+    const rHand = bonePos("rHand");
+    const dir = lHand.clone().sub(bonePos("lForeArm")).add(rHand.clone().sub(bonePos("rForeArm")));
+    if (dir.lengthSq() < 1e-8) return null;
+    dir.normalize();
+    return lHand.add(rHand).multiplyScalar(0.5).add(dir.multiplyScalar(0.745 - 0.045));
+  }
+  const trailSamplers = {
+    hands: () => bonePos("lHand").add(bonePos("rHand")).multiplyScalar(0.5),
+    bat: batBarrelTip,
+    pelvis: () => bonePos("hips"),
+    sternum: () => bonePos("spine2"),
+  };
+
+  function updateAxisOverlays() {
+    const set = (name, a, b, on) => {
+      const line = axisLines[name];
+      line.visible = !!on;
+      if (!on) return;
+      const pa = bonePos(a);
+      const pb = bonePos(b);
+      line.geometry.attributes.position.setXYZ(0, pa.x, pa.y, pa.z);
+      line.geometry.attributes.position.setXYZ(1, pb.x, pb.y, pb.z);
+      line.geometry.attributes.position.needsUpdate = true;
+    };
+    set("shoulderAxis", "lShoulder", "rShoulder", trailCfg.shoulderAxis);
+    set("hipAxis", "lUpLeg", "rUpLeg", trailCfg.hipAxis);
+  }
+
+  /** Redraws the enabled trails ending at clip frame `frameIdx`. Call after
+   * setJoints() for that same frame (playback, scrubbing, stepping). */
+  function updateTrails(frameIdx) {
+    const enabled = Object.keys(TRAIL_COLORS).filter((k) => trailCfg[k]);
+    for (const k of Object.keys(TRAIL_COLORS)) if (!trailCfg[k]) trailLines[k].visible = false;
+    if (enabled.length === 0 || clipFramesRef.length === 0 || !initialized) return;
+    const end = Math.min(frameIdx, clipFramesRef.length - 1);
+    const start = Math.max(0, end - Math.min(trailCfg.windowFrames, MAX_TRAIL_FRAMES));
+    const pts = Object.fromEntries(enabled.map((k) => [k, []]));
+    for (let f = start; f <= end; f++) {
+      retargetBones(clipFramesRef[f].joints.map(worldVec3));
+      for (const k of enabled) {
+        const p = trailSamplers[k]();
+        if (p) pts[k].push(p);
+      }
+    }
+    setJoints(clipFramesRef[end].joints); // restore the shown pose (+ bat + axis overlays)
+    for (const k of enabled) {
+      const line = trailLines[k];
+      const list = pts[k];
+      const posAttr = line.geometry.attributes.position;
+      const colAttr = line.geometry.attributes.color;
+      list.forEach((p, i) => {
+        posAttr.setXYZ(i, p.x, p.y, p.z);
+        const fade = 0.25 + 0.75 * (list.length > 1 ? i / (list.length - 1) : 1);
+        colAttr.setXYZ(i, line.userData.color.r * fade, line.userData.color.g * fade, line.userData.color.b * fade);
+      });
+      posAttr.needsUpdate = true;
+      colAttr.needsUpdate = true;
+      line.geometry.setDrawRange(0, list.length);
+      line.visible = list.length > 1;
+    }
+  }
+
+  /** @param {{hands?:boolean,bat?:boolean,pelvis?:boolean,sternum?:boolean,shoulderAxis?:boolean,hipAxis?:boolean,windowFrames?:number}} cfg */
+  function setTrailConfig(cfg) {
+    Object.assign(trailCfg, cfg);
+    trailCfg.windowFrames = Math.max(2, Math.min(MAX_TRAIL_FRAMES, Math.round(trailCfg.windowFrames)));
+    if (initialized) updateAxisOverlays();
   }
 
   // A one-shot resize() call right after the canvas is unhidden used to be
@@ -518,6 +632,19 @@ export async function createSkeletonScene(canvasEl, opts = {}) {
     applyDefaultCamera();
   }
 
+  function setCameraPreset(name) {
+    const azimuths = { Source: -0.52, Front: 0, Side: Math.PI / 2, Rear: Math.PI, Pitcher: 0, Batter: Math.PI };
+    if (!(name in azimuths)) return;
+    const target = defaultCamera.target;
+    const distance = defaultCamera.distance;
+    const polar = defaultCamera.polar;
+    const azimuth = azimuths[name];
+    controls.target.copy(target);
+    const sinPolar = Math.sin(polar);
+    camera.position.set(target.x + distance*sinPolar*Math.sin(azimuth), target.y + distance*Math.cos(polar), target.z + distance*sinPolar*Math.cos(azimuth));
+    controls.update();
+  }
+
   function dispose() {
     resizeObserver.disconnect();
     controls.dispose();
@@ -530,6 +657,10 @@ export async function createSkeletonScene(canvasEl, opts = {}) {
       if (node.isMesh && node.material) node.material.dispose();
     });
     scene.remove(character);
+    [...Object.values(trailLines), ...Object.values(axisLines)].forEach((line) => {
+      line.geometry.dispose();
+      line.material.dispose();
+    });
     [groundMesh, batMesh, contactRing].forEach((obj) => {
       if (!obj) return;
       obj.geometry.dispose();
@@ -538,7 +669,7 @@ export async function createSkeletonScene(canvasEl, opts = {}) {
     renderer.dispose();
   }
 
-  return { setClipFrames, setJoints, resetCamera, resize, tick, dispose, camera, controls };
+  return { setClipFrames, setJoints, setTrailConfig, updateTrails, resetCamera, setCameraPreset, resize, tick, dispose, camera, controls };
 }
 
 /** Bidirectional camera mirroring for a two-panel comparison (real vs.

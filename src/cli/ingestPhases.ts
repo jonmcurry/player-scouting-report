@@ -34,6 +34,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { findPlayerId } from "../services/db/checklistUpsert.js";
+import { computeAnalysisQuality } from "../services/db/analysisQuality.js";
 import {
   findGameLogEntryId,
   findOrCreateVideoClip,
@@ -166,7 +167,13 @@ export async function ingestPhases(
   // anywhere (see videoClipUpsert.ts's upsertVideoClipMetrics for the full
   // field mapping). Rides along here rather than a separate CLI command,
   // since this function already has metrics loaded and videoClipId resolved.
-  await upsertVideoClipMetrics({ videoClipId, metrics });
+  const pose3dPath = path.join(clipDir, "pose_3d.json");
+  const pose3d = fs.existsSync(pose3dPath) ? JSON.parse(fs.readFileSync(pose3dPath, "utf-8")) : null;
+  await upsertVideoClipMetrics({
+    videoClipId,
+    metrics,
+    analysisQuality: computeAnalysisQuality({ pose2d, pose3d, metrics }) as unknown as Record<string, unknown>,
+  });
 
   console.log(
     `Ingested ${written} phase(s) for ${playerSlug}'s clip "${clipSlug}" ` +

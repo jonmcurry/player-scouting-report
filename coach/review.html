@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>BarrelIQ — Review Swing</title>
+<link rel="stylesheet" href="./coach.css?v=7de56c9b15">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/icon-192.svg">
+<meta name="theme-color" content="#121418">
+</head>
+<body>
+<header class="app-bar" id="appBar"></header>
+<div class="wrap">
+  <nav id="devTabs"></nav>
+  <p class="hint" id="loading">Loading swing…</p>
+  <div id="content" hidden>
+    <div id="swingHeader"></div>
+    <div id="watch"></div>
+
+    <h2>What I see</h2>
+    <div id="observations"></div>
+
+    <h2>What to work on</h2>
+    <div id="workOn"></div>
+
+    <h2>What to look for next time</h2>
+    <div id="lookFor"></div>
+
+    <h2>Track progress</h2>
+    <div id="track"></div>
+
+    <h2>Details</h2>
+    <details class="drawer" id="quality"><summary><span>Analysis quality</span></summary><div class="drawer-body" id="qualityBody"></div></details>
+    <details class="drawer" id="metricsDrawer"><summary><span>Metrics</span></summary><div class="drawer-body" id="metricsBody"></div></details>
+    <details class="drawer" id="threeD"><summary><span>3D reconstruction</span></summary><div class="drawer-body" id="threeDBody"><p class="hint">Opens on demand.</p></div></details>
+    <details class="drawer" id="advanced"><summary><span>Advanced scoring</span></summary><div class="drawer-body" id="advancedBody"></div></details>
+  </div>
+</div>
+<nav class="bottom-nav" id="bottomNav"></nav>
+
+<script src="./config.local.js"></script>
+<script type="module">
+  import {
+    L, supabase, qs, buildContext, PLAYER_SELECT, renderHeader, loadPriorities,
+    loadDrillLibrary, loadDrillAssignments, loadPhases, getVideoUrl, emptyState, pill, fmtDate, escapeHtml, showNotFound, toast,
+  } from "./components/devUi.js";
+  import {
+    openPromoteSheet, openAssignDrillSheet, openObservationSheet, openFollowUpSheet, openEditIssueSheet, reviewIssue,
+  } from "./components/devActions.js";
+  import { getMyDisplayName, requireSession } from "./shared.js";
+  import { loadClipSkeletonData, renderSkeletonComparison } from "./components/skeletonComparison.js";
+  import { loadSwingMetrics, renderSwingMetricsPanel } from "./components/swingMetricsPanel.js";
+
+  const clipId = qs("clip");
+  let ctx, clip, phases = [], videoEl = null, library = [], priorities = [], assignments = [], issues = [], viewer = null;
+
+  async function main() {
+    const session = await requireSession();
+    if (!session) return;
+    if (!clipId) return showNotFound("No swing selected.");
+    const { data, error } = await supabase
+      .from("video_clips")
+      .select(`id, status, error_message, clip_slug, game_log_entry_id, at_bat_pitch_id, practice_repetition_id,
+        game_log_entries!inner(id, date, opponent, ab, session_type, result, players!inner(${PLAYER_SELECT})),
+        at_bat_pitches(id, pitch_number, pitch_outcome, swung), practice_repetitions(id, rep_number, grouping, practice_session_id)`)
+      .eq("id", clipId)
+      .single();
+    if (error || !data) return showNotFound("This swing wasn't found or you don't have access to it.");
+    clip = data;
+    ctx = buildContext(session, await getMyDisplayName(session.user.id), data.game_log_entries.players);
+    await renderHeader(ctx, "report");
+
+    [phases, library, priorities] = await Promise.all([loadPhases(clipId), loadDrillLibrary(ctx.team.id), loadPriorities(ctx.player.id, ["active", "monitoring"])]);
+    assignments = await loadDrillAssignments(priorities.map((p) => p.id));
+    await loadIssues();
+
+    renderHeaderBlock();
+    await renderWatch();
+    renderAll();
+    wireDetails();
+    document.getElementById("loading").hidden = true;
+    document.getElementById("content").hidden = false;
+    seekToPhase(qs("phase"));
+  }
+
+  async function loadIssues() {
+    // Issues drafted from THIS swing come first; fall back to the player's
+    // other non-rejected drafts so an older swing still shows something useful.
+    const { data } = await supabase.from("issues").select("*").eq("player_id", ctx.player.id).neq("review_status", "rejected").order("created_at", { ascending: false }).limit(20);
+    const all = data ?? [];
+    const own = all.filter((i) => i.video_clip_id === clipId);
+    issues = own.length ? own : all.slice(0, 5);
+    issues.fromThisSwing = own.length > 0;
+  }
+
+  function evidenceCtx(phase) {
+    return {
+      clipId,
+      pitchId: clip.at_bat_pitch_id,
+      repId: clip.practice_repetition_id,
+      sessionId: clip.practice_repetitions?.practice_session_id ?? null,
+      phase: phase ?? qs("phase") ?? null,
+    };
+  }
+
+  function renderHeaderBlock() {
+    const e = clip.game_log_entries;
+    const swing = {
+      context: e.session_type, date: e.date, ab: e.ab,
+      pitchNumber: clip.at_bat_pitches?.pitch_number, repNumber: clip.practice_repetitions?.rep_number,
+    };
+    const atbat = e.session_type === "game" ? ctx.url("atbat", { entry: e.id }) : ctx.url("session", { session: clip.practice_repetitions?.practice_session_id ?? "" });
+    document.getElementById("swingHeader").innerHTML = `
+      <div class="dev-card">
+        <div class="dev-row between"><b>${escapeHtml(L.describeSwing(swing))}</b>${pill(e.session_type === "game" ? "active" : "monitoring", e.session_type)}</div>
+        <div class="hint">${e.opponent ? `vs ${escapeHtml(e.opponent)} · ` : ""}${clip.practice_repetitions ? escapeHtml(L.GROUPING_LABELS[clip.practice_repetitions.grouping]) + " · " : ""}${clip.at_bat_pitches?.pitch_outcome ? escapeHtml(L.PITCH_OUTCOME_LABELS[clip.at_bat_pitches.pitch_outcome]) + " · " : ""}<a href="${atbat}">${e.session_type === "game" ? "At-bat summary" : "Practice session"}</a> · <a href="${ctx.url("development")}">Development</a></div>
+        ${clip.status !== "ready" ? `<p class="hint">${clip.status === "failed" ? `Processing failed: ${escapeHtml(clip.error_message ?? "unknown error")}` : "Still processing - analysis will appear here when it finishes."}</p>` : ""}
+      </div>`;
+  }
+
+  async function renderWatch() {
+    const el = document.getElementById("watch");
+    if (clip.status !== "ready") { el.innerHTML = ""; return; }
+    const url = await getVideoUrl(clipId);
+    if (!url) { el.innerHTML = emptyState("Video unavailable", "The original video couldn't be loaded right now."); return; }
+    el.innerHTML = `
+      <video id="swingVideo" class="review-video" src="${url}" controls playsinline preload="metadata"></video>
+      <div class="dev-btns" id="phaseChips">${phases.filter((p) => p.timeS != null).map((p) => `<button class="tap-target" data-phase="${p.slug}">${escapeHtml(p.label)}</button>`).join("")}</div>
+      <p class="hint">Original video is the source of truth. Phase buttons jump to the automatically-detected moment${phases.some((p) => p.confidence === "low") ? " (some are low confidence)" : ""}.</p>`;
+    videoEl = document.getElementById("swingVideo");
+    document.getElementById("phaseChips").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-phase]");
+      if (b) seekToPhase(b.dataset.phase);
+    });
+  }
+
+  function seekToPhase(slug) {
+    if (!slug) return;
+    const t = L.phaseTime(phases, slug);
+    if (t == null) return;
+    if (videoEl) {
+      const go = () => { videoEl.currentTime = t; };
+      videoEl.readyState >= 1 ? go() : videoEl.addEventListener("loadedmetadata", go, { once: true });
+    }
+    viewer?.seekToTime(t);
+  }
+
+  function confPill(c) {
+    if (!c) return "";
+    return pill(c === "high" ? "good" : c === "medium" ? "limited" : "poor", `${c} confidence`);
+  }
+
+  function renderAll() {
+    renderObservations();
+    renderWorkOn();
+    renderLookFor();
+    renderTrack();
+    renderAdvanced();
+  }
+
+  function renderObservations() {
+    const el = document.getElementById("observations");
+    if (!issues.length) {
+      el.innerHTML = emptyState("No AI observations for this swing yet.", clip.status === "ready" ? "Analysis drafts appear here after processing. You can still track progress against a priority below." : "They will appear once processing finishes.");
+      return;
+    }
+    const promoted = new Set(priorities.map((p) => p.source_issue_id).filter(Boolean));
+    el.innerHTML = (issues.fromThisSwing ? "" : `<p class="hint">Nothing drafted from this exact swing - showing recent observations for ${escapeHtml(ctx.player.name)}.</p>`) +
+      issues.map((i, n) => `
+      <div class="dev-card" data-iid="${i.id}">
+        <div class="dev-row between"><b>${n + 1}. ${escapeHtml(i.issue)}</b>${confPill(i.confidence)}</div>
+        <div class="hint">${i.review_status === "draft" ? "AI draft — not confirmed" : i.review_status === "edited" ? `Edited by ${escapeHtml(i.reviewed_by ?? "coach")}` : `Approved by ${escapeHtml(i.reviewed_by ?? "coach")}`}</div>
+        ${i.evidence ? `<p style="margin:6px 0 2px;">${escapeHtml(i.evidence)}</p>` : ""}
+        ${i.effect ? `<p class="hint" style="margin:2px 0;">Why it may matter: ${escapeHtml(i.effect)}</p>` : ""}
+        ${i.coaching_cue ? `<p style="margin:2px 0;"><b>Cue:</b> ${escapeHtml(i.coaching_cue)}</p>` : ""}
+        <div class="dev-btns">
+          ${i.phase ? `<button class="tap-target" data-a="evidence" data-phase="${escapeHtml(i.phase)}">View evidence</button>` : ""}
+          ${i.review_status === "draft" ? '<button class="primary tap-target" data-a="approve">Approve</button>' : ""}
+          <button class="tap-target" data-a="edit">Edit</button>
+          ${i.review_status === "draft" ? '<button class="tap-target" data-a="reject">Reject</button>' : ""}
+          ${promoted.has(i.id) ? pill("good", "Tracked as a priority") : '<button class="tap-target" data-a="promote">Promote to priority</button>'}
+        </div>
+      </div>`).join("");
+    el.onclick = async (e) => {
+      const b = e.target.closest("[data-a]"); const card = e.target.closest("[data-iid]");
+      if (!b || !card) return;
+      const issue = issues.find((x) => x.id === card.dataset.iid);
+      try {
+        if (b.dataset.a === "evidence") return seekToPhase(b.dataset.phase);
+        if (b.dataset.a === "approve") { await reviewIssue(ctx, issue, "approve"); toast("Approved"); }
+        if (b.dataset.a === "reject") { await reviewIssue(ctx, issue, "reject"); toast("Rejected"); }
+        if (b.dataset.a === "edit") return openEditIssueSheet(ctx, issue, reloadAll);
+        if (b.dataset.a === "promote") return openPromoteSheet(ctx, issue, reloadAll);
+        await reloadAll();
+      } catch (err) { toast(err.message); }
+    };
+  }
+
+  async function reloadAll() {
+    [priorities] = await Promise.all([loadPriorities(ctx.player.id, ["active", "monitoring"])]);
+    assignments = await loadDrillAssignments(priorities.map((p) => p.id));
+    await loadIssues();
+    renderAll();
+  }
+
+  function primaryPriority() {
+    const promoted = priorities.find((p) => issues.some((i) => i.id === p.source_issue_id));
+    return promoted ?? priorities[0] ?? null;
+  }
+
+  function renderWorkOn() {
+    const el = document.getElementById("workOn");
+    const p = primaryPriority();
+    const top = issues.find((i) => i.review_status !== "rejected");
+    if (!p) {
+      el.innerHTML = emptyState("No active priorities yet.", "Review a swing and promote an observation to begin tracking development.");
+      if (top?.suggested_drill) el.innerHTML += `<p class="hint">AI-suggested drill (not assigned): ${escapeHtml(top.suggested_drill)}</p>`;
+      return;
+    }
+    const assigned = assignments.filter((a) => a.player_priority_id === p.id && a.active);
+    const suggested = L.suggestDrills(p, library, assigned.map((a) => a.drill_id));
+    el.innerHTML = `
+      <div class="dev-card">
+        <div class="hint">Primary focus</div><h3>${escapeHtml(p.title)}</h3>
+        ${p.description ? `<p>${escapeHtml(p.description)}</p>` : ""}
+        <div class="hint">${assigned.length ? `Assigned drill: <b>${assigned.map((a) => escapeHtml(a.drill_library?.name ?? "")).join(", ")}</b>` : suggested.length ? `Suggested drill: <b>${escapeHtml(suggested[0].name)}</b> (you choose)` : top?.suggested_drill ? `AI-suggested drill: ${escapeHtml(top.suggested_drill)} (not assigned)` : "No drill assigned."}</div>
+        <div class="dev-btns"><button class="tap-target" id="assignDrill">Assign drill</button><button class="tap-target" id="setFollow">Follow-up</button></div>
+      </div>`;
+    document.getElementById("assignDrill").onclick = () => openAssignDrillSheet(ctx, p, library, assigned.map((a) => a.drill_id), reloadAll);
+    document.getElementById("setFollow").onclick = () => openFollowUpSheet(p, reloadAll);
+  }
+
+  function renderLookFor() {
+    const p = primaryPriority();
+    const top = issues.find((i) => i.look_for_next);
+    const text = top?.look_for_next || p?.follow_up_note;
+    document.getElementById("lookFor").innerHTML = text
+      ? `<div class="dev-card"><p style="margin:0;">${escapeHtml(text)}</p></div>`
+      : emptyState("Nothing set yet.", "Add a follow-up note on a priority, or approve an observation that includes what to watch for.");
+  }
+
+  function renderTrack() {
+    const el = document.getElementById("track");
+    if (!priorities.length) { el.innerHTML = emptyState("No active priorities yet.", "Promote an observation above to track progress on it."); return; }
+    el.innerHTML = priorities.map((p) => `
+      <div class="dev-card" data-pid="${p.id}"><div class="dev-row between"><b>${escapeHtml(p.title)}</b>${pill(p.status, p.status)}</div>
+        <div class="dev-btns">${["improving", "unchanged", "worse", "resolved"].map((s) => `<button class="tap-target" data-s="${s}">${L.OBSERVATION_LABELS[s]}</button>`).join("")}<button class="tap-target" data-s="unclear">Unclear</button></div></div>`).join("");
+    el.onclick = (e) => {
+      const b = e.target.closest("[data-s]"); const card = e.target.closest("[data-pid]");
+      if (!b || !card) return;
+      const p = priorities.find((x) => x.id === card.dataset.pid);
+      const ai = issues.find((i) => i.id === p.source_issue_id)?.look_for_next ?? null;
+      openObservationSheet(ctx, p, evidenceCtx(), reloadAll, ai ? `Watch: ${ai}` : null);
+    };
+  }
+
+  function renderAdvanced() {
+    document.getElementById("advancedBody").innerHTML = `<p class="hint">Per-checkpoint 1–3 scoring is optional detail. Coaches don't need to confirm every score.</p>
+      <div class="dev-btns"><a class="dev-btn" style="display:inline-flex;align-items:center;text-decoration:none;" href="${ctx.url("player")}">Open detailed checklist</a></div>`;
+  }
+
+  function wireDetails() {
+    let qualityDone = false, metricsDone = false, threeDone = false;
+    document.getElementById("quality").addEventListener("toggle", async (e) => {
+      if (!e.target.open || qualityDone) return; qualityDone = true;
+      const { data: m } = await supabase.from("video_clip_metrics").select("analysis_quality").eq("video_clip_id", clipId).maybeSingle();
+      const { data: p3 } = await supabase.from("video_clip_pose3d").select("id").eq("video_clip_id", clipId).maybeSingle();
+      const raw = m?.analysis_quality ?? L.deriveQualityFromPhases(phases, !!p3);
+      const q = L.analysisQualityLabels(raw);
+      const rows = [["Pose tracking", q.pose], ["Bat tracking", q.bat], ["Contact estimate", q.contact], ["3D reconstruction", q.reconstruction], ["Occlusion", q.occlusion], ["Handedness", q.handedness]];
+      document.getElementById("qualityBody").innerHTML = `<div class="quality-grid">${rows.map(([l, v]) => `<span>${l}</span>${v ? pill(v, L.QUALITY_TEXT[v] ?? v) : '<span class="hint">Not measured</span>'}`).join("")}</div>
+        <p class="hint">${m?.analysis_quality ? "" : "Measured from what this clip already has; pose and bat coverage weren't recorded when it was processed. "}Limited or Poor means treat the automated findings as hints and rely on the original video.</p>`;
+    });
+    document.getElementById("metricsDrawer").addEventListener("toggle", async (e) => {
+      if (!e.target.open || metricsDone) return; metricsDone = true;
+      const row = await loadSwingMetrics(clipId);
+      const body = document.getElementById("metricsBody");
+      if (!row) { body.innerHTML = '<p class="hint">No metrics for this swing yet.</p>'; return; }
+      renderSwingMetricsPanel(body, row);
+      body.querySelector("details")?.setAttribute("open", "");
+    });
+    document.getElementById("threeD").addEventListener("toggle", async (e) => {
+      if (!e.target.open || threeDone) return; threeDone = true;
+      const body = document.getElementById("threeDBody");
+      body.innerHTML = '<p class="hint">Loading 3D…</p>';
+      const data = await loadClipSkeletonData(clipId);
+      if (!data || !data.frames.length) { body.innerHTML = emptyState("No 3D reconstruction", "The video and 2D analysis above are still valid."); return; }
+      body.innerHTML = "";
+      viewer = await renderSkeletonComparison(body, { realFrames: data.frames, correctedFrames: null, phases, note: "3D is an estimate from one camera - use it to explain, not to decide.", videoUrl: null, initialTimeS: L.phaseTime(phases, qs("phase") ?? "") });
+    });
+  }
+
+  // requireSession redirects itself; this thin wrapper only exists so this page
+  // can bail out before doing work when there is no session.
+  main();
+</script>
+</body>
+</html>

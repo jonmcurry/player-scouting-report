@@ -16,12 +16,13 @@ export async function loadSwingMetrics(videoClipId) {
   return data ?? null;
 }
 
-function statTile(label, value, unit) {
+function statTile(label, value, unit, source) {
   if (value === null || value === undefined) return "";
   return `
     <div class="stat-tile">
       <span class="stat-label">${label}</span>
       <div class="stat-value">${value}${unit ? ` <span class="hint">${unit}</span>` : ""}</div>
+      <span class="metric-source ${source === "3D reconstructed estimate" ? "estimated" : ""}">${source}</span>
     </div>
   `;
 }
@@ -55,14 +56,14 @@ export function renderSwingMetricsPanel(container, metricsRow) {
     : "shoulder-widths/sec";
 
   const tiles = [
-    statTile("Max Bat Speed", batSpeed, batSpeedNote),
-    statTile("Attack Angle", metricsRow.attack_angle_at_contact_deg, "deg"),
-    statTile("Hip-Shoulder Sep", metricsRow.hip_shoulder_separation_at_contact_deg, "deg"),
-    statTile("Torso Tilt", metricsRow.torso_tilt_at_contact_deg, "deg"),
-    statTile("Pelvis Tilt", metricsRow.pelvis_tilt_at_contact_deg, "deg"),
-    statTile("Stride Length", metricsRow.stride_length_hip_widths, "hip-widths"),
-    statTile("Lead Elbow", metricsRow.lead_elbow_angle_at_contact_deg, "deg"),
-    statTile("Front Knee", metricsRow.front_knee_angle_at_contact_deg, "deg"),
+    statTile("Max Bat Speed", batSpeed, batSpeedNote, "Direct video measurement"),
+    statTile("Attack Angle", metricsRow.attack_angle_at_contact_deg, "deg", "Direct video measurement"),
+    statTile("Hip-Shoulder Sep", metricsRow.hip_shoulder_separation_at_contact_deg, "deg", "3D reconstructed estimate"),
+    statTile("Torso Tilt", metricsRow.torso_tilt_at_contact_deg, "deg", "3D reconstructed estimate"),
+    statTile("Pelvis Tilt", metricsRow.pelvis_tilt_at_contact_deg, "deg", "3D reconstructed estimate"),
+    statTile("Stride Length", metricsRow.stride_length_hip_widths, "hip-widths", "Direct video measurement"),
+    statTile("Lead Elbow", metricsRow.lead_elbow_angle_at_contact_deg, "deg", "3D reconstructed estimate"),
+    statTile("Front Knee", metricsRow.front_knee_angle_at_contact_deg, "deg", "3D reconstructed estimate"),
   ].join("");
 
   const flags = metricsRow.movement_flags ?? {};
@@ -79,6 +80,7 @@ export function renderSwingMetricsPanel(container, metricsRow) {
         <div class="stats-row" style="grid-template-columns:repeat(auto-fit, minmax(110px, 1fr));">
           ${tiles}
         </div>
+        <p class="hint">3D values are monocular reconstruction estimates, not calibrated biomechanical measurements. Use the original video as the source of truth.</p>
         ${flagRows ? `<h3 style="margin-bottom:4px;">Movement Patterns</h3>${flagRows}` : ""}
       </div>
     </details>
