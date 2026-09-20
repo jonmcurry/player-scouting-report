@@ -64,6 +64,16 @@ import metrics as metrics_mod
 import refine_bat_speed
 import overlay
 
+# Version of the LIVE orchestrator and metric contract. This is deliberately
+# owned here, not borrowed from the currently unwired reconstruction module.
+PIPELINE_VERSION = "pose3d-live-1.0.0"
+
+
+def stamp_metrics(out_dir, metrics_result):
+    metrics_result["pipeline_version"] = PIPELINE_VERSION
+    (pathlib.Path(out_dir) / "metrics.json").write_text(json.dumps(metrics_result, indent=2))
+    return metrics_result
+
 
 # Explicit status contract for the Node worker (src/cli/processUploadQueue.ts)
 # that spawns this script - replaces having it infer success/failure from
@@ -169,7 +179,7 @@ def run(video_path, out_dir):
         lift_3d.run(out_dir / "pose_2d.json", out_dir)
 
         print(f"--- Stage 3/4: contact detection + summary metrics (metrics){attempt_label} ---")
-        metrics_result = metrics_mod.run(out_dir)
+        metrics_result = stamp_metrics(out_dir, metrics_mod.run(out_dir))
         if metrics_result.get("phases"):
             if len(candidates) > 1:
                 print(f"[run_pipeline] candidate {attempt_i + 1} found real phases - stopping here")
@@ -183,9 +193,9 @@ def run(video_path, out_dir):
         # honest early-stop shape detect_2d.py's own docstring describes,
         # using whichever candidate's exception was seen LAST (all attempted
         # candidates failed the same way, in practice, on real clips so far).
-        (out_dir / "metrics.json").write_text(json.dumps({
+        stamp_metrics(out_dir, {
             "clip": out_dir.name, "n_frames": None, "fps": None, "error": str(low_quality_exc),
-        }, indent=2))
+        })
         dt = time.time() - t0
         print(f"\n=== Stopped early after {dt:.1f}s (low-quality footage). Output: {out_dir} ===")
         _cleanup_temp_files(out_dir)

@@ -45,6 +45,8 @@
       <p class="hint">You don't have a team yet - set one up to start adding players.</p>
       <input type="text" id="newTeamName" placeholder="Team name (e.g. Latham Lady Bison White 10U)">
       <input type="text" id="newTeamSlug" placeholder="URL slug (auto-filled from name)">
+      <select id="newTeamSport" aria-label="Sport"><option value="">Sport (unknown)</option><option value="softball">Softball</option><option value="baseball">Baseball</option></select>
+      <input type="text" id="newTeamLevel" placeholder="Level (optional, e.g. 10U)">
       <input type="text" id="newTeamAccessCode" placeholder="Access code (ask your BarrelIQ contact)">
       <button class="primary tap-target" id="createTeamBtn">Create Team</button>
       <p class="error-text" id="createTeamErrorMsg"></p>
@@ -202,6 +204,8 @@
     const name = document.getElementById("newTeamName").value.trim();
     const slug = document.getElementById("newTeamSlug").value.trim() || slugify(name);
     const accessCode = document.getElementById("newTeamAccessCode").value.trim();
+    const sport = document.getElementById("newTeamSport").value || null;
+    const levelLabel = document.getElementById("newTeamLevel").value.trim() || null;
     const errorMsg = document.getElementById("createTeamErrorMsg");
     errorMsg.textContent = "";
 
@@ -236,6 +240,11 @@
       errorMsg.textContent =
         `That access code isn't right, or you've tried too many times - wait a few minutes and try again, ` +
         `or ask your BarrelIQ contact for the team setup code.`;
+      return;
+    }
+    const { error: contextError } = await supabase.from("teams").update({ sport, level_label: levelLabel }).eq("id", data.id);
+    if (contextError) {
+      errorMsg.textContent = `Team created, but its context could not be saved: ${contextError.message}`;
       return;
     }
     window.location.href = `./team.html?team=${data.slug}`;

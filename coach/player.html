@@ -32,7 +32,7 @@
     <div class="drawer-body" id="issuesList"></div>
   </details>
   <details class="drawer">
-    <summary><span>Reference Comp — What a Fix Looks Like</span></summary>
+    <summary><span>Comp Illustration — An Example, Not an Ideal Template</span></summary>
     <div class="drawer-body" id="compList"></div>
   </details>
   <details class="drawer">
@@ -54,6 +54,14 @@
   <details class="drawer" style="margin-top:24px;">
     <summary><span>Manage Player</span></summary>
     <div class="drawer-body">
+      <h3 style="margin-top:0;">Player Context</h3>
+      <p class="hint">Used by future AI analyses. Leave anything unknown blank.</p>
+      <select id="playerAgeBand"><option value="">Age band unknown</option><option value="u8">Under 8</option><option value="8-10">8–10</option><option value="11-12">11–12</option><option value="13-14">13–14</option><option value="15-18">15–18</option><option value="adult">Adult</option></select>
+      <select id="playerBats"><option value="">Bats unknown</option><option value="L">Bats left</option><option value="R">Bats right</option><option value="S">Switch hitter</option></select>
+      <select id="playerThrows"><option value="">Throws unknown</option><option value="L">Throws left</option><option value="R">Throws right</option></select>
+      <button class="tap-target" id="savePlayerContextBtn">Save Player Context</button>
+      <p class="hint" id="playerContextStatus"></p>
+      <hr style="margin:20px 0;opacity:.2;">
       <p class="hint">Share a read-only version of her report - no BarrelIQ account needed to
         view it. Video/clip data is never included.</p>
       <button class="tap-target" id="createShareLinkBtn">🔗 Create Share Link</button>
@@ -129,7 +137,7 @@
 
     const { data: player, error } = await supabase
       .from("players")
-      .select("id, name, jersey_number, slug, refilm_by, what_to_check_next, teams!inner(id, slug, name)")
+      .select("id, name, jersey_number, slug, refilm_by, what_to_check_next, age_band, bats, throws, teams!inner(id, slug, name, sport, level_label)")
       .eq("slug", playerSlug)
       .eq("teams.slug", teamSlug)
       .single();
@@ -157,6 +165,21 @@
     playerId = player.id;
     teamId = player.teams.id;
     setLastPlayerSlug(teamSlug, playerSlug);
+    document.getElementById("playerAgeBand").value = player.age_band ?? "";
+    document.getElementById("playerBats").value = player.bats ?? "";
+    document.getElementById("playerThrows").value = player.throws ?? "";
+    document.getElementById("savePlayerContextBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("savePlayerContextBtn");
+      const status = document.getElementById("playerContextStatus");
+      btn.disabled = true; status.textContent = "Saving…";
+      const { error: contextError } = await supabase.from("players").update({
+        age_band: document.getElementById("playerAgeBand").value || null,
+        bats: document.getElementById("playerBats").value || null,
+        throws: document.getElementById("playerThrows").value || null,
+      }).eq("id", playerId);
+      btn.disabled = false;
+      status.textContent = contextError ? `Couldn't save: ${contextError.message}` : "Saved.";
+    });
 
     const { roster, confirmedCount, totalCount } = await loadRosterWithProgress(teamId);
     renderPlayerAppBar(document.getElementById("appBar"), {
@@ -521,18 +544,21 @@
   }
 
   async function loadCompsAndDrills() {
+    const { data: latestRuns } = await supabase.from("analysis_runs").select("id").eq("player_id", playerId).order("created_at", { ascending: false }).limit(1);
+    const latestRunId = latestRuns?.[0]?.id ?? null;
+    const runFilter = (query) => latestRunId ? query.eq("analysis_run_id", latestRunId) : query.is("analysis_run_id", null);
     const [{ data: comps }, { data: notes }, { data: drills }] = await Promise.all([
-      supabase
+      runFilter(supabase
         .from("comp_recommendations")
         .select("comp_name, cue")
         .eq("player_id", playerId)
-        .order("position"),
-      supabase.from("comp_notes").select("note").eq("player_id", playerId).order("position"),
-      supabase
+        .order("position")),
+      runFilter(supabase.from("comp_notes").select("note").eq("player_id", playerId).order("position")),
+      runFilter(supabase
         .from("drill_recommendations")
         .select("title, description")
         .eq("player_id", playerId)
-        .order("position"),
+        .order("position")),
     ]);
 
     const compEl = document.getElementById("compList");

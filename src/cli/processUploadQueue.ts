@@ -195,6 +195,7 @@ export async function processOnePendingClip(): Promise<boolean> {
     const metrics = JSON.parse(fs.readFileSync(path.join(outDir, "metrics.json"), "utf-8")) as {
       lead_side_guess?: "l" | "r" | null;
       phases?: Record<string, { time_s: number | null }>;
+      pipeline_version?: string;
     };
     const trackedFrames = extractLongestTrackedRun(pose3d.frames);
     if (trackedFrames.length < MIN_TRACKED_FRAMES) {
@@ -249,7 +250,10 @@ export async function processOnePendingClip(): Promise<boolean> {
         // simply unset there.
         const useClaudeCli = process.env.AI_ANALYZER === "claude-cli";
         console.log(`[process-upload-queue] Running AI diagnosis for "${clip.clipSlug}" via ${useClaudeCli ? "claude CLI" : "Gemini"}`);
-        await analyzeAndSync(clip.teamSlug, clip.playerSlug, stillsDir, pitchContext, false, null, useClaudeCli, clip.videoClipId);
+        await analyzeAndSync(
+          clip.teamSlug, clip.playerSlug, stillsDir, pitchContext, false, null,
+          useClaudeCli, clip.videoClipId, metrics.pipeline_version ?? null,
+        );
       }
     } catch (diagErr) {
       const message = diagErr instanceof Error ? diagErr.message : String(diagErr);

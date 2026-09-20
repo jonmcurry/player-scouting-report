@@ -35,17 +35,26 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import "dotenv/config";
 import { CHECKPOINTS } from "../../types/scouting.js";
+import type { AnalysisInput } from "./analysisContext.js";
 import {
+  ISSUE_BASES,
+  ISSUE_PHASES,
   SOFTBALL_COMP_BANK,
-  SWING_ANALYSIS_SYSTEM_PROMPT as SYSTEM_PROMPT,
+  renderSwingAnalysisPrompt,
+  validateSwingAnalysisResult,
   type ChecklistDraft,
   type IssueDraft,
   type CompDraft,
   type DrillDraft,
   type SwingAnalysisResult,
 } from "./swingAnalysisShared.js";
+import { CONCEPTS } from "../knowledge/knowledgePack.js";
 
-const GEMINI_MODEL = "gemini-1.5-flash";
+export function getConfiguredGeminiModel(): string {
+  const model = process.env.GEMINI_MODEL?.trim();
+  if (!model) throw new Error("GEMINI_MODEL must be explicitly configured; BarrelIQ will not silently select a model");
+  return model;
+}
 
 // Re-exported under their original "Gemini*"-prefixed names for every
 // existing importer (analyze.ts etc.) - the underlying types now live in
@@ -65,6 +74,8 @@ export interface FrameImage {
 const RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
+    noActionNeeded: { type: Type.BOOLEAN },
+    noActionReason: { type: Type.STRING, nullable: true },
     checklist: {
       type: Type.ARRAY,
       items: {
@@ -94,9 +105,15 @@ const RESPONSE_SCHEMA = {
           suggestedDrill: { type: Type.STRING },
           lookForNext: { type: Type.STRING },
           confidence: { type: Type.STRING, enum: ["high", "medium", "low"] },
-          phase: { type: Type.STRING },
+          phase: { type: Type.STRING, enum: ISSUE_PHASES },
+          concept: { type: Type.STRING, enum: CONCEPTS },
+          basis: { type: Type.STRING, enum: ISSUE_BASES },
+          contextExplainsIt: { type: Type.BOOLEAN },
+          emergencySwingSuspected: { type: Type.BOOLEAN },
+          knowledgeClaimIds: { type: Type.ARRAY, items: { type: Type.STRING } },
+          suggestPriority: { type: Type.BOOLEAN },
         },
-        required: ["issue", "seenInAtBats", "likelyCause", "effect", "evidence", "coachingCue", "lookForNext", "confidence"],
+        required: ["issue", "seenInAtBats", "likelyCause", "effect", "evidence", "coachingCue", "lookForNext", "confidence", "concept", "basis", "contextExplainsIt", "emergencySwingSuspected", "knowledgeClaimIds", "suggestPriority"],
       },
     },
     comps: {
@@ -123,7 +140,7 @@ const RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ["checklist", "issues", "comps", "compNotes", "drills"],
+  required: ["noActionNeeded", "noActionReason", "checklist", "issues", "comps", "compNotes", "drills"],
 };
 
 let client: GoogleGenAI | null = null;
@@ -145,20 +162,21 @@ function getClient(): GoogleGenAI {
  */
 export async function analyzeSwing(
   frames: FrameImage[],
-  pitchContext: string,
+  input: AnalysisInput,
 ): Promise<GeminiAnalysisResult> {
   if (frames.length === 0) {
     throw new Error("analyzeSwing requires at least one frame image");
   }
 
   const ai = getClient();
+  const model = getConfiguredGeminiModel();
   const contents = [
-    { text: `${SYSTEM_PROMPT}\n\nPitch context for these frames:\n${pitchContext}` },
+    { text: renderSwingAnalysisPrompt(input) },
     ...frames.map((f) => ({ inlineData: { data: f.data.toString("base64"), mimeType: f.mimeType } })),
   ];
 
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model,
     contents,
     config: {
       responseMimeType: "application/json",
@@ -170,12 +188,12 @@ export async function analyzeSwing(
   if (!text) {
     throw new Error("Gemini returned no text content");
   }
-  const parsed = JSON.parse(text) as {
-    checklist: GeminiChecklistDraft[];
-    issues: GeminiIssueDraft[];
-    comps: GeminiCompDraft[];
-    compNotes: string[];
-    drills: GeminiDrillDraft[];
-  };
-  return { ...parsed, source: "gemini" };
+  const modelVersion = (response as unknown as { modelVersion?: string }).modelVersion ?? null;
+  return validateSwingAnalysisResult(JSON.parse(text), {
+    source: "gemini",
+    aiModel: model,
+    aiModelVersion: modelVersion,
+    allowedKnowledgeClaimIds: input.knowledgeClaimIds,
+    availableBases: ["video", ...(Object.keys(input.swing.metrics).length ? ["metric" as const] : []), ...(input.swing.reconstructionSupplied ? ["reconstruction" as const] : [])],
+  });
 }

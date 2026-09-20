@@ -17,6 +17,7 @@ export interface ChecklistUpsertInput {
   aiDraft: Score | null;
   notes: string;
   source: DraftSource;
+  analysisRunId?: string | null;
 }
 
 /** Returns true if the row was written, false if skipped (already reviewed, no force). */
@@ -49,6 +50,7 @@ export async function upsertChecklistScore(
     reviewed_by: null,
     notes: input.notes,
     source: input.source,
+    analysis_run_id: input.analysisRunId ?? null,
   };
   const { error: upsertErr } = await supabase
     .from("checklist_scores")

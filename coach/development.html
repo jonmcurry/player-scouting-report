@@ -221,7 +221,7 @@
         ${i.evidence ? `<div class="hint">${escapeHtml(i.evidence)}</div>` : ""}
         <div class="hint">${i.review_status === "draft" ? "AI draft — unconfirmed" : "Coach-reviewed"}</div>
         <div class="dev-btns">
-          <button class="primary tap-target" data-a="promote">Promote to priority</button>
+          ${i.suggest_priority && !i.context_explains_it ? '<button class="primary tap-target" data-a="promote">Promote to priority</button>' : '<span class="hint">Pitch context explains this movement; not auto-suggested as a priority.</span>'}
           ${i.video_clip_id ? `<a class="dev-btn" style="display:inline-flex;align-items:center;text-decoration:none;" href="${ctx.url("review", { clip: i.video_clip_id, ...(i.phase ? { phase: i.phase } : {}) })}">Review swing</a>` : ""}
           ${i.review_status === "draft" ? '<button class="tap-target" data-a="reject">Not an issue</button>' : ""}
         </div>

@@ -33,14 +33,20 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import type { AnalysisInput } from "./analysisContext.js";
 import {
-  SWING_ANALYSIS_SYSTEM_PROMPT,
   SWING_ANALYSIS_JSON_SHAPE_INSTRUCTIONS,
+  renderSwingAnalysisPrompt,
+  validateSwingAnalysisResult,
   type SwingAnalysisResult,
 } from "./swingAnalysisShared.js";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg"]);
-const CLAUDE_MODEL = "sonnet";
+function getConfiguredClaudeModel(): string {
+  const model = process.env.CLAUDE_CLI_MODEL?.trim();
+  if (!model) throw new Error("CLAUDE_CLI_MODEL must be explicitly configured when AI_ANALYZER=claude-cli");
+  return model;
+}
 // A real, generous ceiling - a single-shot vision analysis over a handful of
 // stills shouldn't ever need this long, but a hung/looping CLI call must not
 // wedge the upload-processing worker forever.
@@ -88,7 +94,7 @@ interface ClaudeCliEnvelope {
   permission_denials?: unknown[];
 }
 
-function runClaudeCli(prompt: string, cwd: string): Promise<ClaudeCliEnvelope> {
+function runClaudeCli(prompt: string, cwd: string, model: string): Promise<ClaudeCliEnvelope> {
   return new Promise((resolve, reject) => {
     // The prompt is piped via stdin, never passed as an argv element - on
     // Windows `claude` resolves to a .cmd shim (confirmed:
@@ -104,7 +110,7 @@ function runClaudeCli(prompt: string, cwd: string): Promise<ClaudeCliEnvelope> {
     // stdin instead, which needs no shell quoting at all.
     const child = spawn(
       "claude",
-      ["-p", "--output-format", "json", "--allowedTools", "Read", "--model", CLAUDE_MODEL],
+      ["-p", "--output-format", "json", "--allowedTools", "Read", "--model", model],
       { cwd, shell: process.platform === "win32" },
     );
     let stdout = "";
@@ -144,7 +150,7 @@ function runClaudeCli(prompt: string, cwd: string): Promise<ClaudeCliEnvelope> {
  */
 export async function analyzeSwingViaClaudeCli(
   framesDir: string,
-  pitchContext: string,
+  input: AnalysisInput,
 ): Promise<SwingAnalysisResult> {
   const files = fs
     .readdirSync(framesDir)
@@ -155,11 +161,10 @@ export async function analyzeSwingViaClaudeCli(
   }
 
   const repoRoot = process.cwd();
+  const model = getConfiguredClaudeModel();
   const relPaths = files.map((f) => path.relative(repoRoot, path.join(framesDir, f)));
   const prompt = [
-    SWING_ANALYSIS_SYSTEM_PROMPT,
-    "",
-    `Pitch context for these frames:\n${pitchContext}`,
+    renderSwingAnalysisPrompt(input),
     "",
     `Read each of these ${relPaths.length} frame image(s) before answering:`,
     ...relPaths.map((p) => `- ${p}`),
@@ -167,7 +172,7 @@ export async function analyzeSwingViaClaudeCli(
     SWING_ANALYSIS_JSON_SHAPE_INSTRUCTIONS,
   ].join("\n");
 
-  const envelope = await runClaudeCli(prompt, repoRoot);
+  const envelope = await runClaudeCli(prompt, repoRoot, model);
   if (envelope.is_error || !envelope.result) {
     throw new Error(`claude CLI reported an error: ${JSON.stringify(envelope).slice(0, 500)}`);
   }
@@ -182,16 +187,16 @@ export async function analyzeSwingViaClaudeCli(
   if (trailingNote) {
     console.warn(`[claudeCliAnalyzer] claude added prose alongside the JSON (not lost, just not structured data): ${trailingNote}`);
   }
-  let parsed: Omit<SwingAnalysisResult, "source">;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(jsonText);
   } catch {
     throw new Error(`claude CLI's response text wasn't valid JSON after extracting it: ${jsonText.slice(0, 500)}`);
   }
-  for (const key of ["checklist", "issues", "comps", "compNotes", "drills"] as const) {
-    if (!Array.isArray(parsed[key])) {
-      throw new Error(`claude CLI's response is missing/malformed "${key}" array: ${jsonText.slice(0, 500)}`);
-    }
-  }
-  return { ...parsed, source: "claude" };
+  return validateSwingAnalysisResult(parsed, {
+    source: "claude",
+    aiModel: model,
+    allowedKnowledgeClaimIds: input.knowledgeClaimIds,
+    availableBases: ["video", ...(Object.keys(input.swing.metrics).length ? ["metric" as const] : []), ...(input.swing.reconstructionSupplied ? ["reconstruction" as const] : [])],
+  });
 }

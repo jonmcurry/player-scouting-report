@@ -1,60 +1,126 @@
 #!/usr/bin/env node
-/**
- * Runs Gemini vision analysis over a directory of extracted frame stills
- * (see extract.ts) and writes the results into Supabase - the "Supabase
- * Sync" half of the AI vision pipeline (src/services/ai/geminiAnalyzer.ts
- * is the analysis half).
- *
- * VERIFICATION STATUS: unverified end-to-end (see geminiAnalyzer.ts's own
- * docstring for why - no rotated API key was available while this was
- * built). The Supabase-writing half reuses upsertChecklistScore, the exact
- * same helper ingest.ts uses, which IS fully verified (including its
- * reviewed-by protection) - only the Gemini call itself is unverified.
- *
- * Usage:
- *   npm run analyze -- --team latham-lady-bison-white-10u --player emily_c \
- *     --framesDir frames/emily_c/Emily_C_AB1_1 --pitchContext "Outside, low"
- *
- * --claudeDraft <path> bypasses the Gemini call entirely and loads a
- * pre-written GeminiAnalysisResult-shaped JSON file instead (a coach asking
- * Claude to directly analyze the frame stills itself when no working Gemini
- * key is available - see migration 00024's own note). Writes go through the
- * exact same upsertChecklistScore/issues-insert path as a real Gemini run,
- * just tagged source="claude" instead of "gemini" so the provenance stays
- * honest - never silently attributed to Gemini when Gemini never ran.
- *
- * --claudeCli does the same thing LIVE instead of from a pre-written file -
- * shells out to the locally-installed `claude` CLI (claudeCliAnalyzer.ts),
- * authenticated via the coach's own Claude subscription rather than a
- * separate API key. This is what processUploadQueue.ts's AI_ANALYZER=
- * claude-cli uses for automatic local-testing runs; production stays on
- * the default Gemini path.
- */
 import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { analyzeSwing, type FrameImage, type GeminiAnalysisResult } from "../services/ai/geminiAnalyzer.js";
+import { analyzeSwing, type FrameImage } from "../services/ai/geminiAnalyzer.js";
 import { analyzeSwingViaClaudeCli } from "../services/ai/claudeCliAnalyzer.js";
+import { buildInputManifest, type AnalysisInput, type PitchContext } from "../services/ai/analysisContext.js";
+import { ANALYSIS_POLICY_VERSION, KNOWLEDGE_VERSION, PROMPT_VERSION } from "../services/ai/analysisVersions.js";
+import { findingIdentity, validateSwingAnalysisResult, type SwingAnalysisResult } from "../services/ai/swingAnalysisShared.js";
+import { loadKnowledgeClaims, renderKnowledgePack } from "../services/knowledge/knowledgePack.js";
 import { findPlayerId, loadCheckpointSlugToId, upsertChecklistScore } from "../services/db/checklistUpsert.js";
 import { getSupabaseClient } from "../services/db/supabaseClient.js";
-import type { DraftSource } from "../types/scouting.js";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg"]);
+const TILT_EXCLUSIONS = [
+  { field: "torso_tilt_at_contact_deg", reason: "excluded: stored tilt is unreliable because the live 3D lift uses a fixed world rotation" },
+  { field: "pelvis_tilt_at_contact_deg", reason: "excluded: stored tilt is unreliable because the live 3D lift uses a fixed world rotation" },
+];
+
+function frameNames(framesDir: string): string[] {
+  if (!framesDir || !fs.existsSync(framesDir)) return [];
+  return fs.readdirSync(framesDir).filter((f) => IMAGE_EXTENSIONS.has(path.extname(f).toLowerCase())).sort();
+}
 
 function loadFrameImages(framesDir: string): FrameImage[] {
-  const files = fs
-    .readdirSync(framesDir)
-    .filter((f) => IMAGE_EXTENSIONS.has(path.extname(f).toLowerCase()))
-    .sort();
-  if (files.length === 0) {
-    throw new Error(`No image files found in ${framesDir} (expected .png/.jpg from extract.ts)`);
+  const files = frameNames(framesDir);
+  if (files.length === 0) throw new Error(`No image files found in ${framesDir} (expected .png/.jpg from extract.ts)`);
+  return files.map((f) => ({
+    data: fs.readFileSync(path.join(framesDir, f)),
+    mimeType: path.extname(f).toLowerCase() === ".png" ? "image/png" : "image/jpeg",
+  }));
+}
+
+const emptyPitch = (): PitchContext => ({ location: null, zone: null, count: null, outcome: null, swung: null, pitchType: null });
+
+async function buildAnalysisInput(args: {
+  teamSlug: string;
+  playerSlug: string;
+  playerId: string;
+  framesDir: string;
+  fallbackPitchContext: string;
+  videoClipId: string | null;
+  pipelineVersion: string | null;
+}): Promise<AnalysisInput> {
+  const supabase = getSupabaseClient();
+  const { data: player, error: playerErr } = await supabase
+    .from("players")
+    .select("age_band, bats, throws, teams!inner(slug, sport, level_label)")
+    .eq("id", args.playerId)
+    .eq("teams.slug", args.teamSlug)
+    .single();
+  if (playerErr || !player) throw new Error(`Loading player analysis context: ${playerErr?.message ?? "not found"}`);
+  const team = player.teams as unknown as { sport: "baseball" | "softball" | null; level_label: string | null };
+  let pitch = emptyPitch();
+  if (args.videoClipId) {
+    const { data: clip, error: clipErr } = await supabase
+      .from("video_clips")
+      .select("at_bat_pitches(pitch_location,pitch_zone,count_before_balls,count_before_strikes,pitch_outcome,swung,pitch_type)")
+      .eq("id", args.videoClipId)
+      .single();
+    if (clipErr) throw new Error(`Loading structured pitch context: ${clipErr.message}`);
+    const p = clip?.at_bat_pitches as unknown as {
+      pitch_location: string | null; pitch_zone: number | null; count_before_balls: number | null;
+      count_before_strikes: number | null; pitch_outcome: string | null; swung: boolean | null; pitch_type: string | null;
+    } | null;
+    if (p) pitch = {
+      location: p.pitch_location, zone: p.pitch_zone,
+      count: p.count_before_balls !== null && p.count_before_strikes !== null ? { balls: p.count_before_balls, strikes: p.count_before_strikes } : null,
+      outcome: p.pitch_outcome, swung: p.swung, pitchType: p.pitch_type,
+    };
+  } else if (args.fallbackPitchContext && args.fallbackPitchContext !== "No pitch/result details provided.") {
+    // Manual CLI compatibility only. Automatic processing always uses the structured pitch row.
+    pitch.location = args.fallbackPitchContext;
   }
-  return files.map((f) => {
-    const ext = path.extname(f).toLowerCase();
-    const mimeType = ext === ".png" ? "image/png" : "image/jpeg";
-    return { data: fs.readFileSync(path.join(framesDir, f)), mimeType };
-  });
+  const { data: decisions, error: decisionsErr } = await supabase
+    .from("issues")
+    .select("concept,phase,video_clip_id,review_status")
+    .eq("player_id", args.playerId)
+    .neq("review_status", "draft");
+  if (decisionsErr) throw new Error(`Loading coach-reviewed decisions: ${decisionsErr.message}`);
+  const claims = loadKnowledgeClaims();
+  const playerContext = {
+    sport: team.sport,
+    level: team.level_label,
+    ageBand: player.age_band as AnalysisInput["player"]["ageBand"],
+    bats: player.bats as AnalysisInput["player"]["bats"],
+    throws: player.throws as AnalysisInput["player"]["throws"],
+  };
+  const pack = renderKnowledgePack({ claims, sport: playerContext.sport, ageBand: playerContext.ageBand });
+  return {
+    player: playerContext,
+    pitch,
+    coachReviewedDecisions: (decisions ?? []).map((d) => ({ concept: d.concept, phase: d.phase, videoClipId: d.video_clip_id, status: d.review_status })),
+    swing: {
+      frameNames: frameNames(args.framesDir), pipelineVersion: args.pipelineVersion, metrics: {},
+      reconstructionSupplied: false, excludedMeasurements: TILT_EXCLUSIONS,
+    },
+    knowledgePack: pack.text,
+    knowledgeClaimIds: pack.claimIds,
+  };
+}
+
+async function createAnalysisRun(args: {
+  playerId: string; videoClipId: string | null; result: SwingAnalysisResult; input: AnalysisInput;
+}): Promise<string> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.from("analysis_runs").insert({
+    video_clip_id: args.videoClipId,
+    player_id: args.playerId,
+    backend: args.result.source,
+    ai_model: args.result.aiModel,
+    ai_model_version: args.result.aiModelVersion,
+    prompt_version: PROMPT_VERSION,
+    analysis_policy_version: ANALYSIS_POLICY_VERSION,
+    knowledge_version: KNOWLEDGE_VERSION,
+    pipeline_version: args.input.swing.pipelineVersion,
+    input_manifest: buildInputManifest(args.input),
+    no_action_needed: args.result.noActionNeeded,
+    no_action_reason: args.result.noActionReason,
+  }).select("id").single();
+  if (error || !data) throw new Error(`Creating analysis run: ${error?.message ?? "no row returned"}`);
+  return data.id as string;
 }
 
 export async function analyzeAndSync(
@@ -66,189 +132,94 @@ export async function analyzeAndSync(
   claudeDraftPath: string | null = null,
   useClaudeCli = false,
   videoClipId: string | null = null,
+  pipelineVersion: string | null = null,
 ): Promise<void> {
-  let result: Pick<GeminiAnalysisResult, "checklist" | "issues" | "comps" | "compNotes" | "drills">;
-  let source: DraftSource;
+  const playerId = await findPlayerId(teamSlug, playerSlug);
+  const input = await buildAnalysisInput({ teamSlug, playerSlug, playerId, framesDir, fallbackPitchContext: pitchContext, videoClipId, pipelineVersion });
+  let result: SwingAnalysisResult;
   if (claudeDraftPath) {
     console.log(`Loading Claude-drafted analysis from ${claudeDraftPath} (Gemini not called)...`);
-    const draft = JSON.parse(fs.readFileSync(claudeDraftPath, "utf-8"));
-    result = { comps: [], compNotes: [], drills: [], ...draft };
-    source = "claude";
+    result = validateSwingAnalysisResult(JSON.parse(fs.readFileSync(claudeDraftPath, "utf-8")), {
+      source: "claude", aiModel: "claude-draft-file", allowedKnowledgeClaimIds: input.knowledgeClaimIds, availableBases: ["video"],
+    });
   } else if (useClaudeCli) {
     console.log(`Running analysis via the local claude CLI on ${framesDir} (Gemini not called)...`);
-    result = await analyzeSwingViaClaudeCli(framesDir, pitchContext);
-    source = "claude";
+    result = await analyzeSwingViaClaudeCli(framesDir, input);
   } else {
     const frames = loadFrameImages(framesDir);
-    console.log(`Sending ${frames.length} frame(s) from ${framesDir} to Gemini...`);
-    result = await analyzeSwing(frames, pitchContext);
-    source = "gemini";
+    console.log(`Sending ${frames.length} frame(s) from ${framesDir} to configured Gemini model...`);
+    result = await analyzeSwing(frames, input);
   }
 
-  const playerId = await findPlayerId(teamSlug, playerSlug);
+  // Both backends and draft files reach this point only after the same strict runtime validator.
+  // Consequently malformed output has made zero database writes.
+  const analysisRunId = await createAnalysisRun({ playerId, videoClipId, result, input });
   const slugToId = await loadCheckpointSlugToId();
-
   let updated = 0;
   let skipped = 0;
   for (const entry of result.checklist) {
-    const checkpointId = slugToId.get(entry.checkpointSlug);
-    if (!checkpointId) {
-      console.warn(`Skipping unknown checkpoint slug "${entry.checkpointSlug}" from Gemini response`);
-      continue;
-    }
-    const wrote = await upsertChecklistScore(
-      {
-        playerId,
-        checkpointId,
-        checkpointLabel: entry.checkpointSlug,
-        score: entry.score,
-        aiDraft: entry.score,
-        notes: entry.notes,
-        source,
-      },
-      force,
-    );
-    if (wrote) updated++;
-    else skipped++;
+    const checkpointId = slugToId.get(entry.checkpointSlug)!;
+    const wrote = await upsertChecklistScore({
+      playerId, checkpointId, checkpointLabel: entry.checkpointSlug, score: entry.score,
+      aiDraft: entry.score, notes: entry.notes, source: result.source, analysisRunId,
+    }, force);
+    if (wrote) updated++; else skipped++;
   }
 
   const supabase = getSupabaseClient();
-
-  // issues has no per-row identity to upsert against (unlike checklist_scores,
-  // keyed by checkpoint_id) - re-analyzing the same player with plain INSERT
-  // would just pile up a duplicate row per run forever, confirmed as a real
-  // bug (two identical rows from re-running this command twice on the same
-  // clip while testing). Fixed the same way checklist_scores already
-  // protects a coach's confirmed work: only clear UNREVIEWED issues before
-  // inserting the fresh batch - a coach-reviewed issue survives every future
-  // automated run untouched, matching upsertChecklistScore's own
-  // reviewed-by-wins-over-force-refresh rule.
-  const { error: delIssuesErr } = await supabase
-    .from("issues")
-    .delete()
-    .eq("player_id", playerId)
-    .is("reviewed_by", null)
-    .eq("review_status", "draft");
-  if (delIssuesErr) throw new Error(`Clearing old unreviewed issues: ${delIssuesErr.message}`);
-
-  // A finding a coach already approved/edited/rejected is a decision, not a
-  // draft: never duplicate an approved one and never resurrect a rejected one
-  // as a fresh unreviewed draft just because the model saw it again.
-  const { data: decided, error: decidedErr } = await supabase
-    .from("issues")
-    .select("issue")
-    .eq("player_id", playerId);
-  if (decidedErr) throw new Error(`Reading coach-reviewed issues: ${decidedErr.message}`);
-  const norm = (t: string) => t.trim().toLowerCase().replace(/\s+/g, " ");
-  const alreadyDecided = new Set((decided ?? []).map((r) => norm(String(r.issue))));
-  const freshIssues = result.issues.filter((i) => !alreadyDecided.has(norm(i.issue)));
-
-  if (freshIssues.length > 0) {
+  const { data: existing, error: existingErr } = await supabase.from("issues").select("finding_key").eq("player_id", playerId);
+  if (existingErr) throw new Error(`Reading existing finding identities: ${existingErr.message}`);
+  const existingKeys = new Set((existing ?? []).map((r) => r.finding_key).filter(Boolean));
+  const freshIssues = result.issues.filter((i) => !existingKeys.has(findingIdentity(i, videoClipId)));
+  if (freshIssues.length) {
     const rows = freshIssues.map((i) => ({
-      player_id: playerId,
-      issue: i.issue,
-      seen_in_at_bats: i.seenInAtBats,
-      likely_cause: i.likelyCause,
-      effect: i.effect,
-      evidence: i.evidence ?? "",
-      coaching_cue: i.coachingCue ?? "",
-      suggested_drill: i.suggestedDrill ?? null,
-      look_for_next: i.lookForNext ?? "",
-      confidence: i.confidence ?? null,
-      phase: i.phase ?? null,
-      video_clip_id: videoClipId,
-      suggested_priority_title: i.issue,
-      review_status: "draft",
-      reviewed_by: null,
-      source,
+      player_id: playerId, issue: i.issue, seen_in_at_bats: i.seenInAtBats, likely_cause: i.likelyCause,
+      effect: i.effect, evidence: i.evidence, coaching_cue: i.coachingCue, suggested_drill: i.suggestedDrill ?? null,
+      look_for_next: i.lookForNext, confidence: i.confidence, phase: i.phase ?? null, video_clip_id: videoClipId,
+      suggested_priority_title: i.issue, review_status: "draft", reviewed_by: null, source: result.source,
+      analysis_run_id: analysisRunId, concept: i.concept, basis: i.basis,
+      context_explains_it: i.contextExplainsIt, emergency_swing_suspected: i.emergencySwingSuspected,
+      knowledge_claim_ids: i.knowledgeClaimIds, suggest_priority: i.suggestPriority,
+      finding_key: findingIdentity(i, videoClipId),
     }));
     const { error } = await supabase.from("issues").insert(rows);
-    if (error) throw new Error(`Inserting ${source}-drafted issues: ${error.message}`);
+    if (error) throw new Error(`Inserting ${result.source}-drafted issues: ${error.message}`);
   }
 
-  // comp_recommendations/comp_notes/drill_recommendations have no reviewed_by
-  // or source column at all (see 00003_diagnosis_comps_plan.sql) - unlike
-  // checklist_scores/issues, there's no "a coach already confirmed this,
-  // don't clobber it" concept for these tables today. Full replace (delete
-  // this player's rows, insert the fresh set) is the only sane behavior for
-  // a re-run: piling up every past run's comps/drills forever with no way to
-  // tell which are current would make the report worse, not better.
-  const { error: delCompsErr } = await supabase.from("comp_recommendations").delete().eq("player_id", playerId);
-  if (delCompsErr) throw new Error(`Clearing old comp_recommendations: ${delCompsErr.message}`);
-  if (result.comps.length > 0) {
-    const rows = result.comps.map((c, i) => ({ player_id: playerId, comp_name: c.compName, cue: c.cue, position: i }));
-    const { error } = await supabase.from("comp_recommendations").insert(rows);
-    if (error) throw new Error(`Inserting ${source}-drafted comp_recommendations: ${error.message}`);
+  if (result.comps.length) {
+    const { error } = await supabase.from("comp_recommendations").insert(result.comps.map((c, i) => ({
+      player_id: playerId, comp_name: c.compName, cue: c.cue, position: i, analysis_run_id: analysisRunId,
+    })));
+    if (error) throw new Error(`Inserting comp illustrations: ${error.message}`);
+  }
+  if (result.compNotes.length) {
+    const { error } = await supabase.from("comp_notes").insert(result.compNotes.map((note, i) => ({
+      player_id: playerId, note, position: i, analysis_run_id: analysisRunId,
+    })));
+    if (error) throw new Error(`Inserting comp notes: ${error.message}`);
+  }
+  if (result.drills.length) {
+    const { error } = await supabase.from("drill_recommendations").insert(result.drills.map((d, i) => ({
+      player_id: playerId, title: d.title, description: d.description, position: i, analysis_run_id: analysisRunId,
+    })));
+    if (error) throw new Error(`Inserting drill recommendations: ${error.message}`);
   }
 
-  const { error: delNotesErr } = await supabase.from("comp_notes").delete().eq("player_id", playerId);
-  if (delNotesErr) throw new Error(`Clearing old comp_notes: ${delNotesErr.message}`);
-  if (result.compNotes.length > 0) {
-    const rows = result.compNotes.map((note, i) => ({ player_id: playerId, note, position: i }));
-    const { error } = await supabase.from("comp_notes").insert(rows);
-    if (error) throw new Error(`Inserting ${source}-drafted comp_notes: ${error.message}`);
-  }
-
-  const { error: delDrillsErr } = await supabase.from("drill_recommendations").delete().eq("player_id", playerId);
-  if (delDrillsErr) throw new Error(`Clearing old drill_recommendations: ${delDrillsErr.message}`);
-  if (result.drills.length > 0) {
-    const rows = result.drills.map((d, i) => ({ player_id: playerId, title: d.title, description: d.description, position: i }));
-    const { error } = await supabase.from("drill_recommendations").insert(rows);
-    if (error) throw new Error(`Inserting ${source}-drafted drill_recommendations: ${error.message}`);
-  }
-
-  console.log(
-    `Analyzed ${playerSlug}: ${updated} checkpoint(s) updated, ${skipped} skipped (already reviewed), ` +
-      `${freshIssues.length} new issue draft(s), ${result.comps.length} comp(s), ${result.drills.length} drill(s) drafted.`,
-  );
+  console.log(`Analyzed ${playerSlug}: run ${analysisRunId}; ${updated} checkpoint(s) updated, ${skipped} coach-reviewed checkpoint(s) protected, ${freshIssues.length} new issue draft(s), noActionNeeded=${result.noActionNeeded}.`);
 }
 
 async function main() {
   const program = new Command();
-  program
-    .requiredOption("--team <slug>", "Team slug")
-    .requiredOption("--player <slug>", "Player slug")
-    .option("--framesDir <path>", "Directory of extracted frame stills (from extract.ts) - required unless --claudeDraft is given")
-    .option("--pitchContext <text>", "Pitch location/outcome context for these frames - required unless --claudeDraft is given")
+  program.requiredOption("--team <slug>").requiredOption("--player <slug>")
+    .option("--framesDir <path>").option("--pitchContext <text>")
     .option("--force", "Overwrite checkpoints a coach has already reviewed", false)
-    .option("--claudeDraft <path>", "Skip the Gemini call and load a pre-written GeminiAnalysisResult-shaped JSON file instead, tagged source=\"claude\"")
-    .option("--claudeCli", "Skip the Gemini call and run the analysis live via the local claude CLI instead, tagged source=\"claude\"", false);
+    .option("--claudeDraft <path>").option("--claudeCli", "Use local Claude CLI", false);
   program.parse(process.argv);
-  const opts = program.opts<{
-    team: string;
-    player: string;
-    framesDir?: string;
-    pitchContext?: string;
-    force: boolean;
-    claudeDraft?: string;
-    claudeCli: boolean;
-  }>();
-
-  if (!opts.claudeDraft && !opts.claudeCli && (!opts.framesDir || !opts.pitchContext)) {
-    console.error("Either --claudeDraft, --claudeCli, or both --framesDir and --pitchContext, are required");
-    process.exit(1);
-  }
-  if (opts.claudeCli && !opts.framesDir) {
-    console.error("--claudeCli still needs --framesDir (it reads real files, just via the CLI instead of Gemini)");
-    process.exit(1);
-  }
-
-  try {
-    await analyzeAndSync(
-      opts.team,
-      opts.player,
-      opts.framesDir ?? "",
-      opts.pitchContext ?? "No pitch/result details provided.",
-      opts.force,
-      opts.claudeDraft ?? null,
-      opts.claudeCli,
-    );
-  } catch (err) {
-    console.error(err instanceof Error ? err.message : err);
-    process.exit(1);
-  }
+  const opts = program.opts<{ team: string; player: string; framesDir?: string; pitchContext?: string; force: boolean; claudeDraft?: string; claudeCli: boolean }>();
+  if (!opts.claudeDraft && !opts.framesDir) throw new Error("--framesDir is required unless --claudeDraft is provided");
+  await analyzeAndSync(opts.team, opts.player, opts.framesDir ?? "", opts.pitchContext ?? "No pitch/result details provided.", opts.force, opts.claudeDraft ?? null, opts.claudeCli);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main();
+  main().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
 }

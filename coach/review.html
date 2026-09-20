@@ -53,7 +53,7 @@
   import { loadSwingMetrics, renderSwingMetricsPanel } from "./components/swingMetricsPanel.js";
 
   const clipId = qs("clip");
-  let ctx, clip, phases = [], videoEl = null, library = [], priorities = [], assignments = [], issues = [], viewer = null;
+  let ctx, clip, phases = [], videoEl = null, library = [], priorities = [], assignments = [], issues = [], viewer = null, latestAnalysisRun = null;
 
   async function main() {
     const session = await requireSession();
@@ -87,10 +87,14 @@
   async function loadIssues() {
     // Issues drafted from THIS swing come first; fall back to the player's
     // other non-rejected drafts so an older swing still shows something useful.
-    const { data } = await supabase.from("issues").select("*").eq("player_id", ctx.player.id).neq("review_status", "rejected").order("created_at", { ascending: false }).limit(20);
+    const [{ data }, { data: runs }] = await Promise.all([
+      supabase.from("issues").select("*").eq("player_id", ctx.player.id).neq("review_status", "rejected").order("created_at", { ascending: false }).limit(20),
+      supabase.from("analysis_runs").select("id,no_action_needed,no_action_reason,created_at").eq("video_clip_id", clipId).order("created_at", { ascending: false }).limit(1),
+    ]);
+    latestAnalysisRun = runs?.[0] ?? null;
     const all = data ?? [];
     const own = all.filter((i) => i.video_clip_id === clipId);
-    issues = own.length ? own : all.slice(0, 5);
+    issues = own.length ? own : latestAnalysisRun ? [] : all.slice(0, 5);
     issues.fromThisSwing = own.length > 0;
   }
 
@@ -162,7 +166,9 @@
   function renderObservations() {
     const el = document.getElementById("observations");
     if (!issues.length) {
-      el.innerHTML = emptyState("No AI observations for this swing yet.", clip.status === "ready" ? "Analysis drafts appear here after processing. You can still track progress against a priority below." : "They will appear once processing finishes.");
+      el.innerHTML = latestAnalysisRun?.no_action_needed
+        ? emptyState("No meaningful mechanical issue is supported by this swing.", latestAnalysisRun.no_action_reason || "The analysis legitimately returned no finding.")
+        : emptyState("No AI observations for this swing yet.", clip.status === "ready" ? "Analysis drafts appear here after processing. You can still track progress against a priority below." : "They will appear once processing finishes.");
       return;
     }
     const promoted = new Set(priorities.map((p) => p.source_issue_id).filter(Boolean));
@@ -179,7 +185,7 @@
           ${i.review_status === "draft" ? '<button class="primary tap-target" data-a="approve">Approve</button>' : ""}
           <button class="tap-target" data-a="edit">Edit</button>
           ${i.review_status === "draft" ? '<button class="tap-target" data-a="reject">Reject</button>' : ""}
-          ${promoted.has(i.id) ? pill("good", "Tracked as a priority") : '<button class="tap-target" data-a="promote">Promote to priority</button>'}
+          ${promoted.has(i.id) ? pill("good", "Tracked as a priority") : i.suggest_priority && !i.context_explains_it ? '<button class="tap-target" data-a="promote">Promote to priority</button>' : '<span class="hint">Not suggested as a priority</span>'}
         </div>
       </div>`).join("");
     el.onclick = async (e) => {

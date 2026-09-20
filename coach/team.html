@@ -23,6 +23,7 @@
       <button class="chip" data-filter="priorityFlaws">🔴 Priority Flaws</button>
       <button class="chip" data-filter="earlyRead">⚠ Early Read (&lt;3 ABs)</button>
     </div>
+    <button class="tap-target" id="teamContextBtn">Team Context</button>
     <button class="tap-target" id="addPlayerBtn">+ Add Player</button>
   </div>
 
@@ -48,6 +49,7 @@
   const MIN_ATBATS_FOR_PATTERN = 3;
   const teamSlug = qs("team");
   let currentTeamId = null;
+  let currentTeam = null;
   let currentPlayers = [];
   let currentFilter = "all";
 
@@ -69,7 +71,7 @@
 
     const { data: team, error: teamErr } = await supabase
       .from("teams")
-      .select("id, name")
+      .select("id, name, sport, level_label")
       .eq("slug", teamSlug)
       .single();
     if (teamErr || !team) {
@@ -95,6 +97,7 @@
       return;
     }
     currentTeamId = team.id;
+    currentTeam = team;
 
     await renderFocusBanner(team.id);
     currentPlayers = await loadPlayers(team.id);
@@ -134,6 +137,25 @@
     });
 
     document.getElementById("addPlayerBtn").addEventListener("click", openAddPlayerModal);
+    document.getElementById("teamContextBtn").addEventListener("click", openTeamContextModal);
+  }
+
+  function option(value, label, selected) {
+    return `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`;
+  }
+
+  function openTeamContextModal() {
+    const backdrop = closeableModal(`<div class="modal"><button class="close-btn tap-target">✕</button><h2 style="margin-top:0;">Team Context</h2>
+      <p class="hint">Used by future AI analyses. Unknown values stay unknown.</p>
+      <select id="editTeamSport">${option("", "Sport unknown", currentTeam.sport ?? "")}${option("softball", "Softball", currentTeam.sport)}${option("baseball", "Baseball", currentTeam.sport)}</select>
+      <input id="editTeamLevel" placeholder="Level (e.g. 10U)" value="${escapeHtml(currentTeam.level_label ?? "")}">
+      <button class="primary tap-target" id="saveTeamContext">Save</button><p class="error-text" id="teamContextError"></p></div>`);
+    backdrop.querySelector("#saveTeamContext").onclick = async () => {
+      const patch = { sport: backdrop.querySelector("#editTeamSport").value || null, level_label: backdrop.querySelector("#editTeamLevel").value.trim() || null };
+      const { error } = await supabase.from("teams").update(patch).eq("id", currentTeamId);
+      if (error) return backdrop.querySelector("#teamContextError").textContent = error.message;
+      Object.assign(currentTeam, patch); backdrop.remove();
+    };
   }
 
   /** Reuses compModal.js's shared modal-backdrop shell rather than a new
@@ -147,6 +169,9 @@
         <input type="text" id="newPlayerName" placeholder="Player name (e.g. Emily C)">
         <input type="text" id="newPlayerJersey" placeholder="Jersey number">
         <input type="text" id="newPlayerSlug" placeholder="URL slug (auto-filled from name)">
+        <select id="newPlayerAge"><option value="">Age band unknown</option>${["u8","8-10","11-12","13-14","15-18","adult"].map((v) => `<option value="${v}">${v}</option>`).join("")}</select>
+        <select id="newPlayerBats"><option value="">Bats unknown</option><option value="L">Left</option><option value="R">Right</option><option value="S">Switch</option></select>
+        <select id="newPlayerThrows"><option value="">Throws unknown</option><option value="L">Left</option><option value="R">Right</option></select>
         <button class="primary tap-target" id="savePlayerBtn" style="margin-top:10px;">Add Player</button>
         <p class="error-text" id="addPlayerErrorMsg"></p>
       </div>
@@ -160,6 +185,9 @@
       const name = backdrop.querySelector("#newPlayerName").value.trim();
       const jerseyNumber = backdrop.querySelector("#newPlayerJersey").value.trim();
       const slug = backdrop.querySelector("#newPlayerSlug").value.trim() || slugify(name);
+      const ageBand = backdrop.querySelector("#newPlayerAge").value || null;
+      const bats = backdrop.querySelector("#newPlayerBats").value || null;
+      const throws = backdrop.querySelector("#newPlayerThrows").value || null;
       const errorMsg = backdrop.querySelector("#addPlayerErrorMsg");
       errorMsg.textContent = "";
 
@@ -169,7 +197,7 @@
 
       const { error } = await supabase
         .from("players")
-        .insert({ team_id: currentTeamId, name, jersey_number: jerseyNumber, slug });
+        .insert({ team_id: currentTeamId, name, jersey_number: jerseyNumber, slug, age_band: ageBand, bats, throws });
       if (error) {
         errorMsg.textContent = error.message.includes("duplicate key")
           ? "A player with that slug already exists on this team - try a different one."
