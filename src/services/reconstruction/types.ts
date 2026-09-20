@@ -3,12 +3,12 @@ export type Quat = [number, number, number, number];
 export type ObservationStatus = "observed" | "interpolated" | "model_inferred" | "missing";
 export type ConfidenceLevel = "high" | "medium" | "low";
 
-export const PIPELINE_VERSION = "barreliq-reconstruction-v1";
+export const PIPELINE_VERSION = "barreltrace-reconstruction-v1";
 export const SKELETON_VERSION = "h36m17-v1";
 export const ANIMATION_FORMAT_VERSION = 1;
 
-/** BarrelIQ canonical coordinates: X=batter left/right, Y=vertical, Z=toward pitcher. */
-export const COORDINATE_SYSTEM = "barreliq-x-right-y-up-z-pitcher" as const;
+/** BarrelTrace canonical coordinates: X=batter left/right, Y=vertical, Z=toward pitcher. */
+export const COORDINATE_SYSTEM = "barreltrace-x-right-y-up-z-pitcher" as const;
 
 export interface ReconstructionFrame {
   frame: number;

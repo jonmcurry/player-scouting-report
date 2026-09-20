@@ -52,7 +52,7 @@ import { CONCEPTS } from "../knowledge/knowledgePack.js";
 
 export function getConfiguredGeminiModel(): string {
   const model = process.env.GEMINI_MODEL?.trim();
-  if (!model) throw new Error("GEMINI_MODEL must be explicitly configured; BarrelIQ will not silently select a model");
+  if (!model) throw new Error("GEMINI_MODEL must be explicitly configured; BarrelTrace will not silently select a model");
   return model;
 }
 

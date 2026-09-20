@@ -73,7 +73,7 @@ running, without waiting to be asked:
 cd mobile && npx cap sync android
 cd android && .\gradlew.bat assembleDebug
 & "C:\Android\platform-tools\adb.exe" -s emulator-5554 install -r app\build\outputs\apk\debug\app-debug.apk
-& "C:\Android\platform-tools\adb.exe" -s emulator-5554 shell am start -n com.barreliq.coach/.MainActivity
+& "C:\Android\platform-tools\adb.exe" -s emulator-5554 shell am start -n com.barreltrace.coach/.MainActivity
 ```
 
 - `npx cap run android` does not reliably work in this Windows/Git Bash setup (a `gradlew` spawn

@@ -1,6 +1,6 @@
 {
-  "appId": "com.barreliq.coach",
-  "appName": "BarrelIQ",
+  "appId": "com.barreltrace.coach",
+  "appName": "BarrelTrace",
   "webDir": "../coach",
   "android": {
     "allowMixedContent": true

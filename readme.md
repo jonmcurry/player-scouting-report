@@ -1,14 +1,16 @@
-# BarrelIQ
+# BarrelTrace
 
-**Video-based swing scouting and player development for youth softball and baseball coaches.**
+**Video-based swing analysis and player development for youth baseball and softball.**
 
-A coach films real at-bats and practice swings on a phone. BarrelIQ locates the swing, reconstructs
-the batter in 3D, drafts a diagnosis with AI, and hands it to the coach to approve, edit or reject.
+BarrelTrace helps coaches and hitters break down real swings, identify what to work on next, assign
+drills, and track whether improvements carry from practice into games. A coach films real at-bats and
+practice swings on a phone; BarrelTrace locates the swing, reconstructs the batter in 3D, and drafts a
+review that the coach approves, edits or rejects.
 Approved observations become **priorities** with drills, follow-ups and evidence over time. The
 product is a coaching loop, not a one-off report: *see it, name it, assign a drill, check whether
 it transferred to games.*
 
-- Current version: **0.14.0** (see [CHANGELOG.md](CHANGELOG.md))
+- Current version: **0.14.1** (see [CHANGELOG.md](CHANGELOG.md))
 - Coach app: installable PWA (`coach/`) plus a Capacitor Android shell (`mobile/`)
 - Backend: Supabase (Postgres + Auth + RLS + Edge Functions), Google Cloud Storage for video
 - Processing: a Node worker driving an isolated Python pose pipeline (YOLO11-pose, YOLOv8 bat
@@ -189,7 +191,7 @@ of the DOM and of Supabase. Config is resolved in `coach/config.js` in three tie
 `PROD_*` constants if filled in, otherwise the browser's own hostname on port 54321, otherwise the
 gitignored `coach/config.local.js` LAN host for the native shell.
 
-**Android shell (`mobile/`).** Capacitor 6.2.1 with `appId com.barreliq.coach`. `webDir` points at
+**Android shell (`mobile/`).** Capacitor 6.2.1 with `appId com.barreltrace.coach`. `webDir` points at
 `../coach`, so there is no duplicated code. It is installed as a debug APK. The iOS project is
 scaffolded but has not been built.
 
@@ -381,7 +383,7 @@ It is not a canned animation or a stick figure.
 - **Side by side:** compare mode links two viewers to a shared viewpoint (3D A | 3D B).
 - **Original-video review:** the 3D view sits next to the private original video, sharing a frame
   timeline.
-- **Coordinates:** canonical BarrelIQ axes are X = batter left/right, Y = vertical, Z = toward
+- **Coordinates:** canonical BarrelTrace axes are X = batter left/right, Y = vertical, Z = toward
   pitcher. Units are normalized body units.
 
 ---
@@ -587,6 +589,27 @@ docs/PIPELINE_AUDIT.md Reconstruction audit
 docker/, docker-compose.yml, Dockerfile   GCS emulator + CORS proxy; Node CLI image
 CHANGELOG.md, CLAUDE.md
 ```
+
+### Upgrading from BarrelIQ
+
+The product was renamed from BarrelIQ to BarrelTrace in 0.14.1, including internal identifiers.
+Things that need a one-time action on an existing machine or device:
+
+- **Android:** the application ID changed from `com.barreliq.coach` to `com.barreltrace.coach`, so
+  Android treats it as a different app. Uninstall the old "BarrelIQ" app from each device or emulator
+  (`adb uninstall com.barreliq.coach`) and install the new build; local app data is not carried over.
+- **Local config:** if you have a gitignored `coach/config.local.js`, rename its global from
+  `window.__BARRELIQ_LOCAL_CONFIG__` to `window.__BARRELTRACE_LOCAL_CONFIG__` (see
+  `coach/config.local.example.js`).
+- **Emulator name:** an AVD created as `BarrelIQ_Test` keeps that name (it lives on your machine).
+- **Generated data:** new pipeline/validation output is stamped `barreltrace-reconstruction-v1` and
+  `barreltrace-x-right-y-up-z-pitcher`. Output generated before the rename keeps the old strings; nothing
+  in the repo reads them back.
+- **Local permission approvals:** `.claude/settings.json` still lists `adb` approvals for the old
+  package name; new-name commands will simply prompt once.
+
+No domain, email address, database object, bucket or function ever used the old name. When a BarrelTrace
+domain is chosen it will need to go in `PROD_SUPABASE_URL` and any share-link base URL.
 
 ---
 

@@ -19,7 +19,7 @@
 //   3. Otherwise (native shell): Capacitor's webview reports
 //      window.location.hostname as "localhost", meaning the device/emulator
 //      itself - there's no local Supabase stack running there, so this reads
-//      window.__BARRELIQ_LOCAL_CONFIG__.lanHost instead, set by the
+//      window.__BARRELTRACE_LOCAL_CONFIG__.lanHost instead, set by the
 //      gitignored coach/config.local.js (copy coach/config.local.example.js
 //      to create it - same .env/.env.example pattern already used
 //      elsewhere in this repo). Throws a clear, actionable error if none of
@@ -47,7 +47,7 @@ function resolveConfig() {
   if (!isNativeShell) {
     return { url: `http://${window.location.hostname}:54321`, key: LOCAL_DEV_ANON_KEY };
   }
-  const lanHost = window.__BARRELIQ_LOCAL_CONFIG__ && window.__BARRELIQ_LOCAL_CONFIG__.lanHost;
+  const lanHost = window.__BARRELTRACE_LOCAL_CONFIG__ && window.__BARRELTRACE_LOCAL_CONFIG__.lanHost;
   if (!lanHost) {
     throw new Error(
       "coach/config.js: no Supabase config available. Not running in a regular browser (so " +

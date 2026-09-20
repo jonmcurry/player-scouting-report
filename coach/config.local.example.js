@@ -15,6 +15,6 @@
 // else to wire up. Safe to be entirely absent (e.g. in CI, or once
 // coach/config.js's PROD_SUPABASE_URL/KEY are filled in for a real deploy) -
 // a missing script tag is a silent no-op in every browser.
-window.__BARRELIQ_LOCAL_CONFIG__ = {
+window.__BARRELTRACE_LOCAL_CONFIG__ = {
   lanHost: "REPLACE-WITH-YOUR-DEV-MACHINE-LAN-IP", // e.g. "192.168.1.231"
 };

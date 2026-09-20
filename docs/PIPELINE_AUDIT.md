@@ -1,4 +1,4 @@
-# BarrelIQ pipeline audit (2026-09-19)
+# BarrelTrace pipeline audit (2026-09-19)
 
 ## Existing implementation
 
@@ -28,4 +28,4 @@ What prevents laboratory trust: monocular footage has no camera intrinsics/extri
 
 Private original video → whole-clip athlete/bat tracking → confidence-aware 2D cleanup → normalized COCO sequence → pluggable lifter boundary (current: VideoPose3D) → depth correction → one rigid early-stance leveling transform → median bone-length constraint → low-velocity foot-plant correction → named Mixamo quaternion retargeting → shared frame-index timeline → original-video/3D coach review.
 
-Canonical BarrelIQ coordinates are X=batter left/right, Y=vertical, Z=toward pitcher. Conversion from the lifter happens once; Three.js changes handed display depth once. Absolute scale defaults to normalized H36M/body units unless athlete height or camera calibration is supplied.
+Canonical BarrelTrace coordinates are X=batter left/right, Y=vertical, Z=toward pitcher. Conversion from the lifter happens once; Three.js changes handed display depth once. Absolute scale defaults to normalized H36M/body units unless athlete height or camera calibration is supplied.

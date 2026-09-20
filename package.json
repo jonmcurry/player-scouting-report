@@ -1,8 +1,8 @@
 {
-  "name": "barreliq",
-  "version": "0.14.0",
+  "name": "barreltrace",
+  "version": "0.14.1",
   "private": true,
-  "description": "Node/TypeScript CLI layer for BarrelIQ's swing-scouting pipeline: Supabase-backed coach editing, GCS media, Gemini-assisted drafts. Separate from and does not replace the existing Python pose3d pipeline (scripts/pose3d/).",
+  "description": "Node/TypeScript CLI layer for BarrelTrace's swing-analysis pipeline: Supabase-backed coach editing, GCS media, Gemini-assisted drafts. Separate from and does not replace the existing Python pose3d pipeline (scripts/pose3d/).",
   "type": "module",
   "engines": {
     "node": ">=20"

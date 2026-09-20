@@ -1,6 +1,7 @@
 {
-  "short_name": "BarrelIQ",
-  "name": "BarrelIQ — Softball & Baseball Swing Scouting",
+  "short_name": "BarrelTrace",
+  "name": "BarrelTrace — Baseball & Softball Swing Development",
+  "description": "Video-based swing analysis and player development for youth baseball and softball.",
   "icons": [
     {
       "src": "./icons/icon-192.svg",

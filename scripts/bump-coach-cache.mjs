@@ -74,7 +74,7 @@ for (const rel of assetPaths) {
   hash.update(content);
 }
 const digest = hash.digest("hex").slice(0, 10);
-const newCacheName = `barreliq-coach-${digest}`;
+const newCacheName = `barreltrace-coach-${digest}`;
 
 let changed = false;
 

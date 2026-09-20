@@ -41,7 +41,7 @@ async function main(){
     fs.writeFileSync(path.join(batchRoot,"batch-progress.json"),JSON.stringify(results,null,2));
   }
   const summaries=results.map(r=>{ const p=path.join(r.outputDir,"validation-result.json"); return fs.existsSync(p)?JSON.parse(fs.readFileSync(p,"utf8")):{video_id:r.videoId,filename:r.filename,errors:[r.error??"missing validation result"]}; });
-  fs.writeFileSync(path.join(batchRoot,"validation-summary.json"),JSON.stringify({generated_at:new Date().toISOString(),pipeline_version:"barreliq-reconstruction-v1",videos:summaries},null,2));
+  fs.writeFileSync(path.join(batchRoot,"validation-summary.json"),JSON.stringify({generated_at:new Date().toISOString(),pipeline_version:"barreltrace-reconstruction-v1",videos:summaries},null,2));
   console.table(summaries.map((s:any)=>({file:s.filename,pose:`${(100*(s.pose_coverage??0)).toFixed(1)}%`,bat:`${(100*(s.bat_track_coverage??0)).toFixed(1)}%`,"3d":`${(100*(s["3d_pose_coverage"]??0)).toFixed(1)}%`,quality:s.overall_reconstruction_quality,status:s["3d_reconstruction_status"]})));
   if(results.some(r=>r.status!=="complete")) process.exitCode=1;
 }

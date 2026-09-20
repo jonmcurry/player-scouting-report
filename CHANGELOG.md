@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.1] - 2026-09-20
+
+### Changed
+
+- Rebranded BarrelIQ to BarrelTrace across the coach app (titles, login, share report), PWA manifest and cache names, Android app, documentation and product metadata. Product description is now "Video-based swing analysis and player development for youth baseball and softball."
+- Renamed internal identifiers to match: Android application ID / namespace / URL scheme (`com.barreliq.coach` -> `com.barreltrace.coach`, so existing installs must be uninstalled and reinstalled), npm package names, `window.__BARRELTRACE_LOCAL_CONFIG__` (rename it in any local `coach/config.local.js`), the reconstruction pipeline/coordinate-system identifiers, and coordinate helper function names.
+- PWA cache names now start with `barreltrace-coach-`; the service worker's activate step deletes the old caches, so installed apps refetch the shell (and the Three.js CDN cache once) on next load.
+
 ## [0.14.0] - 2026-09-19
 
 ### Added

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>BarrelIQ — Scouting Report</title>
-<link rel="stylesheet" href="./coach.css?v=7de56c9b15">
+<title>BarrelTrace — Scouting Report</title>
+<link rel="stylesheet" href="./coach.css?v=fe24fad928">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -21,7 +21,7 @@
 <script type="module">
   // Deliberately the only page in coach/ that never calls requireSession() -
   // a real, working share link must be viewable by a parent/recruiter with
-  // no BarrelIQ account at all. Reuses shared.js's plain anon-key client
+  // no BarrelTrace account at all. Reuses shared.js's plain anon-key client
   // only for its supabase.functions.invoke() convenience (CORS/apikey
   // headers already handled) - no session, no login prompt, no RLS-backed
   // table read happens from this page at all. The actual data comes from
@@ -71,7 +71,7 @@
       <details class="drawer" style="margin-top:20px;"><summary><span>Full swing checklist</span></summary>
         <div class="drawer-body" id="checkpointList"></div></details>
 
-      <p class="hint" style="text-align:center;margin-top:24px;">Shared read-only view from BarrelIQ. No login required.</p>
+      <p class="hint" style="text-align:center;margin-top:24px;">Shared read-only view from BarrelTrace. No login required.</p>
     `;
 
     document.getElementById("checkpointList").innerHTML = data.checkpoints

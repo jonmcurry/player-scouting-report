@@ -1,4 +1,4 @@
-package com.barreliq.coach;
+package com.barreltrace.coach;
 
 import com.getcapacitor.BridgeActivity;
 
