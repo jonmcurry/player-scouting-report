@@ -1,6 +1,6 @@
 {
   "name": "barreltrace",
-  "version": "0.14.1",
+  "version": "0.16.0",
   "private": true,
   "description": "Node/TypeScript CLI layer for BarrelTrace's swing-analysis pipeline: Supabase-backed coach editing, GCS media, Gemini-assisted drafts. Separate from and does not replace the existing Python pose3d pipeline (scripts/pose3d/).",
   "type": "module",
@@ -19,7 +19,8 @@
     "backfill-analysis-quality": "tsx src/cli/backfillAnalysisQuality.ts",
     "validate:swings": "node --experimental-strip-types scripts/process-validation-batch.ts",
     "provision-coach": "tsx src/cli/provisionCoach.ts",
-    "test": "tsx --test src/**/*.test.ts && node --test coach/components/developmentLogic.test.mjs coach/components/pages.test.mjs",
+    "test": "npm run build && node --test dist/**/*.test.js && node --test coach/components/developmentLogic.test.mjs coach/components/pages.test.mjs coach/components/ui.test.mjs coach/components/phase1bScreens.test.mjs",
+    "test:contrast": "node scripts/verify-ux-contrast.mjs",
     "coach:bump-cache": "node scripts/bump-coach-cache.mjs",
     "db:migrate": "npx supabase db push",
     "db:reset": "npx supabase db reset"

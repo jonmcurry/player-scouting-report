@@ -320,8 +320,15 @@ rollback;`;
 
 test("re-running AI analysis replaces unreviewed drafts but never a coach-reviewed issue", async () => {
   const draft = {
+    noActionNeeded: false,
+    noActionReason: null,
     checklist: [],
-    issues: [{ issue: "AI: front side opens early", seenInAtBats: "AB1", likelyCause: "c", effect: "e" }],
+    issues: [{
+      issue: "AI: front side opens early", seenInAtBats: "AB1", likelyCause: "c", effect: "e",
+      evidence: "visible in the original video", coachingCue: "stay closed", lookForNext: "front side at plant",
+      confidence: "low", concept: "front_side_stability", basis: "video", contextExplainsIt: false,
+      emergencySwingSuspected: false, knowledgeClaimIds: [], suggestPriority: false,
+    }],
     comps: [], compNotes: [], drills: [],
   };
   const file = path.join(os.tmpdir(), `ai-draft-${suffix}.json`);
@@ -342,7 +349,11 @@ test("re-running AI analysis replaces unreviewed drafts but never a coach-review
 
     // A different finding is a fresh draft; the coach rejects it; the AI must not resurrect it.
     const file2 = path.join(os.tmpdir(), `ai-draft2-${suffix}.json`);
-    fs.writeFileSync(file2, JSON.stringify({ ...draft, issues: [{ issue: "AI: hands drop", seenInAtBats: "AB1", likelyCause: "c", effect: "e", evidence: "frame 3", coachingCue: "stay on top", lookForNext: "hands at load", confidence: "low" }] }));
+    fs.writeFileSync(file2, JSON.stringify({ ...draft, issues: [{
+      issue: "AI: hands drop", seenInAtBats: "AB1", likelyCause: "c", effect: "e", evidence: "frame 3",
+      coachingCue: "stay on top", lookForNext: "hands at load", confidence: "low", concept: "hand_path",
+      basis: "video", contextExplainsIt: false, emergencySwingSuspected: false, knowledgeClaimIds: [], suggestPriority: false,
+    }] }));
     try {
       await analyzeAndSync(teamA.slug, playerA.slug, "", "", false, file2, false);
       issues = must(await svc.from("issues").select("id, issue, review_status, evidence, confidence, coaching_cue").eq("player_id", playerA.id), "issues 3") as typeof issues;

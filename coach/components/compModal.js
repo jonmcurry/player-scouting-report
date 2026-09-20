@@ -10,6 +10,7 @@
 // the public report templates - weighted softball-first per this project's
 // existing, fact-checked convention, not re-derived here.
 import { buildExtensionCorrectedFrames, renderSkeletonComparison, renderSkeletonFrameToCanvas } from "./skeletonComparison.js";
+import { registerModalOverlay } from "./ui.js";
 
 const COMP_BY_CHECKPOINT = {
   "hip-shoulder-sep": {
@@ -102,16 +103,7 @@ export function closeableModal(innerHTML, onClose) {
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
   backdrop.innerHTML = innerHTML;
-  const close = () => {
-    if (onClose) onClose();
-    backdrop.remove();
-  };
-  backdrop.querySelector(".close-btn").addEventListener("click", close);
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) close();
-  });
-  document.body.appendChild(backdrop);
-  return backdrop;
+  return registerModalOverlay(backdrop, { onClose });
 }
 
 /** Tier 1: the full live real-vs-corrected (or real-only, when no

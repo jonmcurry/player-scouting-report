@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BarrelTrace — Practice</title>
-<link rel="stylesheet" href="./coach.css?v=fe24fad928">
+<link rel="stylesheet" href="./coach.css?v=7ac7e7387f">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -60,7 +60,13 @@
     document.getElementById("content").hidden = false;
     const id = qs("session");
     if (id && sessions.some((s) => s.id === id)) await openSession(id);
-    else renderPicker();
+    else {
+      renderPicker();
+      if (qs("start") === "1") {
+        openNewSession();
+        const url = new URL(location.href); url.searchParams.delete("start"); history.replaceState(history.state, "", url);
+      }
+    }
   }
 
   async function loadSessions() {
@@ -100,7 +106,7 @@
       const date = b.querySelector("#nDate").value;
       if (!date) return toast("Pick a date.");
       const existing = sessions.find((s) => s.session_date === date);
-      if (existing) { b.querySelector(".close-btn").click(); toast("A session for that date already exists - opening it."); return openSession(existing.id); }
+      if (existing) { b.querySelector(".close-btn").click(); await b.whenClosed; toast("A session for that date already exists - opening it."); return openSession(existing.id); }
       const { data, error } = await supabase.from("practice_sessions").insert({
         player_id: ctx.player.id, session_date: date,
         focus_priority_id: b.querySelector("#nPri").value || null,
@@ -109,6 +115,7 @@
       }).select("id").single();
       if (error) return toast(`Couldn't create: ${error.message}`);
       b.querySelector(".close-btn").click();
+      await b.whenClosed;
       await loadSessions(); await openSession(data.id);
     };
   }

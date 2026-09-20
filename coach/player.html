@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BarrelTrace — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=fe24fad928">
+<link rel="stylesheet" href="./coach.css?v=7ac7e7387f">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -13,12 +13,19 @@
 <header class="app-bar" id="appBar"></header>
 <div class="wrap">
   <nav id="devTabs"></nav>
-  <div id="trendBanner"></div>
-  <div class="stats-row" id="statsRow"></div>
-
+  <section id="nextAction"></section>
   <div id="priorityStrip"></div>
 
-  <details class="drawer" id="checklistDrawer">
+  <section id="assignedDrill"></section>
+  <section class="p1b-section"><div class="p1b-section-head"><h2>Recent</h2></div><div id="recentActivity" class="bt-list"></div></section>
+
+  <details class="bt-disclosure" id="moreGame"><summary><span>Game log</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><div id="gameLogList" class="bt-list"></div></div></details>
+  <details class="bt-disclosure" id="morePractice"><summary><span>Practice log</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><div id="practiceLogList" class="bt-list"></div></div></details>
+  <details class="bt-disclosure" id="earlierAnalysis"><summary><span>Notes from earlier analysis</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body">
+    <div id="trendBanner"></div>
+    <div id="issuesList"></div><div id="compList"></div><div id="drillList"></div><div id="followUp"></div>
+  </div></details>
+  <details class="bt-disclosure" id="checklistDrawer">
     <summary><span>Detailed checklist scoring <span class="hint" id="checklistHint">11 checkpoints · advanced</span></span></summary>
     <div class="drawer-body">
       <p class="hint">Optional detail. You don't need to confirm every score - use the review page for what matters most, and the development page for what to work on.</p>
@@ -26,32 +33,8 @@
     </div>
   </details>
 
-  <h2>Diagnosis, Comps &amp; Plan</h2>
-  <details class="drawer" open>
-    <summary><span>Primary Issue(s) Identified</span></summary>
-    <div class="drawer-body" id="issuesList"></div>
-  </details>
-  <details class="drawer">
-    <summary><span>Comp Illustration — An Example, Not an Ideal Template</span></summary>
-    <div class="drawer-body" id="compList"></div>
-  </details>
-  <details class="drawer">
-    <summary><span>Drill Recommendations</span></summary>
-    <div class="drawer-body" id="drillList"></div>
-  </details>
-  <details class="drawer">
-    <summary><span>Follow-up</span></summary>
-    <div class="drawer-body" id="followUp"></div>
-  </details>
-
-  <h2>Game Log</h2>
-  <div id="gameLogList"></div>
-
-  <h2>Practice Log</h2>
-  <p class="hint">Batting practice/lesson sessions - kept separate from real game at-bats above.</p>
-  <div id="practiceLogList"></div>
-
-  <details class="drawer" style="margin-top:24px;">
+  <details class="bt-disclosure" id="playerStats"><summary><span>Player history</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><div class="stats-row" id="statsRow"></div></div></details>
+  <details class="bt-disclosure" id="managePlayer" style="margin-top:24px;">
     <summary><span>Manage Player</span></summary>
     <div class="drawer-body">
       <h3 style="margin-top:0;">Player Context</h3>
@@ -87,6 +70,9 @@
   import { loadSwingMetrics, renderSwingMetricsPanel } from "./components/swingMetricsPanel.js";
   import { uploadRawClip } from "./components/videoUpload.js";
   import { renderPlayerAppBar, renderBottomNav, loadRosterWithProgress, setLastPlayerSlug } from "./components/appShell.js";
+  import { mountSegmentedTabs, card, confirmDialog, emptyState, icon, listRow, showSnackbar, statusChip } from "./components/ui.js";
+  import { nextActionModel } from "./components/phase1bScreens.js";
+  import * as DevLogic from "./components/developmentLogic.js";
   import { renderZonePicker, zoneLabel, outcomeLabel } from "./components/pitchZonePicker.js";
 
   const MIN_ATBATS_FOR_PATTERN = 3;
@@ -128,6 +114,12 @@
   // every 10s, tearing down and rebuilding every card/canvas on the page
   // even when only one clip anywhere was actually still processing).
   const inFlightClips = new Map();
+  let recentGameHtml = "";
+  let recentPracticeHtml = "";
+
+  function renderRecentActivity() {
+    document.getElementById("recentActivity").innerHTML = recentGameHtml + recentPracticeHtml || emptyState("No recent activity", "Log an at-bat or start practice to build the timeline.");
+  }
 
   async function main() {
     const session = await requireSession();
@@ -192,18 +184,12 @@
     });
 
     document.getElementById("deletePlayerBtn").addEventListener("click", async () => {
-      if (
-        !confirm(
-          `Delete ${player.name} entirely, including every logged at-bat, score, and clip? This can't be undone.`,
-        )
-      ) {
-        return;
-      }
+      if (!await confirmDialog({ title: `Delete ${player.name}?`, message: "This removes every at-bat, score, and clip and cannot be undone.", confirmLabel: "Delete player", destructive: true })) return;
       const btn = document.getElementById("deletePlayerBtn");
       btn.disabled = true;
       const { error } = await supabase.from("players").delete().eq("id", playerId);
       if (error) {
-        alert(`Couldn't delete player: ${error.message}`);
+        showSnackbar(`Couldn't delete player: ${error.message}`);
         btn.disabled = false;
         return;
       }
@@ -236,14 +222,14 @@
       }
       const revokeBtn = e.target.closest("[data-revoke-link]");
       if (revokeBtn) {
-        if (!confirm("Revoke this share link? Anyone with the old link will lose access immediately.")) return;
+        if (!await confirmDialog({ title: "Revoke share link?", message: "Anyone with the old link will lose access immediately.", confirmLabel: "Revoke", destructive: true })) return;
         revokeBtn.disabled = true;
         const { error } = await supabase
           .from("player_share_links")
           .update({ revoked_at: new Date().toISOString() })
           .eq("id", revokeBtn.dataset.revokeLink);
         if (error) {
-          alert(`Couldn't revoke link: ${error.message}`);
+          showSnackbar(`Couldn't revoke link: ${error.message}`);
           revokeBtn.disabled = false;
           return;
         }
@@ -253,11 +239,12 @@
     await loadShareLinks();
 
     const devQuery = `team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}`;
-    const tabsEl = document.getElementById("devTabs");
-    tabsEl.className = "dev-tabs";
-    tabsEl.innerHTML = [["Report", "player"], ["Development", "development"], ["Compare", "compare"], ["Practice", "session"]]
-      .map(([label, page]) => `<a href="./${page}.html?${devQuery}" ${page === "player" ? 'aria-current="page"' : ""}>${label}</a>`)
-      .join("");
+    mountSegmentedTabs(document.getElementById("devTabs"), [
+      { key: "overview", label: "Overview", href: `./player.html?${devQuery}` },
+      { key: "development", label: "Development", href: `./development.html?${devQuery}` },
+      { key: "compare", label: "Compare", href: `./compare.html?${devQuery}` },
+      { key: "practice", label: "Practice", href: `./session.html?${devQuery}` },
+    ], "overview", { label: "Player sections" });
     await loadPriorityStrip(devQuery);
 
     const reportHref = `./player.html?team=${teamSlug}&player=${playerSlug}`;
@@ -265,7 +252,8 @@
       teamSlug,
       activeTab: "report",
       reportHref,
-      logAbHref: `${reportHref}&openLog=1`,
+      currentPlayer: player,
+      roster,
       onLogAbClick: openLogAbModal,
     });
 
@@ -505,17 +493,34 @@
    * how many AI drafts still need a coach decision. Links out; owns no state. */
   async function loadPriorityStrip(devQuery) {
     const el = document.getElementById("priorityStrip");
-    const [{ data: pri }, { count: drafts }] = await Promise.all([
-      supabase.from("player_priorities").select("id, title, status").eq("player_id", playerId).in("status", ["active", "monitoring"]).order("priority_order").limit(3),
-      supabase.from("issues").select("id", { count: "exact", head: true }).eq("player_id", playerId).eq("review_status", "draft"),
+    const [{ data: pri }, { data: drafts }] = await Promise.all([
+      supabase.from("player_priorities").select("id, title, description, status, follow_up_kind, follow_up_date, follow_up_swings, follow_up_set_at, follow_up_done_at").eq("player_id", playerId).in("status", ["active", "monitoring"]).order("priority_order").limit(3),
+      supabase.from("issues").select("id, video_clip_id, created_at").eq("player_id", playerId).eq("review_status", "draft").order("created_at", { ascending: false }),
     ]);
     const list = pri ?? [];
-    el.innerHTML = `<div class="dev-card">
-      <div class="dev-row between"><b>Working on</b><a href="./development.html?${devQuery}">Open development →</a></div>
-      ${list.length ? `<ol style="margin:6px 0 0;padding-left:20px;">${list.map((p) => `<li>${escapeHtml(p.title)}${p.status === "monitoring" ? ' <span class="hint">(monitoring)</span>' : ""}</li>`).join("")}</ol>`
-        : `<p class="hint" style="margin:6px 0 0;">No active priorities yet. Review a swing and promote an observation to begin tracking development.</p>`}
-      ${drafts ? `<p class="hint" style="margin:6px 0 0;">${drafts} AI observation${drafts === 1 ? "" : "s"} waiting for your review.</p>` : ""}
-    </div>`;
+    const priorityIds = list.map((p) => p.id);
+    const { data: drillRows } = priorityIds.length ? await supabase.from("player_priority_drills").select("player_priority_id, active, drill_library(name, purpose, instructions)").in("player_priority_id", priorityIds).eq("active", true).order("assigned_at", { ascending: false }) : { data: [] };
+    const top = list[0] ?? null;
+    const assignment = (drillRows ?? []).find((row) => row.player_priority_id === top?.id) ?? null;
+    let duePriority = null;
+    if (list.some((p) => p.follow_up_kind)) {
+      const [{ data: practiceEvents }, { data: gameEvents }, { data: swingEvents }] = await Promise.all([
+        supabase.from("practice_sessions").select("session_date").eq("player_id", playerId).order("session_date", { ascending: false }).limit(50),
+        supabase.from("game_log_entries").select("date").eq("player_id", playerId).eq("session_type", "game").order("date", { ascending: false }).limit(100),
+        supabase.from("video_clips").select("created_at, game_log_entries!inner(player_id)").eq("game_log_entries.player_id", playerId).order("created_at", { ascending: false }).limit(200),
+      ]);
+      duePriority = list.find((p) => DevLogic.isFollowUpDue(p, { now: new Date(), practiceSessionDates: (practiceEvents ?? []).map((row) => row.session_date), gameDates: (gameEvents ?? []).map((row) => row.date), swingDates: (swingEvents ?? []).map((row) => row.created_at) })) ?? null;
+    }
+    const action = nextActionModel({ drafts: drafts ?? [], duePriority, priority: top, assignment });
+    const actionHref = action.kind === "review" && action.clipId ? `./review.html?clip=${encodeURIComponent(action.clipId)}&${devQuery}`
+      : action.kind === "practice" ? `./session.html?${devQuery}&start=1`
+      : action.kind === "atbat" ? `./player.html?${devQuery}&openLog=1`
+      : `./development.html?${devQuery}`;
+    document.getElementById("nextAction").innerHTML = card(`<span class="bt-eyebrow">Next action</span><h2>${escapeHtml(action.title)}</h2><p class="bt-supporting">${escapeHtml(action.detail)}</p><a class="bt-button bt-button-primary p1b-full-button" href="${actionHref}">${escapeHtml(action.label)}</a>`, { className: "p1b-next-action" });
+    el.innerHTML = `<section class="bt-card p1b-working"><div class="p1b-card-head"><h2>Working on</h2><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Development</a></div>
+      ${top ? `<a class="p1b-priority-link" href="./development.html?${devQuery}"><strong>${escapeHtml(top.title)}</strong>${statusChip(top.status, { domain: "priority" })}<span>${escapeHtml(top.description || "Current coaching priority")}</span></a>${list.length > 1 ? `<span class="bt-caption">+${list.length - 1} more</span>` : ""}`
+        : emptyState("No active priorities", "Approve a finding and track it to begin.")}</section>`;
+    document.getElementById("assignedDrill").innerHTML = assignment ? card(`<span class="bt-eyebrow">Next practice</span><h2>${escapeHtml(assignment.drill_library?.name ?? "Assigned drill")}</h2><p class="bt-supporting">${escapeHtml(assignment.drill_library?.purpose ?? top.title)}</p>${assignment.drill_library?.instructions ? `<details class="p1b-inline-disclosure"><summary>How to run it</summary><p>${escapeHtml(assignment.drill_library.instructions)}</p></details>` : ""}`, { className: "p1b-assigned-drill" }) : "";
   }
 
   async function loadIssues() {
@@ -645,38 +650,13 @@
       .eq("session_type", "game")
       .order("position");
     const el = document.getElementById("gameLogList");
-    el.innerHTML = (logs ?? [])
-      .map((g) => {
+    const rows = (logs ?? []).map((g) => {
         const zoneBits = [zoneLabel(g.pitch_zone), outcomeLabel(g.pitch_outcome)].filter(Boolean).join(" · ");
-        return `
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-          <b>${escapeHtml(g.date)} vs ${escapeHtml(g.opponent)}, AB ${escapeHtml(g.ab)}</b>
-          <button class="tap-target btn-danger subtle" style="flex:none;" data-delete-at-bat="${g.id}" title="Delete At-Bat">🗑</button>
-        </div>
-        <p class="hint">${escapeHtml(g.pitch ?? "—")}${zoneBits ? ` <span style="color:var(--clay);">(${escapeHtml(zoneBits)})</span>` : ""}</p>
-        <p>${escapeHtml(g.result)}</p>
-        <p class="hint" style="margin:0 0 6px;"><a href="./atbat.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}&entry=${g.id}">Pitches &amp; at-bat summary</a></p>
-        <div class="scrubber-mount" data-game-log-entry="${g.id}"></div>
-      </div>
-    `;
-      })
-      .join("");
-
-    // extensionScore is the same value for every clip on this player's page -
-    // fetch it once here instead of once per clip inside the loop below (a
-    // real N+1: a full season's worth of logged at-bats meant re-fetching
-    // this identical value dozens of times to render one page). Skip the
-    // query entirely when there's nothing to render it for. loadPracticeLog
-    // shares this same cached value (and independently covers the case
-    // where a player has practice clips but zero game at-bats).
-    if (currentExtensionScore === null && logs && logs.length > 0) {
-      currentExtensionScore = await loadExtensionScore(playerId);
-    }
-
-    // Each entry's clip lookup is independent (writes to its own DOM mount),
-    // so run them concurrently rather than one at a time.
-    await Promise.all((logs ?? []).map((g) => loadClipsForEntry(g.id, currentExtensionScore)));
+        return listRow({ href: `./atbat.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}&entry=${g.id}`, leading: icon("video", { size: 20 }), title: `${g.date} vs ${g.opponent} · AB ${g.ab}`, supporting: `${g.result || "No result"}${zoneBits ? ` · ${zoneBits}` : ""}`, trailing: icon("chevron-right", { size: 20 }) });
+      });
+    el.innerHTML = rows.length ? rows.join("") : emptyState("No recent game", "Log the next at-bat when game evidence is available.");
+    recentGameHtml = rows.at(-1) ?? "";
+    renderRecentActivity();
   }
 
   /** Same clip-rendering plumbing as loadGameLog() (scrubber-mount,
@@ -692,25 +672,10 @@
       .eq("session_type", "practice")
       .order("position");
     const el = document.getElementById("practiceLogList");
-    el.innerHTML = (logs ?? [])
-      .map(
-        (g) => `
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-          <b>${escapeHtml(g.date)}${g.session_note ? ` — ${escapeHtml(g.session_note)}` : ""}, Rep ${escapeHtml(g.ab)}</b>
-          <button class="tap-target btn-danger subtle" style="flex:none;" data-delete-at-bat="${g.id}" title="Delete practice session">🗑</button>
-        </div>
-        <p class="hint" style="margin:0 0 6px;"><a href="./session.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}">Practice sessions</a></p>
-        <div class="scrubber-mount" data-game-log-entry="${g.id}"></div>
-      </div>
-    `,
-      )
-      .join("");
-
-    if (currentExtensionScore === null && logs && logs.length > 0) {
-      currentExtensionScore = await loadExtensionScore(playerId);
-    }
-    await Promise.all((logs ?? []).map((g) => loadClipsForEntry(g.id, currentExtensionScore)));
+    const rows = (logs ?? []).map((g) => listRow({ href: `./session.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}`, leading: icon("repeat", { size: 20 }), title: `${g.date} · Practice`, supporting: g.session_note || `Rep ${g.ab}`, trailing: icon("chevron-right", { size: 20 }) }));
+    el.innerHTML = rows.length ? rows.join("") : emptyState("No recent practice", "Start a session from the Add menu.");
+    recentPracticeHtml = rows.at(-1) ?? "";
+    renderRecentActivity();
   }
 
   /** A game_log_entries row can have >1 physical clip (e.g. 4 separate

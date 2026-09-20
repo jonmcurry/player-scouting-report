@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BarrelTrace — At-Bat</title>
-<link rel="stylesheet" href="./coach.css?v=fe24fad928">
+<link rel="stylesheet" href="./coach.css?v=7ac7e7387f">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -29,7 +29,7 @@
 <script type="module">
   import {
     L, supabase, qs, buildContext, PLAYER_SELECT, renderHeader, loadPhases, showNotFound,
-    emptyState, pill, escapeHtml, toast, fmtDate, openSheet,
+    confirmDialog, emptyState, pill, escapeHtml, toast, fmtDate, openSheet,
   } from "./components/devUi.js";
   import { getMyDisplayName, requireSession } from "./shared.js";
   import { uploadRawClip } from "./components/videoUpload.js";
@@ -150,7 +150,12 @@
     if (b.dataset.a === "edit") return openEdit(p);
     if (b.dataset.a === "attach") return attach(p);
     if (b.dataset.a === "delete") {
-      if (!confirm(`Delete pitch ${p.pitch_number}? Any video stays on the at-bat, unassigned.`)) return;
+      if (!await confirmDialog({
+        title: `Delete pitch ${p.pitch_number}?`,
+        message: "The video stays on the at-bat and becomes unassigned.",
+        confirmLabel: "Delete pitch",
+        destructive: true,
+      })) return;
       const { error } = await supabase.from("at_bat_pitches").delete().eq("id", p.id);
       if (error) return toast(`Couldn't delete: ${error.message}`);
       await reload();

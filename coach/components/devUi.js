@@ -5,10 +5,14 @@
 // DOM and Supabase.
 import { supabase, requireSession, getMyDisplayName, qs, escapeHtml } from "../shared.js";
 import { renderPlayerAppBar, renderBottomNav, loadRosterWithProgress, setLastPlayerSlug } from "./appShell.js";
-import { closeableModal } from "./compModal.js";
+import {
+  confirmDialog, emptyState as emptyStatePrimitive, mountSegmentedTabs, openBottomSheet,
+  showSnackbar, statusChip,
+} from "./ui.js";
+import { PLAYER_TABS } from "./shellState.js";
 import * as L from "./developmentLogic.js";
 
-export { escapeHtml, supabase, qs, L };
+export { confirmDialog, escapeHtml, showSnackbar, statusChip, supabase, qs, L };
 
 export function fmtDate(d) {
   if (!d) return "";
@@ -17,30 +21,24 @@ export function fmtDate(d) {
 }
 
 export function toast(msg) {
-  const el = document.createElement("div");
-  el.setAttribute("role", "status");
-  el.style.cssText =
-    "position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--surface-2);color:var(--text-primary);border:1px solid var(--border);padding:10px 16px;border-radius:24px;z-index:9999;font-weight:600;max-width:90vw;";
-  el.textContent = msg;
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 2600);
+  return showSnackbar(msg, { duration: 3200 });
 }
 
 export function emptyState(title, body, actionHtml = "") {
-  return `<div class="dev-empty"><b>${escapeHtml(title)}</b>${escapeHtml(body)}${actionHtml ? `<div class="dev-btns" style="justify-content:center;">${actionHtml}</div>` : ""}</div>`;
+  return emptyStatePrimitive(title, body, actionHtml);
 }
 
 export function pill(status, text) {
-  const cls = String(status ?? "").replace(/_/g, "-");
-  return `<span class="pill ${escapeHtml(cls)}">${escapeHtml(text ?? status)}</span>`;
+  return statusChip(status, { label: text ?? status });
 }
 
 /** Opens a bottom-sheet-ish modal with a form. `html` must contain a .close-btn.
  * Returns the backdrop element; caller wires its own handlers. */
 export function openSheet(title, bodyHtml) {
-  return closeableModal(
-    `<div class="modal"><button class="close-btn tap-target" aria-label="Close">✕</button><h2 style="margin-top:0;">${escapeHtml(title)}</h2>${bodyHtml}</div>`,
-  );
+  const sheet = openBottomSheet({ title, bodyHtml });
+  // Compatibility for existing forms that close themselves after a save.
+  sheet.querySelector(".bt-sheet-close")?.classList.add("close-btn");
+  return sheet;
 }
 
 /** Shapes the page context object from an already-loaded player row (with its
@@ -95,27 +93,17 @@ export function showNotFound(message = "This link may be wrong, or you don't hav
 
 /** App bar + tab bar + bottom nav. `active` is one of report|development|compare|practice. */
 export async function renderHeader(ctx, active) {
-  const { roster, confirmedCount, totalCount } = await loadRosterWithProgress(ctx.team.id);
+  const { roster } = await loadRosterWithProgress(ctx.team.id);
   renderPlayerAppBar(document.getElementById("appBar"), {
     player: ctx.player,
     teamName: ctx.team.name,
     teamSlug: ctx.teamSlug,
     roster,
-    confirmedCount,
-    totalCount,
   });
-  const tabs = [
-    ["report", "Report", "player"],
-    ["development", "Development", "development"],
-    ["compare", "Compare", "compare"],
-    ["practice", "Practice", "session"],
-  ];
+  const tabs = PLAYER_TABS;
   const el = document.getElementById("devTabs");
   if (el) {
-    el.className = "dev-tabs";
-    el.innerHTML = tabs
-      .map(([key, label, page]) => `<a href="${ctx.url(page)}" ${key === active ? 'aria-current="page"' : ""}>${label}</a>`)
-      .join("");
+    mountSegmentedTabs(el, tabs.map(({ key, label, page }) => ({ key, label, href: ctx.url(page) })), active, { label: "Player sections" });
   }
   const nav = document.getElementById("bottomNav");
   if (nav) {
@@ -123,7 +111,8 @@ export async function renderHeader(ctx, active) {
       teamSlug: ctx.teamSlug,
       activeTab: "report",
       reportHref: ctx.url("player"),
-      logAbHref: ctx.url("player"),
+      currentPlayer: ctx.player,
+      roster,
     });
   }
 }
@@ -239,13 +228,14 @@ export async function loadPhases(clipId) {
     .select("frame, time_s, confidence, reconstruction_reliable, swing_phase_types!inner(slug, label, sort_order)")
     .eq("video_clip_id", clipId)
     .order("sort_order", { referencedTable: "swing_phase_types" });
+  const order = new Map(["stance", "load", "stride", "contact", "extension", "follow-through"].map((slug, index) => [slug, index]));
   return (data ?? []).map((r) => ({
     slug: r.swing_phase_types.slug,
     label: r.swing_phase_types.label,
     timeS: r.time_s,
     confidence: r.confidence,
     reconstructionReliable: r.reconstruction_reliable,
-  }));
+  })).sort((a, b) => (order.get(a.slug) ?? 99) - (order.get(b.slug) ?? 99));
 }
 
 export async function getVideoUrl(clipId) {

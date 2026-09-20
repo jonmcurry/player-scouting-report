@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.16.0] - 2026-09-20
+
+### Added
+
+- Added deterministic Phase 1B presentation rules and regression tests for team attention, Player Overview next-action precedence, and the approve-before-priority Swing Review progression.
+
+### Changed
+
+- Reorganized Team around Today, a compact attention-sorted roster, recent activity, and collapsed team insights while retaining the existing roster, follow-up, activity, filter, and checklist data.
+- Reorganized Player Overview around one next action, active priorities, an assigned drill, and compact recent game/practice rows. Detailed checklist, earlier analysis, history, context, and management remain available through disclosures and overflow.
+- Made Swing Review a drill-in, video-first experience with a compact phase track, coach-oriented finding cards, one primary decision, post-approval priority tracking, a compact next step, and one collapsed Advanced analysis group.
+
+## [0.15.0] - 2026-09-20
+
+### Added
+
+- Added the Phase 1A BarrelTrace design-system foundation: verified dark-theme tokens, Inter-first type scale, Lucide SVG sprite/helper, shared cards/list rows/status and filter chips/buttons/disclosures/states, and safe-area-aware sticky actions.
+- Added accessible, history-aware BottomSheet, ActionSheet, ConfirmDialog, OverflowMenu and Snackbar primitives. Browser and Android WebView Back now close the top overlay before leaving the page.
+- Added focused UI-contract and contrast tests, including player-tab route preservation, overlay history behavior, status mapping, viewport zoom, action-sheet destinations and interim bottom navigation state.
+
+### Changed
+
+- Replaced the shared player/team chrome with a 56dp app bar, equal-width Overview/Development/Compare/Practice tabs, and the interim Team / Add / Player bottom navigation. The Add sheet reuses existing at-bat, practice and add-player flows without silently selecting a player.
+- Removed viewport zoom locks, centralized safe-area spacing and 48dp hit targets, removed the default card rail, restrained brand colour usage, and migrated shared chrome from emoji to the SVG icon system.
+- Replaced shared development-form modals with mobile bottom sheets and migrated pitch deletion to the themed destructive confirmation dialog. Success/error notices now use the shared Snackbar.
+
 ## [0.14.1] - 2026-09-20
 
 ### Changed

@@ -1,7 +1,9 @@
-// Shared sticky app bar + bottom nav (ux.md Step 2) used by team.html and
-// player.html - NOT index.html, which is the login/team-picker step and has
-// no team/roster context yet.
+// Shared BarrelTrace application shell. Phase 1A changes presentation and
+// navigation only; routes and the existing page workflows remain unchanged.
 import { supabase, escapeHtml } from "../shared.js";
+import { icon, iconButton, listRow, openActionSheet, openBottomSheet, openOverflowMenu } from "./ui.js";
+import { bottomNavState } from "./shellState.js";
+export { bottomNavState } from "./shellState.js";
 
 const LAST_PLAYER_KEY_PREFIX = "coach:lastPlayer:";
 
@@ -54,23 +56,24 @@ export async function loadRosterWithProgress(teamId) {
   return { roster: players, confirmedCount, totalCount: players.length };
 }
 
-function confirmedPillHtml(confirmedCount, totalCount) {
-  return `<span class="confirmed-pill">✓ ${confirmedCount}/${totalCount} Confirmed</span>`;
+function appBarIdentity({ backHref, backLabel, badge = "", title, subtitle = "", switchable = false, overflow = false }) {
+  return `<div class="app-bar-left">
+    <a href="${escapeHtml(backHref)}" class="app-bar-back" aria-label="${escapeHtml(backLabel)}">${icon("chevron-left", { size: 24 })}</a>
+    ${badge}
+    <div class="app-bar-titles">
+      <div class="app-bar-title-row"><h1>${escapeHtml(title)}</h1>${switchable ? iconButton("chevron-down", "Switch player", { className: "app-bar-caret", attrs: 'id="playerSwitcherToggle"' }) : ""}</div>
+      ${subtitle ? `<div class="app-bar-subtitle">${escapeHtml(subtitle)}</div>` : ""}
+    </div>
+  </div>${overflow ? iconButton("ellipsis-vertical", "More options", { className: "app-bar-overflow", attrs: 'id="appBarOverflow"' }) : ""}`;
 }
 
-/** @param {{ teamName: string, confirmedCount: number, totalCount: number }} opts */
-export function renderTeamAppBar(container, { teamName, confirmedCount, totalCount }) {
+/** 56dp team identity variant. Confirmed-count data remains loaded elsewhere but is not shell chrome. */
+export function renderTeamAppBar(container, { teamName, overflowItems = [] }) {
   container.innerHTML = `
-    <div class="app-bar-left">
-      <a href="./index.html" class="app-bar-back tap-target" aria-label="Back to My Teams">‹</a>
-      <div class="jersey-badge">⚾</div>
-      <div class="app-bar-titles">
-        <div class="app-bar-title-row"><h1>${escapeHtml(teamName)}</h1></div>
-        <div class="app-bar-subtitle">Team Roster</div>
-      </div>
-    </div>
-    ${confirmedPillHtml(confirmedCount, totalCount)}
+    ${appBarIdentity({ backHref: "./index.html", backLabel: "Back to My Teams", title: teamName, subtitle: "Team", overflow: overflowItems.length > 0 })}
   `;
+  const trigger = container.querySelector("#appBarOverflow");
+  if (trigger) trigger.addEventListener("click", () => openOverflowMenu({ title: teamName, items: overflowItems, anchor: trigger }));
 }
 
 /**
@@ -80,65 +83,97 @@ export function renderTeamAppBar(container, { teamName, confirmedCount, totalCou
  *   confirmedCount: number, totalCount: number }} opts
  */
 export function renderPlayerAppBar(container, { player, teamName, teamSlug, roster, confirmedCount, totalCount }) {
-  container.innerHTML = `
-    <div class="app-bar-left player-switcher">
-      <a href="./index.html" class="app-bar-back tap-target" aria-label="Back to My Teams">‹</a>
-      <div class="jersey-badge">${escapeHtml(player.jersey_number)}</div>
-      <div class="app-bar-titles">
-        <div class="app-bar-title-row">
-          <h1>${escapeHtml(player.name)}</h1>
-          <button type="button" class="app-bar-caret tap-target" id="playerSwitcherToggle" aria-label="Switch player">▾</button>
-        </div>
-        <div class="app-bar-subtitle">${escapeHtml(teamName)}</div>
-      </div>
-      <div class="player-switcher-menu" id="playerSwitcherMenu" style="display:none;"></div>
-    </div>
-    ${confirmedPillHtml(confirmedCount, totalCount)}
-  `;
-
-  const menu = container.querySelector("#playerSwitcherMenu");
-  menu.innerHTML = roster
-    .map(
-      (p) => `
-    <a href="./player.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(p.slug)}" data-current="${p.slug === player.slug}">
-      <div class="jersey-badge sm">${escapeHtml(p.jersey_number)}</div>
-      <span>${escapeHtml(p.name)}</span>
-    </a>
-  `,
-    )
-    .join("");
-
+  container.innerHTML = appBarIdentity({
+    backHref: `./team.html?team=${encodeURIComponent(teamSlug)}`,
+    backLabel: `Back to ${teamName}`,
+    badge: `<div class="jersey-badge sm">${escapeHtml(player.jersey_number)}</div>`,
+    title: player.name,
+    subtitle: teamName,
+    switchable: true,
+    overflow: true,
+  });
   const toggle = container.querySelector("#playerSwitcherToggle");
-  toggle.addEventListener("click", (e) => {
-    e.stopPropagation();
-    menu.style.display = menu.style.display === "none" ? "block" : "none";
+  toggle.addEventListener("click", () => {
+    const rows = roster.map((p) => listRow({
+      href: `./player.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(p.slug)}`,
+      leading: `<span class="jersey-badge sm">${escapeHtml(p.jersey_number)}</span>`,
+      title: p.name,
+      supporting: p.slug === player.slug ? "Current player" : "",
+      trailing: p.slug === player.slug ? icon("check", { size: 20 }) : icon("chevron-right", { size: 20 }),
+    })).join("");
+    openBottomSheet({ title: "Switch player", bodyHtml: `<div class="bt-list">${rows}</div>` });
   });
-  document.addEventListener("click", (e) => {
-    if (!container.contains(e.target)) menu.style.display = "none";
-  });
+  const overflow = container.querySelector("#appBarOverflow");
+  const openManage = () => {
+    const details = document.getElementById("managePlayer");
+    if (details) { details.open = true; details.scrollIntoView({ behavior: "smooth" }); }
+  };
+  overflow.addEventListener("click", () => openOverflowMenu({
+    title: player.name,
+    anchor: overflow,
+    items: [
+      { label: "Share link", icon: "link", onSelect: openManage },
+      { label: "Player context", icon: "user-round", onSelect: openManage },
+      { label: "Manage player", icon: "ellipsis-vertical", onSelect: openManage },
+    ],
+  }));
+}
+
+/** Title-only drill-in foundation. Screens adopt it in Phase 1B. */
+export function renderDrillInAppBar(container, { title, backHref, backLabel = "Back", overflowItems = [] }) {
+  container.innerHTML = appBarIdentity({ backHref, backLabel, title, overflow: overflowItems.length > 0 });
+  const trigger = container.querySelector("#appBarOverflow");
+  if (trigger) trigger.addEventListener("click", () => openOverflowMenu({ title, items: overflowItems, anchor: trigger }));
 }
 
 /**
  * @param {{ teamSlug: string, activeTab: "roster"|"report"|"logab",
  *   reportHref: string, logAbHref: string, onLogAbClick?: () => void }} opts
  */
-export function renderBottomNav(container, { teamSlug, activeTab, reportHref, logAbHref, onLogAbClick }) {
-  container.innerHTML = `
-    <a href="./team.html?team=${teamSlug}" data-active="${activeTab === "roster"}">
-      <span class="nav-icon">⚾</span><span>Roster</span>
-    </a>
-    <a href="${reportHref}" data-active="${activeTab === "report"}">
-      <span class="nav-icon">📊</span><span>Report</span>
-    </a>
-    <a href="${logAbHref}" data-active="${activeTab === "logab"}" id="navLogAb">
-      <span class="nav-fab">+</span><span>Log AB</span>
-    </a>
-  `;
+function playerRoute(teamSlug, player, target) {
+  const base = `team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(player.slug)}`;
+  return target === "atbat" ? `./player.html?${base}&openLog=1` : `./session.html?${base}&start=1`;
+}
 
-  if (onLogAbClick) {
-    container.querySelector("#navLogAb").addEventListener("click", (e) => {
-      e.preventDefault();
-      onLogAbClick();
+function choosePlayer(sheet, { roster, teamSlug, action }) {
+  const body = sheet.querySelector(".bt-sheet-body");
+  sheet.querySelector(".bt-sheet-header h2").textContent = "Choose a player";
+  body.innerHTML = `<div class="bt-list">${roster.length ? roster.map((player) => listRow({
+    href: playerRoute(teamSlug, player, action),
+    leading: `<span class="jersey-badge sm">${escapeHtml(player.jersey_number)}</span>`,
+    title: player.name,
+    trailing: icon("chevron-right", { size: 20 }),
+  })).join("") : `<p class="bt-supporting">Add a player before logging an at-bat or practice.</p>`}</div>`;
+}
+
+/** Interim Phase-1 nav: Team / + / Player. No review-queue destination is invented here. */
+export function renderBottomNav(container, {
+  teamSlug, activeTab, reportHref = null, currentPlayer = null, roster = [], onLogAbClick = null,
+}) {
+  const playerHref = reportHref && reportHref !== "#" ? reportHref : null;
+  const items = bottomNavState({ teamSlug, activeTab, playerHref });
+  container.innerHTML = `
+    ${items.map((item) => item.key === "add"
+      ? `<button type="button" class="bottom-nav-add" id="navAdd" aria-label="Add">${icon("plus", { size: 24 })}<span>Add</span></button>`
+      : item.hidden ? "" : `<a href="${item.href}" data-active="${item.active}">${icon(item.icon, { size: 22 })}<span>${item.label}</span></a>`).join("")}
+  `;
+  container.querySelector("#navAdd").addEventListener("click", () => {
+    const needsPlayer = (action, sheet) => {
+      if (currentPlayer) {
+        sheet.remove();
+        sheet.whenClosed.then(() => {
+          if (action === "atbat" && onLogAbClick) onLogAbClick();
+          else location.href = playerRoute(teamSlug, currentPlayer, action);
+        });
+      } else choosePlayer(sheet, { roster, teamSlug, action });
+    };
+    openActionSheet({
+      title: "Add",
+      actions: [
+        { label: "Log at-bat", icon: "plus", supporting: currentPlayer ? currentPlayer.name : "Choose a player", keepOpen: true, onSelect: (sheet) => needsPlayer("atbat", sheet) },
+        { label: "Start practice", icon: "repeat", supporting: currentPlayer ? currentPlayer.name : "Choose a player", keepOpen: true, onSelect: (sheet) => needsPlayer("practice", sheet) },
+        { label: "Add player", icon: "user-round", supporting: "Add to this team", href: `./team.html?team=${encodeURIComponent(teamSlug)}&addPlayer=1` },
+      ],
     });
-  }
+  });
 }

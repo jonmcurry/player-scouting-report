@@ -64,8 +64,19 @@ test("pages are mobile-ready: viewport meta, tap-target controls, no fixed deskt
   for (const p of PAGES) {
     const html = read(`${p}.html`);
     assert.match(html, /<meta name="viewport" content="width=device-width/, `${p}: viewport meta`);
+    assert.doesNotMatch(html, /maximum-scale|user-scalable=no/, `${p}: zoom is not locked`);
+    assert.match(html, /viewport-fit=cover/, `${p}: safe-area viewport enabled`);
     assert.match(html, /class="[^"]*tap-target/, `${p}: uses tap-target controls`);
     assert.doesNotMatch(html, /width:\s*\d{4,}px/, `${p}: no fixed wide widths`);
+  }
+});
+
+test("every coach page allows zoom and opts into safe-area viewport handling", () => {
+  for (const file of fs.readdirSync(coach).filter((name) => name.endsWith(".html"))) {
+    const html = read(file);
+    if (!/<meta name="viewport"/.test(html)) continue;
+    assert.doesNotMatch(html, /maximum-scale|user-scalable=no/, `${file}: zoom restriction removed`);
+    assert.match(html, /viewport-fit=cover/, `${file}: viewport-fit cover`);
   }
 });
 
@@ -77,9 +88,19 @@ test("new pages and modules are precached and cache-stamped", () => {
     assert.ok(bump.includes(`"${p}.html"`), `${p}.html is in the cache-bump hook's stamped list`);
     assert.match(read(`${p}.html`), /coach\.css\?v=[0-9a-f]{10}/, `${p}.html carries a cache stamp`);
   }
-  for (const f of ["developmentLogic.js", "devUi.js", "devActions.js", "teamDashboard.js"]) {
+  for (const f of ["developmentLogic.js", "devUi.js", "devActions.js", "teamDashboard.js", "phase1bScreens.js", "ui.js", "shellState.js"]) {
     assert.ok(sw.includes(`"./components/${f}"`), `components/${f} is in sw.js ASSETS`);
   }
+  assert.ok(sw.includes('"./assets/icons.svg"'), "SVG icon sprite is in sw.js ASSETS");
+});
+
+test("Android Back delegates to overlay history without adding @capacitor/app", () => {
+  const root = path.resolve(coach, "..");
+  const activity = fs.readFileSync(path.join(root, "mobile/android/app/src/main/java/com/barreltrace/coach/MainActivity.java"), "utf8");
+  const mobilePackage = JSON.parse(fs.readFileSync(path.join(root, "mobile/package.json"), "utf8"));
+  assert.match(activity, /#btOverlayHost \.bt-overlay/);
+  assert.match(activity, /history\.back\(\)/);
+  assert.equal(mobilePackage.dependencies?.["@capacitor/app"], undefined);
 });
 
 test("every page has an empty state for its main list (no blank cards)", () => {
