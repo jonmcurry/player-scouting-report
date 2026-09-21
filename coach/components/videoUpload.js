@@ -16,7 +16,7 @@ function sanitizeForSlug(name) {
  * @param {string} gameLogEntryId
  * @param {File} file
  * @param {{ pitchId?: string, repId?: string }} [link] attach the clip to a specific pitch / practice rep
- * @returns {Promise<void>}
+ * @returns {Promise<string>} created clip id
  */
 export async function uploadRawClip(gameLogEntryId, file, link = {}) {
   const dotIndex = file.name.lastIndexOf(".");
@@ -52,7 +52,7 @@ export async function uploadRawClip(gameLogEntryId, file, link = {}) {
     .select("id", { count: "exact", head: true })
     .eq("game_log_entry_id", gameLogEntryId);
 
-  const { error: insertError } = await supabase.from("video_clips").insert({
+  const { data: created, error: insertError } = await supabase.from("video_clips").insert({
     game_log_entry_id: gameLogEntryId,
     clip_slug: clipSlug,
     raw_gcs_path: fnResult.gcsPath,
@@ -60,8 +60,9 @@ export async function uploadRawClip(gameLogEntryId, file, link = {}) {
     position: count ?? 0,
     ...(link.pitchId ? { at_bat_pitch_id: link.pitchId } : {}),
     ...(link.repId ? { practice_repetition_id: link.repId } : {}),
-  });
+  }).select("id").single();
   if (insertError) {
     throw new Error(`Video uploaded, but couldn't record it: ${insertError.message}`);
   }
+  return created.id;
 }

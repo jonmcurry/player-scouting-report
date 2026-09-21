@@ -108,17 +108,53 @@ test("player report shaping exposes only coach-confirmed content and no internal
     loggedAtBats: 3,
   });
   assert.deepEqual(report.strengths, ["Balance"], "only coach-reviewed top scores");
+  assert.deepEqual(report.checkpoints, [
+    { label: "Balance", score: 3 },
+    { label: "Hands", score: 1 },
+  ], "unconfirmed checkpoint rows are removed from the public response");
   assert.deepEqual(report.priorities.map((p: { title: string }) => p.title), ["Front side", "Fixed"], "archived hidden, resolved last");
   const p = report.priorities[0];
-  assert.deepEqual(p.progress.map((o: { label: string }) => o.label), ["Holding steady", "Improving"], "oldest first, 'unclear' dropped");
+  assert.deepEqual(p.progress.map((o: { label: string }) => o.label), ["Improving", "Holding steady"], "newest first, 'unclear' dropped");
   assert.equal(p.statusLabel, "Improving");
   assert.deepEqual(p.drills.map((d: { name: string }) => d.name), ["Split stance"], "inactive drills hidden");
   assert.deepEqual(p.clips, [{ clipId: "clip-1", date: "2026-09-19", phase: "contact" }]);
   assert.equal(report.priorities[1].statusLabel, "Got it");
   const json = JSON.stringify(report);
+  assert.ok(!json.includes("Unreviewed AI draft"), "unconfirmed AI-draft scores never reach the public JSON");
+  assert.ok(!json.includes("reviewedBy"), "review workflow fields are not public");
   for (const banned of ["pose_coverage", "bone", "reconstruction", "ai_suggestion", "confidence", "analysis_quality"]) {
     assert.ok(!json.includes(banned), `report must not expose ${banned}`);
   }
+});
+
+test("public report: active outranks monitoring, drills and progress are deterministic", async () => {
+  const { shapePlayerReport } = (await import(pathToFileURL(path.resolve("supabase/functions/get-player-report/shape.ts")).href)) as {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    shapePlayerReport: (i: unknown) => any;
+  };
+  const pri = (id: string, status: string, order: number) => ({ id, title: id, description: "", status, priority_order: order, first_identified_at: "2026-09-01", resolved_at: null });
+  const drill = (name: string, assigned_at: string | null) => ({ player_priority_id: "act", active: true, coach_note: "", assigned_at, drill_library: { name, purpose: "", instructions: "", equipment: "" } });
+  const input = {
+    player: { name: "P", jersey_number: "1", teamName: "T" },
+    scores: [{ score: 3, reviewed_by: null, checkpoints: { label: "Draft only" } }],
+    priorities: [pri("mon", "monitoring", 0), pri("res", "resolved", 0), pri("act", "active", 5)],
+    drills: [drill("Older", "2026-09-01T00:00:00Z"), drill("Newest", "2026-09-10T00:00:00Z"), drill("Middle", "2026-09-05T00:00:00Z")],
+    observations: [
+      { player_priority_id: "act", status: "unchanged", coach_note: "", observed_at: "2026-09-01T00:00:00Z", video_clip_id: "c1", phase: null },
+      { player_priority_id: "act", status: "improving", coach_note: "", observed_at: "2026-09-15T00:00:00Z", video_clip_id: "c2", phase: null },
+      { player_priority_id: "act", status: "unchanged", coach_note: "", observed_at: "2026-09-08T00:00:00Z", video_clip_id: "c3", phase: null },
+    ],
+    loggedAtBats: 0,
+  };
+  const a = shapePlayerReport(input);
+  assert.deepEqual(a.priorities.map((p: { title: string }) => p.title), ["act", "mon", "res"], "active > monitoring > resolved despite priority_order");
+  assert.deepEqual(a.priorities[0].drills.map((d: { name: string }) => d.name), ["Newest", "Middle", "Older"]);
+  assert.deepEqual(a.priorities[0].progress.map((o: { date: string }) => o.date), ["2026-09-15", "2026-09-08", "2026-09-01"], "newest first");
+  assert.equal(a.priorities[0].statusLabel, "Improving", "latest observation drives the label");
+  assert.deepEqual(a.priorities[0].clips.map((c: { clipId: string }) => c.clipId), ["c2", "c3", "c1"]);
+  const b = shapePlayerReport({ ...input, drills: [...input.drills].reverse(), priorities: [...input.priorities].reverse() });
+  assert.deepEqual(b.priorities, a.priorities, "input row order never changes the output");
+  assert.ok(!JSON.stringify(a).includes("Draft only"), "unconfirmed checklist rows stay out");
 });
 
 test("analysis quality: real coverage numbers, honest nulls, no fabricated handedness certainty", () => {

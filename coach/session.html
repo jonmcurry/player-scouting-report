@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BarrelTrace — Practice</title>
-<link rel="stylesheet" href="./coach.css?v=7ac7e7387f">
+<link rel="stylesheet" href="./coach.css?v=386a1b1dd2">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -18,18 +18,12 @@
     <div id="picker"></div>
     <div id="sessionView" hidden>
       <div id="sessionHead"></div>
-      <h2>Summary</h2>
-      <div id="sessionSummary"></div>
-      <h2>Did the movement change inside this session?</h2>
-      <div id="beforeAfter"></div>
-      <h2>Reps</h2>
+      <div id="practiceStepper"></div>
       <div id="reps"></div>
-      <div class="dev-card">
-        <div class="dev-field" style="margin:0 0 8px;"><label>New reps go in group</label><select id="newGroup"></select></div>
-        <div class="dev-btns" style="margin:0;"><button class="primary tap-target" id="addRepVideo">+ Add rep(s) with video</button><button class="tap-target" id="addRepBare">+ Add rep without video</button></div>
-      </div>
-      <h2>Coach assessment</h2>
+      <div id="beforeAfter"></div>
       <div id="assessment"></div>
+      <div id="nextStep"></div>
+      <div id="practiceActions"></div>
     </div>
   </div>
 </div>
@@ -37,259 +31,8 @@
 
 <script src="./config.local.js"></script>
 <script type="module">
-  import {
-    L, supabase, qs, loadContext, renderHeader, loadPriorities, loadDrillLibrary, emptyState, pill, escapeHtml, toast, fmtDate, openSheet,
-  } from "./components/devUi.js";
-  import { openObservationSheet } from "./components/devActions.js";
-  import { uploadRawClip } from "./components/videoUpload.js";
-
-  let ctx, sessions = [], session = null, reps = [], priorities = [], library = [], analyzed = new Set();
-  const opt = (v, t, sel) => `<option value="${escapeHtml(v)}" ${sel ? "selected" : ""}>${escapeHtml(t)}</option>`;
-  const today = () => new Date().toISOString().slice(0, 10);
-
-  async function main() {
-    ctx = await loadContext();
-    if (!ctx) return;
-    await renderHeader(ctx, "practice");
-    [priorities, library] = await Promise.all([loadPriorities(ctx.player.id, ["active", "monitoring"]), loadDrillLibrary(ctx.team.id)]);
-    document.getElementById("newGroup").innerHTML = L.PRACTICE_GROUPINGS.map((g) => opt(g, L.GROUPING_LABELS[g], g === "free_swing")).join("");
-    document.getElementById("addRepVideo").onclick = addRepsWithVideo;
-    document.getElementById("addRepBare").onclick = () => addRep(null).then(() => reloadSession());
-    await loadSessions();
-    document.getElementById("loading").hidden = true;
-    document.getElementById("content").hidden = false;
-    const id = qs("session");
-    if (id && sessions.some((s) => s.id === id)) await openSession(id);
-    else {
-      renderPicker();
-      if (qs("start") === "1") {
-        openNewSession();
-        const url = new URL(location.href); url.searchParams.delete("start"); history.replaceState(history.state, "", url);
-      }
-    }
-  }
-
-  async function loadSessions() {
-    const { data, error } = await supabase.from("practice_sessions")
-      .select("*, practice_repetitions(id), player_priorities:focus_priority_id(title)")
-      .eq("player_id", ctx.player.id).order("session_date", { ascending: false });
-    if (error) throw error;
-    sessions = data ?? [];
-  }
-
-  function renderPicker() {
-    session = null;
-    document.getElementById("sessionView").hidden = true;
-    const el = document.getElementById("picker");
-    el.hidden = false;
-    el.innerHTML = `
-      <div class="dev-btns" style="margin:0 0 10px;"><button class="primary tap-target" id="newSession">+ New practice session</button></div>
-      ${sessions.length ? sessions.map((s) => `<div class="dev-card" data-sid="${s.id}" style="cursor:pointer;">
-        <div class="dev-row between"><b>${fmtDate(s.session_date)}</b>${s.outcome ? pill(s.outcome === "yes" ? "good" : s.outcome === "no" ? "poor" : "limited", L.OUTCOME_LABELS[s.outcome]) : ""}</div>
-        <div class="hint">${s.practice_repetitions.length} rep${s.practice_repetitions.length === 1 ? "" : "s"}${s.player_priorities?.title ? " · Focus: " + escapeHtml(s.player_priorities.title) : ""}${s.session_goal ? " · " + escapeHtml(s.session_goal) : ""}</div></div>`).join("")
-        : emptyState("No practice sessions yet.", "Start a session, set today's focus, then add reps with video.")}`;
-    el.onclick = (e) => {
-      const c = e.target.closest("[data-sid]");
-      if (c) openSession(c.dataset.sid);
-    };
-    document.getElementById("newSession").onclick = openNewSession;
-  }
-
-  function openNewSession() {
-    const b = openSheet("New practice session", `
-      <div class="dev-field"><label>Date</label><input type="date" id="nDate" value="${today()}"></div>
-      <div class="dev-field"><label>Today's focus (active priority)</label><select id="nPri"><option value="">No specific focus</option>${priorities.map((p) => opt(p.id, p.title)).join("")}</select></div>
-      <div class="dev-field"><label>Assigned drill</label><select id="nDrill"><option value="">None</option>${library.map((d) => opt(d.id, d.name)).join("")}</select></div>
-      <div class="dev-field"><label>Session goal (optional)</label><input id="nGoal" placeholder="e.g. keep front hip closed through plant"></div>
-      <div class="dev-btns"><button class="primary tap-target" id="nSave">Start session</button></div>`);
-    b.querySelector("#nSave").onclick = async () => {
-      const date = b.querySelector("#nDate").value;
-      if (!date) return toast("Pick a date.");
-      const existing = sessions.find((s) => s.session_date === date);
-      if (existing) { b.querySelector(".close-btn").click(); await b.whenClosed; toast("A session for that date already exists - opening it."); return openSession(existing.id); }
-      const { data, error } = await supabase.from("practice_sessions").insert({
-        player_id: ctx.player.id, session_date: date,
-        focus_priority_id: b.querySelector("#nPri").value || null,
-        assigned_drill_id: b.querySelector("#nDrill").value || null,
-        session_goal: b.querySelector("#nGoal").value.trim(),
-      }).select("id").single();
-      if (error) return toast(`Couldn't create: ${error.message}`);
-      b.querySelector(".close-btn").click();
-      await b.whenClosed;
-      await loadSessions(); await openSession(data.id);
-    };
-  }
-
-  async function openSession(id) {
-    session = sessions.find((s) => s.id === id);
-    history.replaceState(null, "", ctx.url("session", { session: id }));
-    document.getElementById("picker").hidden = true;
-    document.getElementById("sessionView").hidden = false;
-    await reloadSession();
-  }
-
-  async function reloadSession() {
-    const { data: s } = await supabase.from("practice_sessions").select("*").eq("id", session.id).single();
-    session = s;
-    const { data } = await supabase.from("practice_repetitions")
-      .select("*, video_clips(id, status, error_message)").eq("practice_session_id", session.id).order("rep_number");
-    reps = data ?? [];
-    const ids = reps.flatMap((r) => r.video_clips.filter((c) => c.status === "ready").map((c) => c.id));
-    analyzed = new Set();
-    if (ids.length) {
-      const { data: m } = await supabase.from("video_clip_metrics").select("video_clip_id").in("video_clip_id", ids);
-      (m ?? []).forEach((r) => analyzed.add(r.video_clip_id));
-    }
-    render();
-  }
-
-  const focusPriority = () => priorities.find((p) => p.id === session.focus_priority_id) ?? null;
-  const drill = () => library.find((d) => d.id === session.assigned_drill_id) ?? null;
-  const repView = (r) => ({ id: r.id, grouping: r.grouping, usable: r.usable, hasClip: r.video_clips.length > 0, analyzed: r.video_clips.some((c) => analyzed.has(c.id)), clip: r.video_clips.find((c) => c.status === "ready") ?? r.video_clips[0] ?? null, rep: r });
-
-  function render() {
-    const rv = reps.map(repView);
-    const sum = L.summarizePracticeSession(session, rv, focusPriority());
-    document.getElementById("sessionHead").innerHTML = `
-      <div class="dev-card"><div class="dev-row between"><b>Practice — ${fmtDate(session.session_date)}</b><button class="tap-target" id="editSession">Edit</button></div>
-        <div class="hint">Focus: <b>${escapeHtml(sum.focus ?? "none set")}</b> · Drill: <b>${escapeHtml(drill()?.name ?? "none")}</b></div>
-        ${session.session_goal ? `<div class="hint">Goal: ${escapeHtml(session.session_goal)}</div>` : ""}
-        <div class="hint"><a href="${ctx.url("session")}">All sessions</a> · <a href="${ctx.url("development")}">Player development</a></div></div>`;
-    document.getElementById("editSession").onclick = openEditSession;
-
-    const g = sum.byGrouping;
-    document.getElementById("sessionSummary").innerHTML = sum.captured || reps.length ? `
-      <div class="dev-card"><p style="margin:0 0 6px;"><b>${sum.captured}</b> swings captured · <b>${sum.usable}</b> usable · <b>${sum.rejected}</b> rejected</p>
-        <div class="hint">Baseline ${g.baseline} · Drill ${g.drill} · Post-drill ${g.post_drill}${g.free_swing ? ` · Free ${g.free_swing}` : ""}${g.other ? ` · Other ${g.other}` : ""}</div>
-        <div class="hint">Coach assessment: ${sum.coachAssessment ? `<b>${escapeHtml(sum.coachAssessment)}</b>` : "not set yet"}${sum.priorityStatus ? ` · Priority: ${escapeHtml(sum.priorityStatus)}` : ""}</div></div>`
-      : emptyState("No reps yet.", "Add reps below - with video, or without to log them first.");
-
-    const ba = L.beforeAfterSets(rv);
-    const ba$ = document.getElementById("beforeAfter");
-    if (!ba.ready) {
-      ba$.innerHTML = emptyState(ba.before.length ? "No post-drill swings yet." : "No baseline swings yet.", "Tag reps as Baseline before the drill and Post-drill after it to compare them here.");
-    } else {
-      const b0 = ba.before[0].clip, a0 = ba.after[ba.after.length - 1].clip;
-      ba$.innerHTML = `<div class="dev-card"><p style="margin:0 0 6px;">${ba.before.length} baseline vs ${ba.after.length} post-drill swings.</p>
-        <div class="hint">Opens the first baseline swing against the last post-drill swing; pick others on the compare page.</div>
-        <div class="dev-btns"><a class="dev-btn primary" style="display:inline-flex;align-items:center;text-decoration:none;" href="${ctx.url("compare", { a: b0.id, b: a0.id, mode: "video", ...(session.focus_priority_id ? { priority: session.focus_priority_id } : {}) })}">Compare baseline → post-drill</a></div></div>`;
-    }
-
-    const el = document.getElementById("reps");
-    el.innerHTML = rv.length ? rv.map((r) => `<div class="dev-card" data-rid="${r.id}" style="${r.usable === false ? "opacity:.6;" : ""}">
-        <div class="dev-row between"><b>Rep ${r.rep.rep_number}</b>${r.clip ? (r.clip.status === "ready" ? (r.analyzed ? pill("good", "Analyzed") : pill("active", "Video ready")) : r.clip.status === "failed" ? pill("poor", "Failed") : pill("limited", "Processing")) : '<span class="hint">No video</span>'}</div>
-        <div class="dev-row"><select data-a="group" aria-label="Group">${L.PRACTICE_GROUPINGS.map((x) => opt(x, L.GROUPING_LABELS[x], x === r.grouping)).join("")}</select>
-          <label class="dev-row" style="gap:4px;"><input type="checkbox" data-a="usable" ${r.usable !== false ? "checked" : ""}> Usable</label></div>
-        <div class="dev-btns">${r.clip && r.clip.status === "ready" ? `<a class="dev-btn" style="display:inline-flex;align-items:center;text-decoration:none;" href="./review.html?clip=${r.clip.id}&team=${ctx.teamSlug}&player=${ctx.playerSlug}">Review swing</a>` : ""}
-          <button class="tap-target" data-a="attach">${r.clip ? "Add another video" : "Attach video"}</button><button class="tap-target" data-a="delete">Delete</button></div></div>`).join("") : "";
-    el.onchange = onRepChange; el.onclick = onRepClick;
-
-    document.getElementById("assessment").innerHTML = `<div class="dev-card">
-      <p class="hint" style="margin:0 0 6px;">Did it improve? This is your call - it's never set automatically.</p>
-      <div class="dev-btns" id="outcomeBtns" style="margin-top:0;">${Object.entries(L.OUTCOME_LABELS).map(([k, v]) => `<button class="tap-target ${session.outcome === k ? "active" : ""}" data-o="${k}">${v}</button>`).join("")}</div>
-      <div class="dev-field"><label>Coach note</label><textarea id="outNote">${escapeHtml(session.outcome_note ?? "")}</textarea></div>
-      <div class="dev-btns"><button class="primary tap-target" id="saveOutcome">Save assessment</button>${focusPriority() ? `<button class="tap-target" id="markPri">Mark progress on “${escapeHtml(focusPriority().title)}”</button>` : ""}</div></div>`;
-    let chosen = session.outcome;
-    document.getElementById("outcomeBtns").onclick = (e) => {
-      const b = e.target.closest("[data-o]"); if (!b) return;
-      chosen = b.dataset.o;
-      document.querySelectorAll("#outcomeBtns button").forEach((x) => x.classList.toggle("active", x === b));
-    };
-    document.getElementById("saveOutcome").onclick = async () => {
-      const { error } = await supabase.from("practice_sessions").update({ outcome: chosen ?? null, outcome_note: document.getElementById("outNote").value }).eq("id", session.id);
-      if (error) return toast(`Couldn't save: ${error.message}`);
-      toast("Assessment saved"); await loadSessions(); await reloadSession();
-    };
-    document.getElementById("markPri")?.addEventListener("click", () => {
-      const withClip = rv.filter((r) => r.clip && r.clip.status === "ready");
-      const last = withClip.filter((r) => r.grouping === "post_drill").pop() ?? withClip[withClip.length - 1];
-      openObservationSheet(ctx, focusPriority(), { clipId: last?.clip.id ?? null, repId: last?.id ?? null, sessionId: session.id }, reloadSession);
-    });
-  }
-
-  async function onRepChange(e) {
-    const card = e.target.closest("[data-rid]"); if (!card) return;
-    const a = e.target.dataset.a;
-    const patch = a === "group" ? { grouping: e.target.value } : a === "usable" ? { usable: e.target.checked } : null;
-    if (!patch) return;
-    const { error } = await supabase.from("practice_repetitions").update(patch).eq("id", card.dataset.rid);
-    if (error) return toast(`Couldn't save: ${error.message}`);
-    await reloadSession();
-  }
-
-  async function onRepClick(e) {
-    const b = e.target.closest("button[data-a]"); const card = e.target.closest("[data-rid]");
-    if (!b || !card) return;
-    const r = reps.find((x) => x.id === card.dataset.rid);
-    if (b.dataset.a === "attach") {
-      const input = document.createElement("input"); input.type = "file"; input.accept = "video/*";
-      input.onchange = async () => {
-        if (!input.files[0]) return;
-        toast("Uploading video…");
-        try { await uploadRawClip(r.game_log_entry_id, input.files[0], { repId: r.id }); toast("Uploaded - processing will start automatically"); await reloadSession(); }
-        catch (err) { toast(err.message); }
-      };
-      input.click();
-    }
-    if (b.dataset.a === "delete") {
-      if (!confirm(`Delete rep ${r.rep_number} and its video?`)) return;
-      const { error } = await supabase.from("game_log_entries").delete().eq("id", r.game_log_entry_id);
-      if (error) return toast(`Couldn't delete: ${error.message}`);
-      await loadSessions(); await reloadSession();
-    }
-  }
-
-  /** Creates the backing practice entry + its rep (the 00027 trigger makes the rep). Returns the rep. */
-  async function addRep() {
-    const n = reps.reduce((m, r) => Math.max(m, r.rep_number), 0) + 1;
-    const { count } = await supabase.from("game_log_entries").select("id", { count: "exact", head: true }).eq("player_id", ctx.player.id).eq("session_type", "practice");
-    const { data: entry, error } = await supabase.from("game_log_entries").insert({
-      player_id: ctx.player.id, session_type: "practice", date: session.session_date, ab: n,
-      session_note: session.session_goal || null, position: count ?? 0,
-    }).select("id").single();
-    if (error) { toast(`Couldn't add rep: ${error.message}`); return null; }
-    const { data: rep } = await supabase.from("practice_repetitions").select("*").eq("game_log_entry_id", entry.id).single();
-    const grouping = document.getElementById("newGroup").value;
-    if (rep && grouping !== rep.grouping) await supabase.from("practice_repetitions").update({ grouping }).eq("id", rep.id);
-    if (rep) rep.grouping = grouping;
-    reps.push({ ...rep, video_clips: [] }); // keep numbering correct across a multi-file loop
-    return rep;
-  }
-
-  function addRepsWithVideo() {
-    const input = document.createElement("input"); input.type = "file"; input.accept = "video/*"; input.multiple = true;
-    input.onchange = async () => {
-      const files = [...input.files];
-      for (const [i, f] of files.entries()) {
-        toast(`Adding rep ${i + 1} of ${files.length}…`);
-        const rep = await addRep();
-        if (!rep) break;
-        try { await uploadRawClip(rep.game_log_entry_id, f, { repId: rep.id }); }
-        catch (err) { toast(`Rep saved, but video failed: ${err.message}`); }
-      }
-      await loadSessions(); await reloadSession();
-    };
-    input.click();
-  }
-
-  function openEditSession() {
-    const b = openSheet("Session focus", `
-      <div class="dev-field"><label>Today's focus</label><select id="eP"><option value="">No specific focus</option>${priorities.map((p) => opt(p.id, p.title, p.id === session.focus_priority_id)).join("")}</select></div>
-      <div class="dev-field"><label>Assigned drill</label><select id="eD"><option value="">None</option>${library.map((d) => opt(d.id, d.name, d.id === session.assigned_drill_id)).join("")}</select></div>
-      <div class="dev-field"><label>Session goal</label><input id="eG" value="${escapeHtml(session.session_goal ?? "")}"></div>
-      <div class="dev-field"><label>Notes</label><textarea id="eN">${escapeHtml(session.notes ?? "")}</textarea></div>
-      <div class="dev-btns"><button class="primary tap-target" id="eSave">Save</button></div>`);
-    b.querySelector("#eSave").onclick = async () => {
-      const { error } = await supabase.from("practice_sessions").update({
-        focus_priority_id: b.querySelector("#eP").value || null, assigned_drill_id: b.querySelector("#eD").value || null,
-        session_goal: b.querySelector("#eG").value.trim(), notes: b.querySelector("#eN").value,
-      }).eq("id", session.id);
-      if (error) return toast(`Couldn't save: ${error.message}`);
-      b.querySelector(".close-btn").click(); await loadSessions(); await reloadSession();
-    };
-  }
-
-  main().catch((e) => { console.error(e); document.getElementById("loading").textContent = `Couldn't load: ${e.message}`; });
+  import { startPracticePage } from "./components/practicePage.js";
+  startPracticePage();
 </script>
 </body>
 </html>

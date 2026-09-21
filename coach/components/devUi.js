@@ -34,8 +34,8 @@ export function pill(status, text) {
 
 /** Opens a bottom-sheet-ish modal with a form. `html` must contain a .close-btn.
  * Returns the backdrop element; caller wires its own handlers. */
-export function openSheet(title, bodyHtml) {
-  const sheet = openBottomSheet({ title, bodyHtml });
+export function openSheet(title, bodyHtml, footerHtml = "") {
+  const sheet = openBottomSheet({ title, bodyHtml, footerHtml });
   // Compatibility for existing forms that close themselves after a save.
   sheet.querySelector(".bt-sheet-close")?.classList.add("close-btn");
   return sheet;
@@ -195,6 +195,7 @@ export async function loadSwingRecords(playerId, { limit = 40, offset = 0 } = {}
       const clipIssues = (iss ?? []).filter((i) => i.video_clip_id === r.id);
       return {
         clipId: r.id,
+        createdAt: r.created_at,
         status: r.status,
         context: e.session_type,
         date: e.date,

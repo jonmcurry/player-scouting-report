@@ -4,6 +4,7 @@ import * as L from "./developmentLogic.js";
 import { fmtDate } from "./devUi.js";
 import { card, disclosure, emptyState, icon, listRow, statusChip } from "./ui.js";
 import { teamAttentionModel } from "./phase1bScreens.js";
+import { buildReviewQueue } from "./reviewQueue.js";
 
 const RECENT = 5;
 const link = (page, player, extra = {}) => `./${page}.html?${new URLSearchParams({ team: player.teamSlug, player: player.slug, ...extra })}`;
@@ -11,7 +12,7 @@ const link = (page, player, extra = {}) => `./${page}.html?${new URLSearchParams
 export async function loadTeamDashboard(teamId, teamSlug) {
   const [pri, drafts, sessions, gameEntries, clips, obs] = await Promise.all([
     supabase.from("player_priorities").select("id, title, status, follow_up_kind, follow_up_date, follow_up_swings, follow_up_set_at, follow_up_done_at, priority_order, players!inner(id, name, slug, team_id)").eq("players.team_id", teamId).in("status", ["active", "monitoring"]),
-    supabase.from("issues").select("player_id, video_clip_id, created_at, players!inner(team_id)").eq("players.team_id", teamId).eq("review_status", "draft").order("created_at", { ascending: false }),
+    supabase.from("issues").select("id,issue,review_status,player_id,video_clip_id,created_at,players!inner(id,name,slug,jersey_number,team_id),video_clips(id,status,game_log_entries(date,ab,session_type),at_bat_pitches(pitch_number),practice_repetitions(rep_number,grouping))").eq("players.team_id", teamId).order("created_at", { ascending: true }),
     supabase.from("practice_sessions").select("id, session_date, outcome, focus_priority_id, players!inner(id, name, slug, team_id), practice_repetitions(id)").eq("players.team_id", teamId).order("session_date", { ascending: false }).limit(60),
     supabase.from("game_log_entries").select("id, date, player_id, players!inner(team_id)").eq("players.team_id", teamId).eq("session_type", "game").order("date", { ascending: false }).limit(300),
     supabase.from("video_clips").select("id, created_at, status, game_log_entries!inner(id, date, ab, session_type, player_id, players!inner(id, name, slug, team_id)), at_bat_pitches(pitch_number)").eq("game_log_entries.players.team_id", teamId).eq("game_log_entries.session_type", "game").eq("status", "ready").order("created_at", { ascending: false }).limit(RECENT),
@@ -20,8 +21,9 @@ export async function loadTeamDashboard(teamId, teamSlug) {
   for (const result of [pri, drafts, sessions, gameEntries, clips, obs]) if (result.error) throw new Error(result.error.message);
   const withSlug = (p) => ({ ...p, teamSlug });
   const priorities = (pri.data ?? []).map((p) => ({ ...p, player: withSlug(p.players) }));
-  const needsReview = new Map();
-  for (const draft of drafts.data ?? []) needsReview.set(draft.player_id, (needsReview.get(draft.player_id) ?? 0) + 1);
+  const queueIssues = (drafts.data ?? []).map((row) => ({ ...row, player: row.players, video_clip: row.video_clips ? { ...row.video_clips, game_log_entries: { ...(row.video_clips.game_log_entries ?? {}), players: row.players } } : null }));
+  const reviewQueue = buildReviewQueue(queueIssues);
+  const needsReview = new Map(reviewQueue.groups.map((group) => [group.player.id, group.swings.length]));
   const byPlayer = (rows, key, value) => {
     const map = new Map();
     for (const row of rows) { const id = key(row); if (!map.has(id)) map.set(id, []); map.get(id).push(value(row)); }
@@ -41,7 +43,7 @@ export async function loadTeamDashboard(teamId, teamSlug) {
     players.get(priority.players.id).priorities.push(priority);
   }
   for (const group of players.values()) group.priorities = L.orderPriorities(group.priorities);
-  return { needsReview: [...needsReview.entries()].map(([id, n]) => ({ id, n })), draftIssues: drafts.data ?? [], players: [...players.values()], dueFollowUps,
+  return { needsReview: [...needsReview.entries()].map(([id, n]) => ({ id, n })), draftIssues: drafts.data ?? [], reviewQueue, players: [...players.values()], dueFollowUps,
     sessions: (sessions.data ?? []).slice(0, RECENT).map((s) => ({ ...s, player: withSlug(s.players) })),
     swings: (clips.data ?? []).map((c) => ({ ...c, player: withSlug(c.game_log_entries.players) })),
     progress: (obs.data ?? []).map((o) => ({ ...o, player: withSlug(o.player_priorities.players) })), teamSlug };
@@ -52,10 +54,10 @@ export async function renderTeamDashboard(el, teamId, teamSlug, rosterById = new
   try { data = await loadTeamDashboard(teamId, teamSlug); }
   catch (error) { el.innerHTML = `<p class="error-text">Couldn't load the team summary: ${escapeHtml(error.message)}</p>`; return null; }
   const attention = teamAttentionModel(data);
-  const firstDraft = data.draftIssues.find((issue) => issue.video_clip_id);
+  const firstDraft = data.reviewQueue.next;
   const followUps = data.dueFollowUps.slice(0, 3).map((priority) => listRow({ href: link("development", priority.player), title: priority.player.name, supporting: `${priority.title} · ${L.followUpLabel(priority)}`, trailing: icon("chevron-right", { size: 20 }) })).join("");
   const today = card(`<div class="p1b-today-head">${attention.reviewCount || attention.dueCount ? "<h2>Today</h2>" : icon("circle-check", { size: 24 })}<strong>${escapeHtml(attention.headline)}</strong></div>
-    ${attention.reviewCount && firstDraft ? `<a class="bt-button bt-button-primary p1b-full-button" href="./review.html?clip=${encodeURIComponent(firstDraft.video_clip_id)}&team=${encodeURIComponent(teamSlug)}">Review pending swings</a>` : ""}
+    ${attention.reviewCount && firstDraft ? `<a class="bt-button bt-button-primary p1b-full-button" href="./review.html?clip=${encodeURIComponent(firstDraft.clipId)}&team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(firstDraft.player.slug)}&queue=1">Review pending swings</a>` : ""}
     ${followUps ? `<div class="p1b-followups">${followUps}</div>` : ""}`, { className: "p1b-today" });
   const activity = [];
   for (const item of data.progress) activity.push({ date: item.observed_at, html: listRow({ href: link("development", item.player), title: `${item.player.name} · ${item.player_priorities.title}`, supporting: `${L.OBSERVATION_LABELS[item.status] ?? item.status} · ${fmtDate(item.observed_at)}`, trailing: statusChip(item.status, { domain: "progress" }) }) });

@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.18.1] - 2026-09-21
+
+### Fixed
+
+- Pitch outcomes can now be changed after logging (pitch menu and details sheet), and standard outcome saves no longer write `count_before_*`, so correcting an earlier pitch re-derives later counts. Only an explicit Fix count writes an override, and only when it differs from the derived count.
+- Player Overview "Log at-bat" opens the quick Log at-bat sheet instead of the legacy modal (`?openLog=1` now redirects to the sheet).
+- The "Other outcome" grid is actually hidden until expanded; new entries no longer offer `take`, and legacy take rows no longer render "Take · Take".
+- Public report ranks active before monitoring before resolved, picks the newest drill assignment, and lists progress and watch-swing clips newest first.
+- Segmented and Compare tabs scroll instead of splitting words at large text sizes.
+- Compare transport controls are disabled when neither video loads, including when a video URL exists but the media fails to load.
+- Player Overview's "Working on" card wraps at 200% text instead of causing horizontal page scroll.
+- Pitch rows no longer nest buttons inside `role="button"`; Log without video stays available when an at-bat looks over.
+- Approve is locked while saving and Retry repeats the approval.
+
+## [0.18.0] - 2026-09-21
+
+### Added
+
+- Added a distinct-swing team Review queue with chronological player grouping, partial-review state, session-only skip, recent reviewed swings, a count badge, and explicit queue-mode Next swing behavior.
+- Added collision-safe pitch quick entry, camera-cancel safety, derived count/swing state, optional strike-zone location, evidence upload states, and the shared Log at-bat sheet.
+- Added deterministic suggested Compare pairs and the Video, Frames, Progress, Metrics, and optional explanatory 3D hierarchy.
+- Added pure Phase 2B models and regression tests for queue classification, pitch numbering/end-state rules, suggested comparisons, shared-phase fallback, and public-report shaping.
+
+### Changed
+
+- Reworked the public player report into a summary-first coach-confirmed view and removed unreviewed checklist rows at the server shaping boundary.
+- Enforced one actionable finding and one visible primary Approve action on Swing Review; queue mode switches to Next swing only after every finding is decided.
+- Finished the Phase 2A closeouts: Session Plan values wrap, Coach Assessment owns the sticky Finish session action, and button-styled links no longer inherit underlines.
+
+### Security
+
+- Public report responses now exclude every checklist score whose `reviewed_by` is null and omit review-authority fields from checkpoint payloads.
+
+## [0.17.0] - 2026-09-21
+
+### Added
+
+- Added deterministic Phase 2A presentation tests for Development next focus, game-transfer language, prefilled and same-day practice starts, guided rep progression, and manual session assessment.
+- Added compact coach-plan and guided-practice rendering modules that remain framework-free and participate in the offline shell.
+
+### Changed
+
+- Reorganized Development around one Next Focus, compact expandable priorities, integrated game-transfer and follow-up states, coach-owned history, a separate findings-to-review list, and collapsed insights.
+- Rebuilt Practice as a Baseline → Drill → Post-drill progression with prefilled session setup, continue-today handling, compact rep rows, baseline/post-drill comparison, manual assessment, and a single state-aware primary action.
+- Moved drill, follow-up, progress, rep grouping/usability, and destructive actions into shared bottom sheets, overflow menus, snackbars, and confirmation dialogs while preserving stored values and coach authority.
+
 ## [0.16.0] - 2026-09-20
 
 ### Added

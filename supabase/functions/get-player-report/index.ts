@@ -99,13 +99,13 @@ Deno.serve(async (req) => {
 
     const { data: priorities } = await supabase
       .from("player_priorities")
-      .select("id, title, description, status, priority_order, first_identified_at, resolved_at")
+      .select("id, title, description, status, priority_order, first_identified_at, resolved_at, follow_up_kind, follow_up_date, follow_up_swings")
       .eq("player_id", link.player_id)
       .neq("status", "archived");
     const ids = (priorities ?? []).map((p) => p.id);
     const [{ data: drills }, { data: observations }] = ids.length
       ? await Promise.all([
-          supabase.from("player_priority_drills").select("player_priority_id, active, coach_note, drill_library(name, purpose, instructions, equipment)").in("player_priority_id", ids),
+          supabase.from("player_priority_drills").select("player_priority_id, active, coach_note, assigned_at, drill_library(name, purpose, instructions, equipment)").in("player_priority_id", ids).order("assigned_at", { ascending: false }),
           supabase.from("player_priority_observations").select("player_priority_id, status, coach_note, observed_at, video_clip_id, phase").in("player_priority_id", ids),
         ])
       : [{ data: [] }, { data: [] }];

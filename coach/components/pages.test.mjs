@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const coach = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PAGES = ["development", "review", "compare", "atbat", "session"];
+const PAGES = ["development", "review", "compare", "atbat", "session", "queue"];
 const read = (rel) => fs.readFileSync(path.join(coach, rel), "utf8");
 
 function exportsOf(src) {
@@ -63,10 +63,11 @@ test("every named import in the new pages/modules resolves to a real export", ()
 test("pages are mobile-ready: viewport meta, tap-target controls, no fixed desktop widths", () => {
   for (const p of PAGES) {
     const html = read(`${p}.html`);
+    const interactionSource = p === "session" ? `${html}\n${read("components/practicePage.js")}` : html;
     assert.match(html, /<meta name="viewport" content="width=device-width/, `${p}: viewport meta`);
     assert.doesNotMatch(html, /maximum-scale|user-scalable=no/, `${p}: zoom is not locked`);
     assert.match(html, /viewport-fit=cover/, `${p}: safe-area viewport enabled`);
-    assert.match(html, /class="[^"]*tap-target/, `${p}: uses tap-target controls`);
+    assert.match(interactionSource, /class="[^"]*(?:tap-target|bt-button)/, `${p}: uses touch-sized controls`);
     assert.doesNotMatch(html, /width:\s*\d{4,}px/, `${p}: no fixed wide widths`);
   }
 });
@@ -88,7 +89,7 @@ test("new pages and modules are precached and cache-stamped", () => {
     assert.ok(bump.includes(`"${p}.html"`), `${p}.html is in the cache-bump hook's stamped list`);
     assert.match(read(`${p}.html`), /coach\.css\?v=[0-9a-f]{10}/, `${p}.html carries a cache stamp`);
   }
-  for (const f of ["developmentLogic.js", "devUi.js", "devActions.js", "teamDashboard.js", "phase1bScreens.js", "ui.js", "shellState.js"]) {
+  for (const f of ["developmentLogic.js", "devUi.js", "devActions.js", "teamDashboard.js", "phase1bScreens.js", "phase2aScreens.js", "practicePage.js", "ui.js", "shellState.js", "reviewQueue.js", "pitchEntry.js", "comparePairs.js", "logAtBatSheet.js"]) {
     assert.ok(sw.includes(`"./components/${f}"`), `components/${f} is in sw.js ASSETS`);
   }
   assert.ok(sw.includes('"./assets/icons.svg"'), "SVG icon sprite is in sw.js ASSETS");
@@ -105,8 +106,59 @@ test("Android Back delegates to overlay history without adding @capacitor/app", 
 
 test("every page has an empty state for its main list (no blank cards)", () => {
   for (const p of ["development", "compare", "atbat", "session", "review"]) {
-    assert.match(read(`${p}.html`), /emptyState\(/, `${p}: renders explicit empty states`);
+    const source = p === "session" ? `${read(`${p}.html`)}\n${read("components/practicePage.js")}` : read(`${p}.html`);
+    assert.match(source, /emptyState\(/, `${p}: renders explicit empty states`);
   }
+});
+
+test("Phase 2B QA: player Log at-bat uses the new sheet, never the legacy modal or alert()", () => {
+  const player = read("player.html");
+  assert.match(player, /openLogAtBatSheet\(/);
+  assert.doesNotMatch(player, /(?<!function )openLogAbModal\(\)/, "nothing invokes the legacy 6-field modal");
+  assert.doesNotMatch(player, /href="[^"]*openLog=1/, "no CTA links to ?openLog=1");
+  assert.doesNotMatch(read("components/appShell.js"), /openLog=1/);
+  assert.doesNotMatch(read("components/logAtBatSheet.js"), /\balert\(/);
+});
+
+test("Phase 2B QA: hidden outcome grids are hidden, take is not offered, outcomes are editable, Log without video survives at-bat end", () => {
+  const css = read("coach.css"); const atbat = read("atbat.html");
+  assert.match(css, /\.bt-outcome-grid\[hidden\]\s*\{\s*display:\s*none\s*!important/);
+  assert.doesNotMatch(atbat, /data-outcome="take"/);
+  assert.match(atbat, /Change outcome/);
+  assert.doesNotMatch(atbat, /pitchPatchForOutcome\(outcome, count/);
+  assert.equal(atbat.match(/id="logPitch"/g).length, 2, "Log without video in both action-bar states");
+});
+
+test("Phase 2B QA: pitch rows do not nest controls inside role=button", () => {
+  const atbat = read("atbat.html");
+  assert.doesNotMatch(atbat, /role="button"/);
+  assert.match(atbat, /role="listitem"/);
+  assert.match(atbat, /class="bt-list-row-copy bt-pitch-main"/);
+});
+
+test("Phase 2B QA: tabs scroll instead of splitting words; Compare transport disables without video", () => {
+  const css = read("coach.css");
+  assert.doesNotMatch(css.match(/\.bt-segmented-tabs a \{[^}]*\}/)[0], /overflow-wrap:\s*anywhere/);
+  assert.match(css.match(/\.bt-segmented-tabs \{[^}]*\}/)[0], /overflow-x:\s*auto/);
+  assert.match(css.match(/\.bt-compare-tabs \{[^}]*\}/)[0], /overflow-x:\s*auto/);
+  assert.match(read("compare.html"), /const lockTransport=\(\)=>\{\["playBoth","backFrame","nextFrame","speed"\]/);
+});
+
+test("Phase 2B QA: Compare treats a media load error as unavailable and locks transport; Overview card wraps", () => {
+  const compare = read("compare.html");
+  assert.match(compare, /addEventListener\("error",\(\)=>dropVideo\(v\)\)/, "video error event drops the side");
+  assert.match(compare, /if\(!videos\.length\) lockTransport\(\)/, "transport locks when no side is playable");
+  assert.match(compare, /if\(!videos\.length\) return; const playing/, "disabled Play cannot flip to Pause");
+  const css = read("coach.css");
+  assert.match(css.match(/\.p1b-card-head \{[^}]*\}/)[0], /flex-wrap:\s*wrap/);
+  assert.match(css.match(/\.p1b-priority-link \{[^}]*\}/)[0], /minmax\(0,1fr\)/);
+  assert.match(css, /\.p1b-priority-link \.bt-status-chip \{[^}]*white-space:\s*normal/);
+});
+
+test("Phase 2B QA: Approve is in-flight locked and Retry re-runs the approval", () => {
+  const review = read("review.html");
+  assert.match(review, /approving\.has\(issue\.id\)/);
+  assert.match(review, /onAction: \(\) => approveIssue\(issue\)/);
 });
 
 test("deep links: review.html reads ?clip and ?phase; compare.html reads ?a/?b", () => {

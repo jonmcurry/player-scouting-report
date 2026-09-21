@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BarrelTrace — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=7ac7e7387f">
+<link rel="stylesheet" href="./coach.css?v=386a1b1dd2">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -70,6 +70,7 @@
   import { loadSwingMetrics, renderSwingMetricsPanel } from "./components/swingMetricsPanel.js";
   import { uploadRawClip } from "./components/videoUpload.js";
   import { renderPlayerAppBar, renderBottomNav, loadRosterWithProgress, setLastPlayerSlug } from "./components/appShell.js";
+  import { openLogAtBatSheet } from "./components/logAtBatSheet.js";
   import { mountSegmentedTabs, card, confirmDialog, emptyState, icon, listRow, showSnackbar, statusChip } from "./components/ui.js";
   import { nextActionModel } from "./components/phase1bScreens.js";
   import * as DevLogic from "./components/developmentLogic.js";
@@ -254,7 +255,6 @@
       reportHref,
       currentPlayer: player,
       roster,
-      onLogAbClick: openLogAbModal,
     });
 
     await loadTrend();
@@ -269,9 +269,10 @@
     startStatusPolling();
     startElapsedTicker();
 
+    // Legacy ?openLog=1 links: send them to the new quick sheet, never the old 6-field modal.
     if (qs("openLog") === "1") {
-      openLogAbModal();
       history.replaceState(null, "", reportHref);
+      openLogAtBatSheet({ player, teamSlug });
     }
   }
 
@@ -514,9 +515,11 @@
     const action = nextActionModel({ drafts: drafts ?? [], duePriority, priority: top, assignment });
     const actionHref = action.kind === "review" && action.clipId ? `./review.html?clip=${encodeURIComponent(action.clipId)}&${devQuery}`
       : action.kind === "practice" ? `./session.html?${devQuery}&start=1`
-      : action.kind === "atbat" ? `./player.html?${devQuery}&openLog=1`
+      : action.kind === "atbat" ? null
       : `./development.html?${devQuery}`;
-    document.getElementById("nextAction").innerHTML = card(`<span class="bt-eyebrow">Next action</span><h2>${escapeHtml(action.title)}</h2><p class="bt-supporting">${escapeHtml(action.detail)}</p><a class="bt-button bt-button-primary p1b-full-button" href="${actionHref}">${escapeHtml(action.label)}</a>`, { className: "p1b-next-action" });
+    document.getElementById("nextAction").innerHTML = card(`<span class="bt-eyebrow">Next action</span><h2>${escapeHtml(action.title)}</h2><p class="bt-supporting">${escapeHtml(action.detail)}</p>${actionHref ? `<a class="bt-button bt-button-primary p1b-full-button" href="${actionHref}">${escapeHtml(action.label)}</a>` : `<button type="button" class="bt-button bt-button-primary p1b-full-button" id="nextActionLog">${escapeHtml(action.label)}</button>`}`, { className: "p1b-next-action" });
+    const logButton = document.getElementById("nextActionLog");
+    if (logButton) logButton.onclick = () => openLogAtBatSheet({ player: { id: playerId, slug: playerSlug }, teamSlug, trigger: logButton });
     el.innerHTML = `<section class="bt-card p1b-working"><div class="p1b-card-head"><h2>Working on</h2><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Development</a></div>
       ${top ? `<a class="p1b-priority-link" href="./development.html?${devQuery}"><strong>${escapeHtml(top.title)}</strong>${statusChip(top.status, { domain: "priority" })}<span>${escapeHtml(top.description || "Current coaching priority")}</span></a>${list.length > 1 ? `<span class="bt-caption">+${list.length - 1} more</span>` : ""}`
         : emptyState("No active priorities", "Approve a finding and track it to begin.")}</section>`;

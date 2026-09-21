@@ -11,6 +11,6 @@ export function bottomNavState({ teamSlug, activeTab, playerHref = null }) {
   return [
     { key: "team", label: "Team", icon: "users", href: `./team.html?team=${encodeURIComponent(teamSlug)}`, active: activeTab === "roster" || activeTab === "team" },
     { key: "add", label: "Add", icon: "plus", href: null, active: false },
-    { key: "player", label: "Player", icon: "user-round", href: playerHref, active: activeTab === "report" || activeTab === "player", hidden: !playerHref },
+    { key: "review", label: "Review", icon: "eye", href: `./queue.html?team=${encodeURIComponent(teamSlug)}`, active: activeTab === "review" || activeTab === "queue", hidden: false },
   ];
 }

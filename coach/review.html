@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BarrelTrace — Review Swing</title>
-<link rel="stylesheet" href="./coach.css?v=7ac7e7387f">
+<link rel="stylesheet" href="./coach.css?v=386a1b1dd2">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -12,6 +12,7 @@
 <body>
 <header class="app-bar" id="appBar"></header>
 <div class="wrap">
+  <p class="bt-caption" id="queueCaption" hidden></p>
   <p class="hint" id="loading">Loading swing…</p>
   <div id="content" hidden>
     <div id="swingHeader"></div>
@@ -29,6 +30,7 @@
     </div></details>
   </div>
 </div>
+<div id="queueAction"></div>
 
 <script src="./config.local.js"></script>
 <script type="module">
@@ -42,12 +44,15 @@
   import { getMyDisplayName, requireSession } from "./shared.js";
   import { loadClipSkeletonData, renderSkeletonComparison } from "./components/skeletonComparison.js";
   import { loadSwingMetrics, renderSwingMetricsPanel } from "./components/swingMetricsPanel.js";
-  import { renderDrillInAppBar } from "./components/appShell.js";
+  import { invalidateReviewCount, renderDrillInAppBar } from "./components/appShell.js";
   import { button, card, icon, openOverflowMenu, showSnackbar, statusChip } from "./components/ui.js";
   import { findingActionState, reviewSummary } from "./components/phase1bScreens.js";
+  import { buildReviewQueue, findingSequence, queueRemaining } from "./components/reviewQueue.js";
 
   const clipId = qs("clip");
-  let ctx, clip, phases = [], videoEl = null, library = [], priorities = [], assignments = [], issues = [], viewer = null, latestAnalysisRun = null;
+  const queueMode = qs("queue") === "1";
+  document.body.classList.toggle("queue-mode", queueMode);
+  let ctx, clip, phases = [], videoEl = null, library = [], priorities = [], assignments = [], issues = [], viewer = null, latestAnalysisRun = null, queueModel = null;
 
   async function main() {
     const session = await requireSession();
@@ -65,9 +70,10 @@
     ctx = buildContext(session, await getMyDisplayName(session.user.id), data.game_log_entries.players);
     const e = clip.game_log_entries;
     const compactTitle = `${ctx.player.name} · ${fmtDate(e.date)} · ${e.session_type === "game" ? `AB ${e.ab}${clip.at_bat_pitches?.pitch_number ? ` · Pitch ${clip.at_bat_pitches.pitch_number}` : ""}` : `Rep ${clip.practice_repetitions?.rep_number ?? ""}`}`;
-    renderDrillInAppBar(document.getElementById("appBar"), { title: compactTitle, backHref: ctx.url("player"), backLabel: `Back to ${ctx.player.name}`, overflowItems: [
+    renderDrillInAppBar(document.getElementById("appBar"), { title: compactTitle, backHref: queueMode ? `./queue.html?team=${encodeURIComponent(ctx.teamSlug)}` : ctx.url("player"), backLabel: queueMode ? "Back to review queue" : `Back to ${ctx.player.name}`, overflowItems: [
       { label: e.session_type === "game" ? "Open at-bat" : "Open practice", icon: "layout-list", onSelect: () => location.href = e.session_type === "game" ? ctx.url("atbat", { entry: e.id }) : ctx.url("session", { session: clip.practice_repetitions?.practice_session_id ?? "" }) },
       { label: "Compare swings", icon: "columns-2", onSelect: () => location.href = ctx.url("compare", { a: clipId }) },
+      ...(queueMode ? [{ label: "Skip for now", icon: "chevron-right", onSelect: skipCurrent }] : []),
     ] });
 
     [phases, library, priorities] = await Promise.all([loadPhases(clipId), loadDrillLibrary(ctx.team.id), loadPriorities(ctx.player.id, ["active", "monitoring"])]);
@@ -84,17 +90,34 @@
   }
 
   async function loadIssues() {
-    // Issues drafted from THIS swing come first; fall back to the player's
-    // other non-rejected drafts so an older swing still shows something useful.
     const [{ data }, { data: runs }] = await Promise.all([
-      supabase.from("issues").select("*").eq("player_id", ctx.player.id).neq("review_status", "rejected").order("created_at", { ascending: false }).limit(20),
+      supabase.from("issues").select("*").eq("video_clip_id", clipId).order("created_at", { ascending: true }),
       supabase.from("analysis_runs").select("id,no_action_needed,no_action_reason,created_at").eq("video_clip_id", clipId).order("created_at", { ascending: false }).limit(1),
     ]);
     latestAnalysisRun = runs?.[0] ?? null;
-    const all = data ?? [];
-    const own = all.filter((i) => i.video_clip_id === clipId);
-    issues = own.length ? own : latestAnalysisRun ? [] : all.slice(0, 5);
-    issues.fromThisSwing = own.length > 0;
+    issues = data ?? [];
+    if (queueMode) await loadQueueModel();
+  }
+
+  async function loadQueueModel() {
+    const { data } = await supabase.from("issues").select(`id,issue,review_status,created_at,video_clip_id,player_id,
+      players!inner(id,name,slug,jersey_number,team_id), video_clips(id,status,game_log_entries(date,ab,session_type),at_bat_pitches(pitch_number),practice_repetitions(rep_number,grouping))`)
+      .eq("players.team_id", ctx.team.id).order("created_at", { ascending: true });
+    const normalized = (data ?? []).map((row) => ({ ...row, player: row.players, video_clip: row.video_clips ? { ...row.video_clips, game_log_entries: { ...(row.video_clips.game_log_entries ?? {}), players: row.players } } : null }));
+    const skipped = JSON.parse(sessionStorage.getItem(`bt:queue-skips:${ctx.team.id}`) ?? "[]");
+    queueModel = buildReviewQueue(normalized, { skippedClipIds: skipped });
+    const remaining = queueRemaining(queueModel, clipId);
+    const caption = document.getElementById("queueCaption");
+    caption.hidden = false;
+    caption.textContent = `Queue · ${remaining} more after this`;
+  }
+
+  function skipCurrent() {
+    const key = `bt:queue-skips:${ctx.team.id}`;
+    const skipped = new Set(JSON.parse(sessionStorage.getItem(key) ?? "[]"));
+    skipped.add(clipId); sessionStorage.setItem(key, JSON.stringify([...skipped]));
+    const next = queueModel?.pending.find((item) => item.clipId !== clipId && !skipped.has(item.clipId)) ?? queueModel?.pending.find((item) => item.clipId !== clipId);
+    location.href = next ? `./review.html?${new URLSearchParams({ team: ctx.teamSlug, player: next.player.slug, clip: next.clipId, queue: "1" })}` : `./queue.html?team=${encodeURIComponent(ctx.teamSlug)}`;
   }
 
   function evidenceCtx(phase) {
@@ -146,12 +169,17 @@
   }
 
   function renderAll() {
-    document.getElementById("reviewSummary").innerHTML = `<p class="p1b-review-summary">${escapeHtml(reviewSummary(issues).label)}</p>`;
+    const drafts = issues.filter((issue) => issue.review_status === "draft").length;
+    const approved = issues.filter((issue) => ["approved", "edited"].includes(issue.review_status)).length;
+    const rejected = issues.filter((issue) => issue.review_status === "rejected").length;
+    const label = issues.length && drafts === 0 ? `Reviewed · ${approved} approved${rejected ? ` · ${rejected} rejected` : ""}` : reviewSummary(issues).label;
+    document.getElementById("reviewSummary").innerHTML = `<p class="p1b-review-summary">${escapeHtml(label)}</p>`;
     renderObservations();
     renderWorkOn();
     renderLookFor();
     renderTrack();
     renderAdvanced();
+    renderQueueAction();
   }
 
   function renderObservations() {
@@ -159,13 +187,15 @@
     if (!issues.length) {
       el.innerHTML = latestAnalysisRun?.no_action_needed
         ? emptyState("No meaningful mechanical issue is supported by this swing.", latestAnalysisRun.no_action_reason || "The analysis legitimately returned no finding.")
-        : emptyState("No AI observations for this swing yet.", clip.status === "ready" ? "Analysis drafts appear here after processing. You can still track progress against a priority below." : "They will appear once processing finishes.");
+        : latestAnalysisRun
+          ? emptyState("No findings for this swing", "The analysis finished without a draft observation.")
+          : emptyState("Findings appear here once analysis finishes.", "You can still review the original video and track progress against an existing priority.");
       return;
     }
     const promoted = new Set(priorities.map((p) => p.source_issue_id).filter(Boolean));
-    el.innerHTML = (issues.fromThisSwing ? "" : `<p class="hint">Nothing drafted from this exact swing - showing recent observations for ${escapeHtml(ctx.player.name)}.</p>`) +
-      issues.map((i, n) => `
-      <details class="bt-card p1b-finding" data-iid="${i.id}" ${n === 0 ? "open" : ""}>
+    const sequence = findingSequence(issues);
+    el.innerHTML = sequence.map((i) => `
+      <details class="bt-card p1b-finding" data-iid="${i.id}" ${i.expanded ? "open" : ""}>
         <summary><span class="p1b-finding-title">${escapeHtml(i.issue)}</span>${statusChip(i.review_status, { domain: "review" })}</summary>
         <div class="p1b-finding-body">
           <span class="bt-label">What I see</span><p>${escapeHtml(i.evidence || i.issue)}</p>
@@ -173,7 +203,8 @@
           ${i.effect ? `<span class="bt-label">Why it may matter</span><p class="bt-supporting">${escapeHtml(i.effect)}</p>` : ""}
           ${i.coaching_cue ? `<span class="bt-label">What to work on</span><p>${escapeHtml(i.coaching_cue)}</p>` : ""}
           <p class="bt-caption">${escapeHtml(i.confidence ? `${i.confidence[0].toUpperCase()}${i.confidence.slice(1)} confidence${i.confidence === "low" ? " · check the video" : ""}` : "Confidence not provided")} · ${i.review_status === "draft" ? "Draft from analysis" : `Coach ${i.review_status}`}</p>
-          ${findingActions(i, promoted.has(i.id))}
+          ${i.review_status === "edited" && i.ai_original ? `<details class="bt-disclosure"><summary><span>See original draft</span></summary><div class="bt-disclosure-body"><p>${escapeHtml(typeof i.ai_original === "string" ? i.ai_original : i.ai_original.issue ?? "Original draft saved")}</p></div></details>` : ""}
+          ${findingActions(i, promoted.has(i.id), i.actionable)}
         </div>
       </details>`).join("");
     el.onclick = async (e) => {
@@ -183,25 +214,51 @@
       try {
         if (b.dataset.a === "evidence") return seekToPhase(b.dataset.phase);
         if (b.dataset.a === "finding-menu") return openOverflowMenu({ title: "Finding actions", anchor: b, items: [
-          { label: "Reject finding", icon: "x", onSelect: async () => { await reviewIssue(ctx, issue, "reject"); await reloadAll(); showSnackbar("Finding rejected", { actionLabel: "Undo", onAction: async () => { await supabase.from("issues").update({ review_status: "draft", reviewed_by: null }).eq("id", issue.id); await reloadAll(); } }); } },
+          { label: "Reject finding", icon: "x", onSelect: async () => { await reviewIssue(ctx, issue, "reject"); invalidateReviewCount(ctx.teamSlug); await reloadAll(); showSnackbar("Finding rejected", { actionLabel: "Undo", onAction: async () => { await supabase.from("issues").update({ review_status: "draft", reviewed_by: null }).eq("id", issue.id); invalidateReviewCount(ctx.teamSlug); await reloadAll(); } }); } },
         ] });
-        if (b.dataset.a === "approve") { await reviewIssue(ctx, issue, "approve"); toast("Approved"); }
+        if (b.dataset.a === "approve") return approveIssue(issue, b);
         if (b.dataset.a === "reject") {
           await reviewIssue(ctx, issue, "reject");
           showSnackbar("Finding rejected", { actionLabel: "Undo", onAction: async () => { await supabase.from("issues").update({ review_status: "draft", reviewed_by: null }).eq("id", issue.id); await reloadAll(); } });
         }
-        if (b.dataset.a === "edit") return openEditIssueSheet(ctx, issue, reloadAll);
+        if (b.dataset.a === "edit") return openEditIssueSheet(ctx, issue, async () => { invalidateReviewCount(ctx.teamSlug); await reloadAll(); });
         if (b.dataset.a === "promote") return openPromoteSheet(ctx, issue, reloadAll);
         await reloadAll();
-      } catch (err) { toast(err.message); }
+        invalidateReviewCount(ctx.teamSlug);
+      } catch (err) { showSnackbar("Couldn't save. Try again", { actionLabel: "Retry", onAction: reloadAll }); }
     };
   }
 
-  function findingActions(issue, tracked) {
+  // In-flight lock: a double-tap must not write twice, and Retry re-runs the approval itself.
+  const approving = new Set();
+  async function approveIssue(issue, button = null) {
+    if (approving.has(issue.id)) return;
+    approving.add(issue.id); if (button) button.disabled = true;
+    try { await reviewIssue(ctx, issue, "approve"); }
+    catch { showSnackbar("Couldn't approve. Try again", { actionLabel: "Retry", onAction: () => approveIssue(issue) }); approving.delete(issue.id); if (button?.isConnected) button.disabled = false; return; }
+    approving.delete(issue.id);
+    showSnackbar("Approved");
+    try { await reloadAll(); invalidateReviewCount(ctx.teamSlug); } catch { /* the approval is saved; the list refreshes on next load */ }
+  }
+
+  function findingActions(issue, tracked, actionable) {
     const state = findingActionState(issue, tracked);
-    if (state.showApprove) return `<div class="p1b-decision-row">${button("Approve", { variant: "primary", attrs: 'data-a="approve"' })}${button("Edit", { variant: "tertiary", attrs: 'data-a="edit"' })}<button class="bt-icon-button" aria-label="More finding actions" data-a="finding-menu">${icon("ellipsis-vertical", { size: 24 })}</button></div>`;
-    if (state.showTrack) return `<div class="p1b-decision-row">${button("Track as priority", { variant: "primary", attrs: 'data-a="promote"' })}${button("Edit", { variant: "tertiary", attrs: 'data-a="edit"' })}</div>`;
+    if (state.showApprove && actionable) return `<div class="p1b-decision-row">${button("Approve", { variant: "primary", attrs: 'data-a="approve"' })}${button("Edit", { variant: "tertiary", attrs: 'data-a="edit"' })}<button class="bt-icon-button" aria-label="More finding actions" data-a="finding-menu">${icon("ellipsis-vertical", { size: 24 })}</button></div>`;
+    if (state.showApprove) return '<p class="bt-caption">Decide the finding above first.</p>';
+    if (state.showTrack) return `<div class="p1b-decision-row">${button("Track as priority", { variant: "secondary", attrs: 'data-a="promote"' })}${button("Edit", { variant: "tertiary", attrs: 'data-a="edit"' })}</div>`;
     return `<div class="p1b-tracked-row">${statusChip("active", { domain: "priority", label: "Tracking as a priority" })}<a href="${ctx.url("development")}">Update progress</a></div>`;
+  }
+
+  function renderQueueAction() {
+    const host = document.getElementById("queueAction");
+    if (!queueMode || issues.some((issue) => issue.review_status === "draft")) { host.innerHTML = ""; return; }
+    const next = queueModel?.next?.clipId === clipId ? queueModel.pending.find((item) => item.clipId !== clipId) : queueModel?.next;
+    if (next) {
+      const left = queueModel.pending.filter((item) => item.clipId !== clipId).length;
+      host.innerHTML = `<div class="bt-sticky-action-bar"><a class="bt-button bt-button-primary" href="./review.html?${new URLSearchParams({ team: ctx.teamSlug, player: next.player.slug, clip: next.clipId, queue: "1" })}">Next swing · ${left} left</a></div>`;
+    } else {
+      host.innerHTML = `<div class="bt-sticky-action-bar"><strong>All caught up</strong><a class="bt-button bt-button-secondary" href="./team.html?team=${encodeURIComponent(ctx.teamSlug)}">Back to Team</a></div>`;
+    }
   }
 
   async function reloadAll() {
@@ -228,7 +285,7 @@
     const suggested = L.suggestDrills(p, library, assigned.map((a) => a.drill_id));
     el.innerHTML = card(`<span class="bt-eyebrow">Next step</span><h2>${escapeHtml(p.title)}</h2><p class="bt-supporting">${assigned.length ? escapeHtml(assigned.map((a) => a.drill_library?.name ?? "").join(", ")) : "No drill assigned yet."}</p>
       <div class="p1b-next-step-actions">${assigned.length ? `<a class="bt-button bt-button-primary" href="${ctx.url("session", { start: 1 })}">Start practice</a>` : button("Assign drill", { variant: "secondary", attrs: 'id="assignDrill"' })}</div>`, { className: "p1b-next-step" });
-    document.getElementById("assignDrill")?.addEventListener("click", () => openAssignDrillSheet(ctx, p, library, assigned.map((a) => a.drill_id), reloadAll));
+    document.getElementById("assignDrill")?.addEventListener("click", () => openAssignDrillSheet(ctx, p, library, assignments.filter((a) => a.player_priority_id === p.id), reloadAll));
   }
 
   function renderLookFor() {

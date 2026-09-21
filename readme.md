@@ -10,7 +10,7 @@ Approved observations become **priorities** with drills, follow-ups and evidence
 product is a coaching loop, not a one-off report: *see it, name it, assign a drill, check whether
 it transferred to games.*
 
-- Current version: **0.14.1** (see [CHANGELOG.md](CHANGELOG.md))
+- Current version: **0.18.0** (see [CHANGELOG.md](CHANGELOG.md))
 - Coach app: installable PWA (`coach/`) plus a Capacitor Android shell (`mobile/`)
 - Backend: Supabase (Postgres + Auth + RLS + Edge Functions), Google Cloud Storage for video
 - Processing: a Node worker driving an isolated Python pose pipeline (YOLO11-pose, YOLOv8 bat
@@ -77,11 +77,13 @@ These shape almost every design decision. If a change conflicts with one, it nee
   count) and attach one or more video clips **per pitch**.
 - Log a **practice session** (goal, focus priority, drill, reps grouped as baseline / drill /
   post-drill / free swing) and attach a clip per rep.
-- Upload from the phone. On `player.html` the file inputs open the device camera directly
-  (`capture="environment"`); the at-bat and practice pages use a normal file picker. The upload goes
+- Upload from the phone. Pitch recording and player-page capture open the rear camera directly
+  (`capture="environment"`); practice supports the existing multi-file picker. The upload goes
   directly to cloud storage, and processing starts automatically.
 
 **Review**
+- Work through a team-wide queue of distinct swings with pending findings; only the next finding is
+  actionable and the queue advances only after an explicit coach decision.
 - Open a swing on the simplified review page and read four things: *what I see*, *what to work on*,
   *what to look for next time*, *track progress*. **Approve**, **Edit** or **Reject** each AI issue.
 - Watch the original video with phase markers (stance, load, stride, contact, extension,
@@ -95,8 +97,8 @@ These shape almost every design decision. If a change conflicts with one, it nee
   and log coach observations with an outcome: improving, unchanged, worse, resolved or unclear.
 - See per-player development: active priorities with evidence, game-transfer check, coaching-loop
   step, next focus, chronological timeline, and measured metric trends.
-- **Compare any two swings** (game vs game, practice vs game, before vs after a drill) in video
-  or 3D.
+- **Compare any two swings** from suggested before/after pairs or a manual picker in synchronized
+  Video, same-phase Frames, coach-authored Progress, robust Metrics, or optional explanatory 3D.
 
 **Share**
 - Generate a revocable, 90-day **read-only report link** for a parent or recruiter. No account is
@@ -119,20 +121,20 @@ The coach app is plain static HTML plus ES modules with no build step. Pages are
 | `index.html` | Login, account creation, "My Teams" picker, create-team form (access-code gated) |
 | `team.html` | Roster with confirmation progress, filter chips, team dashboard, add player |
 | `player.html` | The player hub: priorities up top, diagnosis and comps, drill recommendations, follow-up, **Game Log**, **Practice Log**, collapsed advanced checklist, and a "Manage Player" drawer (share links, delete) |
-| `atbat.html` | One at-bat: add/edit/delete pitches, per-pitch video, count progression, facts-only summary |
+| `queue.html` | Team review queue: pending swings grouped by player plus recent reviewed swings |
+| `atbat.html` | Quick pitch logging/recording, derived count and swing/take, evidence status, facts-only summary |
 | `session.html` | One practice session: goal, focus priority, drill, rep grouping, usable/rejected reps, baseline vs post-drill comparison, coach outcome |
-| `review.html?clip=&phase=` | Simplified swing review with Approve / Edit / Reject, Promote to priority, Assign drill, Mark progress. Phase deep links seek the video |
+| `review.html?clip=&phase=&queue=1` | Video-first swing review; queue mode exposes one finding decision at a time and an explicit Next swing action |
 | `development.html` | Longitudinal development view for one player |
-| `compare.html` | Two-swing comparison in video mode (synced on a chosen phase) and Frame A/B mode |
-| `report.html?token=` | Public read-only parent/recruiter report (no login) |
+| `compare.html` | Suggested/manual two-swing comparison: Video, Frames, coach Progress, Metrics, optional 3D |
+| `report.html?token=` | Public read-only player/parent report containing coach-confirmed content only |
 
 ### Design system
 
 - **Palette:** dark slate background `#121418`, clay/terracotta accent `#C2593F`, sand text
   `#F4EFEA`. Chosen for legibility in direct sunlight. Dark only: there is no light-mode toggle.
 - **Touch targets:** a 48 px minimum on interactive elements, for one-handed use behind a backstop.
-- **Navigation:** a sticky app bar (player switcher, team name, confirmed-progress pill) and a
-  bottom nav (Roster / Report / Log AB).
+- **Navigation:** a 56dp app bar, compact player tabs, and Team / Add / Review bottom navigation.
 - **One-tap scoring:** a 1-2-3 stepper (1 = Needs work, 2 = Developing, 3 = Solid) that upserts
   immediately. No dropdowns or sub-menus.
 - **Explicit provenance badges:** *🤖 AI Draft* vs *✓ Coach Reviewed*, with score history (for

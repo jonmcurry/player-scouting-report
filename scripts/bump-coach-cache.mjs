@@ -53,7 +53,7 @@ if (assetPaths.length === 0) {
 // the digest, but the version stamp itself no longer feeds back into it.
 // Every page that carries the coach.css?v= stamp. Also drives the rewrite loop below.
 const STAMPED_HTML = [
-  "index.html", "team.html", "player.html", "report.html",
+  "index.html", "team.html", "player.html", "report.html", "queue.html",
   "development.html", "review.html", "compare.html", "atbat.html", "session.html",
 ];
 const SELF_REFERENTIAL_FILES = new Set(STAMPED_HTML);

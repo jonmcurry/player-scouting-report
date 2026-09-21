@@ -3,7 +3,8 @@
 // follow-up, change a priority's status. Every function here is a deliberate
 // coach click - none is ever invoked from AI output - and each one only writes
 // coach-authored rows.
-import { supabase, L, openSheet, toast, escapeHtml, fmtDate } from "./devUi.js";
+import { supabase, L, openSheet, toast, escapeHtml, fmtDate, confirmDialog, statusChip } from "./devUi.js";
+import { icon } from "./ui.js";
 
 const opt = (value, label, selected) => `<option value="${escapeHtml(value)}" ${selected ? "selected" : ""}>${escapeHtml(label)}</option>`;
 
@@ -70,27 +71,33 @@ export function openAddPrioritySheet(ctx, onDone) {
 
 /** Sheet: assign a drill to a priority. Suggestions come from the tag mapping;
  * the coach picks (or writes a custom team drill). */
-export function openAssignDrillSheet(ctx, priority, library, assignedDrillIds, onDone) {
-  const suggested = L.suggestDrills(priority, library, assignedDrillIds);
-  const rest = library.filter((d) => !assignedDrillIds.includes(d.id) && !suggested.includes(d));
-  const card = (d, star) => `
-    <label class="dev-card" style="display:block;cursor:pointer;">
-      <input type="radio" name="drill" value="${d.id}"> <b>${escapeHtml(d.name)}</b> ${star ? '<span class="pill good">Suggested</span>' : ""}
-      <div class="hint">${escapeHtml(d.purpose)}</div>
+export function openAssignDrillSheet(ctx, priority, library, assignmentRows = [], onDone) {
+  // Accept the old id-array shape while callers move to full assignment rows.
+  const assignments = assignmentRows.map((row) => typeof row === "string" ? { drill_id: row, active: true } : row);
+  const current = assignments.find((row) => row.active) ?? null;
+  const suggested = L.suggestDrills(priority, library, current ? [current.drill_id] : []);
+  const ordered = [...suggested, ...library.filter((d) => !suggested.includes(d))];
+  const category = L.PRIORITY_CATEGORIES.find((item) => item.slug === priority.category)?.label;
+  const card = (d) => `
+    <label class="bt-drill-choice">
+      <input type="radio" name="drill" value="${d.id}" ${current?.drill_id === d.id ? "checked" : ""}>
+      <span class="bt-drill-choice-copy"><strong>${escapeHtml(d.name)}</strong>
+        <span>${escapeHtml(d.purpose || "Purpose not provided")}</span>
+        ${category && (d.target_tags ?? []).includes(priority.category) ? `<small>${icon("target", { size: 16 })} Matches ${escapeHtml(category)}</small>` : ""}
+        ${d.instructions ? `<details><summary>Setup and success cue</summary><p>${escapeHtml(d.instructions)}</p>${d.equipment ? `<p>Equipment: ${escapeHtml(d.equipment)}</p>` : ""}<p>What success looks like: ${escapeHtml(d.purpose)}</p></details>` : ""}
+      </span>
     </label>`;
   const backdrop = openSheet(
-    "Assign a drill",
+    current ? "Change drill" : "Assign a drill",
     `
-    <p class="hint">For: <b>${escapeHtml(priority.title)}</b>. You choose the drill; suggestions only come from the drill library's tags.</p>
-    ${suggested.length ? suggested.map((d) => card(d, true)).join("") : ""}
-    ${rest.length ? `<details><summary>Other drills (${rest.length})</summary>${rest.map((d) => card(d, false)).join("")}</details>` : ""}
-    ${!suggested.length && !rest.length ? '<p class="hint">Every library drill is already assigned.</p>' : ""}
-    <details><summary>Add a custom drill for this team</summary>
+    <p class="bt-supporting">For <b>${escapeHtml(priority.title)}</b>. The coach chooses the drill.</p>
+    <div class="bt-drill-picker">${ordered.map(card).join("")}</div>
+    <details class="bt-disclosure"><summary>Add a custom team drill</summary><div class="bt-disclosure-body">
       <div class="dev-field"><label>Name</label><input id="dName"></div>
       <div class="dev-field"><label>How to run it</label><textarea id="dHow"></textarea></div>
-    </details>
-    <div class="dev-field"><label>Note to player (optional)</label><input id="dNote"></div>
-    <div class="dev-btns"><button class="primary tap-target" id="dSave">Assign drill</button></div>`,
+    </div></details>
+    <div class="dev-field"><label>Coach note (optional)</label><input id="dNote" value="${escapeHtml(current?.coach_note ?? "")}"></div>`,
+    `<button class="bt-button bt-button-primary" id="dSave">${current ? "Change drill" : "Assign drill"}</button>`,
   );
   backdrop.querySelector("#dSave").addEventListener("click", async () => {
     try {
@@ -113,12 +120,16 @@ export function openAssignDrillSheet(ctx, priority, library, assignedDrillIds, o
         drillId = data.id;
       }
       if (!drillId) return toast("Pick a drill first.");
-      const { error } = await supabase
-        .from("player_priority_drills")
-        .insert({ player_priority_id: priority.id, drill_id: drillId, coach_note: backdrop.querySelector("#dNote").value });
-      if (error) throw error;
+      const existing = assignments.find((row) => row.drill_id === drillId);
+      const note = backdrop.querySelector("#dNote").value;
+      const result = existing
+        ? await supabase.from("player_priority_drills").update({ active: true, coach_note: note }).eq("player_priority_id", priority.id).eq("drill_id", drillId)
+        : await supabase.from("player_priority_drills").insert({ player_priority_id: priority.id, drill_id: drillId, coach_note: note });
+      if (result.error) throw result.error;
+      const { error: clearError } = await supabase.from("player_priority_drills").update({ active: false }).eq("player_priority_id", priority.id).eq("active", true).neq("drill_id", drillId);
+      if (clearError) throw clearError;
       backdrop.querySelector(".close-btn").click();
-      toast("Drill assigned");
+      toast(current ? "Drill changed" : "Drill assigned");
       onDone?.();
     } catch (e) { fail(e); }
   });
@@ -132,18 +143,22 @@ export function openObservationSheet(ctx, priority, evidence = {}, onDone, aiSug
     `
     <p class="hint">Your call - this is what the timeline and the player report show as progress.</p>
     ${aiSuggestion ? `<p class="hint">AI suggestion (not applied): ${escapeHtml(aiSuggestion)}</p>` : ""}
-    <div class="dev-btns" id="oStatus">
-      ${L.OBSERVATION_STATUSES.map((s) => `<button type="button" data-s="${s}" class="tap-target">${L.OBSERVATION_LABELS[s]}</button>`).join("")}
+    <div class="bt-progress-choices" id="oStatus" role="group" aria-label="Progress">
+      ${L.OBSERVATION_STATUSES.map((s) => `<button type="button" data-s="${s}" class="bt-progress-choice" aria-pressed="false">${statusChip(s, { domain: "progress" })}</button>`).join("")}
     </div>
     <div class="dev-field"><label>Coach note</label><textarea id="oNote" placeholder="e.g. Much more stable at plant"></textarea></div>
-    <div class="dev-btns"><button class="primary tap-target" id="oSave">Save</button></div>`,
+    `,
+    `<button class="bt-button bt-button-primary" id="oSave">Save progress</button>`,
   );
   let status = null;
   backdrop.querySelector("#oStatus").addEventListener("click", (e) => {
     const b = e.target.closest("[data-s]");
     if (!b) return;
     status = b.dataset.s;
-    backdrop.querySelectorAll("#oStatus button").forEach((x) => x.classList.toggle("active", x === b));
+    backdrop.querySelectorAll("#oStatus button").forEach((x) => {
+      x.classList.toggle("active", x === b);
+      x.setAttribute("aria-pressed", String(x === b));
+    });
   });
   backdrop.querySelector("#oSave").addEventListener("click", async () => {
     if (!status) return toast("Choose improving, unchanged, worse, resolved or unclear.");
@@ -161,8 +176,14 @@ export function openObservationSheet(ctx, priority, evidence = {}, onDone, aiSug
       });
       if (error) throw error;
       backdrop.querySelector(".close-btn").click();
+      await backdrop.whenClosed;
       if (L.suggestedPriorityStatus(status) && priority.status !== "resolved") {
-        if (confirm(`Mark "${priority.title}" as resolved?`)) await changePriorityStatus(priority, "resolved");
+        const resolvePriority = await confirmDialog({
+          title: "Resolve this priority?",
+          message: `You marked ${priority.title} resolved. Also change the priority status to Resolved?`,
+          confirmLabel: "Resolve priority",
+        });
+        if (resolvePriority) await changePriorityStatus(priority, "resolved");
       }
       toast("Progress saved");
       onDone?.();
@@ -221,22 +242,23 @@ export function openFollowUpSheet(priority, onDone) {
   const backdrop = openSheet(
     "Follow-up",
     `
-    <div class="dev-field"><label>When should this be looked at again?</label>
-      <select id="fKind">${kinds.map(([v, l]) => opt(v, l, (priority.follow_up_kind ?? "") === v)).join("")}</select></div>
+    <p class="bt-supporting">When should this be checked again?</p>
+    <div class="bt-choice-list" id="fKinds">${kinds.map(([v, l]) => `<label class="bt-choice-row"><input type="radio" name="followup" value="${v}" ${(priority.follow_up_kind ?? "") === v ? "checked" : ""}><span>${escapeHtml(l)}</span></label>`).join("")}</div>
     <div class="dev-field" id="fDateWrap" hidden><label>Date</label><input type="date" id="fDate" value="${escapeHtml(priority.follow_up_date ?? "")}"></div>
     <div class="dev-field" id="fSwingsWrap" hidden><label>Swings</label><input type="number" min="1" id="fSwings" value="${priority.follow_up_swings ?? 10}"></div>
     <div class="dev-field"><label>Reminder note (optional)</label><input id="fNote" value="${escapeHtml(priority.follow_up_note ?? "")}" placeholder="Watch whether the front hip stays closed"></div>
-    <div class="dev-btns"><button class="primary tap-target" id="fSave">Save</button>${priority.follow_up_kind ? '<button class="tap-target" id="fDone">Mark follow-up done</button>' : ""}</div>`,
+    ${priority.follow_up_kind ? '<button class="bt-button bt-button-tertiary" id="fDone">Mark follow-up done</button>' : ""}`,
+    `<button class="bt-button bt-button-primary" id="fSave">Save follow-up</button>`,
   );
   const sync = () => {
-    const k = backdrop.querySelector("#fKind").value;
+    const k = backdrop.querySelector('input[name="followup"]:checked')?.value ?? "";
     backdrop.querySelector("#fDateWrap").hidden = k !== "date";
     backdrop.querySelector("#fSwingsWrap").hidden = k !== "after_swings";
   };
-  backdrop.querySelector("#fKind").addEventListener("change", sync);
+  backdrop.querySelector("#fKinds").addEventListener("change", sync);
   sync();
   backdrop.querySelector("#fSave").addEventListener("click", async () => {
-    const k = backdrop.querySelector("#fKind").value || null;
+    const k = backdrop.querySelector('input[name="followup"]:checked')?.value || null;
     if (k === "date" && !backdrop.querySelector("#fDate").value) return toast("Pick a date.");
     try {
       const { error } = await supabase
