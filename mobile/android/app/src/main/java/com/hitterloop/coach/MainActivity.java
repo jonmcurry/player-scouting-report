@@ -1,4 +1,4 @@
-package com.barreltrace.coach;
+package com.hitterloop.coach;
 
 import android.os.Bundle;
 

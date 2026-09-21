@@ -1,4 +1,4 @@
-// Shared BarrelTrace application shell. Phase 1A changes presentation and
+// Shared HitterLoop application shell. Phase 1A changes presentation and
 // navigation only; routes and the existing page workflows remain unchanged.
 import { supabase, escapeHtml } from "../shared.js";
 import { icon, iconButton, listRow, openActionSheet, openBottomSheet, openOverflowMenu } from "./ui.js";

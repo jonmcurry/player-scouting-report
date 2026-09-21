@@ -3,7 +3,7 @@
 ## Lucide icon subset
 
 `coach/assets/icons.svg` contains a small, hand-selected subset of icons from
-[Lucide](https://lucide.dev/) for BarrelTrace's shared application chrome and status components.
+[Lucide](https://lucide.dev/) for HitterLoop's shared application chrome and status components.
 No runtime icon package is included.
 
 Lucide is distributed under the ISC License and incorporates listed Feather icons under MIT:

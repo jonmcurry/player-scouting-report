@@ -1,7 +1,7 @@
 <!doctype html><html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>BarrelTrace — Player Report</title>
-<link rel="stylesheet" href="./coach.css?v=386a1b1dd2"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
-</head><body class="bt-public-report"><div class="bt-report-brand">BarrelTrace</div><main class="wrap"><div id="reportRoot"><div class="bt-report-skeleton"><div></div><div></div><div></div></div></div></main>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>HitterLoop — Player Report</title>
+<link rel="stylesheet" href="./coach.css?v=9a421ab29e"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
+</head><body class="bt-public-report"><div class="bt-report-brand">HitterLoop</div><main class="wrap"><div id="reportRoot"><div class="bt-report-skeleton"><div></div><div></div><div></div></div></div></main>
 <script src="./config.local.js"></script><script type="module">
 import { supabase, qs, escapeHtml } from "./shared.js";
 import { icon } from "./components/ui.js";
@@ -30,7 +30,7 @@ function render(data){
     ${others.length?`<section><h2>Also working on</h2>${others.map((p)=>`<details class="bt-disclosure"><summary><span>${p.status==="resolved"?"Got it: ":""}${escapeHtml(p.title)}</span><span class="bt-public-status">${escapeHtml(p.statusLabel)}</span></summary><div class="bt-disclosure-body">${p.why?`<p>${escapeHtml(p.why)}</p>`:""}</div></details>`).join("")}</section>`:""}
     ${clips.length?`<section><h2>Watch swing</h2><div class="bt-list">${clips.slice(0,3).map((clip)=>`<button class="bt-list-row" data-clip="${escapeHtml(clip.clipId)}" aria-label="Watch swing from ${escapeHtml(clip.date)}${clip.phase?`, ${escapeHtml(clip.phase)}`:""}"><span>${icon("video",{size:20})}</span><span class="bt-list-row-copy"><strong>${escapeHtml(clip.date)}</strong><small>${escapeHtml(clip.phase??"Swing")}</small></span></button>`).join("")}</div><div id="reportVideo"></div></section>`:""}
     ${(data.checkpoints??[]).length?`<details class="bt-disclosure bt-report-checklist"><summary><span>Full swing checklist</span></summary><div class="bt-disclosure-body"><ul>${data.checkpoints.map((cp)=>`<li><span>${escapeHtml(cp.label)}</span><strong>${scoreWord(cp.score)}</strong></li>`).join("")}</ul></div></details>`:""}
-    <footer>Shared by your coach with BarrelTrace · Read-only</footer>`;
+    <footer>Shared by your coach with HitterLoop · Read-only</footer>`;
   root.querySelectorAll("[data-clip]").forEach((button)=>button.onclick=()=>loadVideo(button));
 }
 async function loadVideo(button){button.disabled=true;let response;try{response=await supabase.functions.invoke("get-player-report",{body:{token,videoClipId:button.dataset.clip}});}catch{}button.disabled=false;const host=document.getElementById("reportVideo");if(!response?.data?.url){host.innerHTML='<p>Video unavailable. <button class="bt-button bt-button-tertiary" id="reloadVideo">Reload to try again</button></p>';host.querySelector("#reloadVideo").onclick=()=>loadVideo(button);return;}host.innerHTML=`<video src="${escapeHtml(response.data.url)}" controls playsinline preload="metadata"></video>`;host.querySelector("video").addEventListener("error",()=>{host.innerHTML='<p>Video unavailable. <button class="bt-button bt-button-tertiary" id="reloadVideo">Reload to try again</button></p>';host.querySelector("#reloadVideo").onclick=()=>loadVideo(button);},{once:true});}

@@ -3,11 +3,14 @@ export type Quat = [number, number, number, number];
 export type ObservationStatus = "observed" | "interpolated" | "model_inferred" | "missing";
 export type ConfidenceLevel = "high" | "medium" | "low";
 
+// PIPELINE_VERSION and COORDINATE_SYSTEM are persisted in stored reconstructions and validated on load
+// (serialization.ts). The historical product-name prefix in these values is deliberate: changing it would
+// make every existing stored animation fail that check. They are format identifiers, not branding.
 export const PIPELINE_VERSION = "barreltrace-reconstruction-v1";
 export const SKELETON_VERSION = "h36m17-v1";
 export const ANIMATION_FORMAT_VERSION = 1;
 
-/** BarrelTrace canonical coordinates: X=batter left/right, Y=vertical, Z=toward pitcher. */
+/** HitterLoop canonical coordinates: X=batter left/right, Y=vertical, Z=toward pitcher. */
 export const COORDINATE_SYSTEM = "barreltrace-x-right-y-up-z-pitcher" as const;
 
 export interface ReconstructionFrame {

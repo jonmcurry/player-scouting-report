@@ -1,4 +1,4 @@
-# BarrelTrace continuous knowledge architecture
+# HitterLoop continuous knowledge architecture
 
 **Status: specification only. Nothing in this document is implemented.** No code, migration,
 config or dependency was changed to produce it. Every repo claim below cites a file that was read.
@@ -48,7 +48,7 @@ is not the binding constraint. **Three findings change the plan:**
 | Generic-feedback detector | **3/10 now** | At one team's volume it reports noise |
 
 You are wrong on one thing worth stating plainly: a larger knowledge base is unlikely to make
-BarrelTrace meaningfully better while the measurement is unreliable and there is one team's worth of
+HitterLoop meaningfully better while the measurement is unreliable and there is one team's worth of
 data to evaluate against. See §17 for ordering.
 
 ---
@@ -143,7 +143,7 @@ Claim 1.1 (internal vs external cueing) is tagged "**Research citation** (Dynami
 motor learning literature)" with **High** confidence and no actual citation. This is the claim you
 flagged. It also self-contradicts on age: the extraction says it may not apply to novice 8U–10U hitters,
 the JSON says `player_level: "teen"`, and the "Finding 1" summary recommends it as validating
-BarrelTrace's drill-pairing philosophy for youth. The general motor-learning literature on external focus
+HitterLoop's drill-pairing philosophy for youth. The general motor-learning literature on external focus
 exists, but this document neither cites it nor establishes that it holds for youth batting.
 Treatment: `disputed / contextual`, `evidence_type = unknown` until a real citation is attached.
 
@@ -774,7 +774,7 @@ Design rules:
 
 ## 11. Generic-feedback analytics
 
-Goal: notice when BarrelTrace says the same thing regardless of evidence. It must not force variety;
+Goal: notice when HitterLoop says the same thing regardless of evidence. It must not force variety;
 repeated feedback is fine when the evidence repeats.
 
 - **Unit:** `(concept, finding key)` from `issues`, plus drill and cue frequency.

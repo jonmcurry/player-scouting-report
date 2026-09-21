@@ -42,8 +42,8 @@ test("BottomSheet markup has dialog semantics, close control, scroll body and st
 });
 
 test("overlay history closes only the top overlay before page navigation", () => {
-  assert.equal(overlayHistoryDecision(["sheet-1"], { barrelTraceOverlay: "sheet-1" }), null);
-  assert.equal(overlayHistoryDecision(["sheet-1", "dialog-2"], { barrelTraceOverlay: "sheet-1" }), "dialog-2");
+  assert.equal(overlayHistoryDecision(["sheet-1"], { hitterLoopOverlay: "sheet-1" }), null);
+  assert.equal(overlayHistoryDecision(["sheet-1", "dialog-2"], { hitterLoopOverlay: "sheet-1" }), "dialog-2");
   assert.equal(overlayHistoryDecision(["sheet-1"], null), "sheet-1");
   assert.equal(overlayHistoryDecision([], null), null);
 });

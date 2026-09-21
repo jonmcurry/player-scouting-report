@@ -4,7 +4,7 @@ This file contains Gemini-generated research output.
 
 It is **CANDIDATE RESEARCH ONLY**.
 
-Nothing in this file should be treated as approved BarrelTrace coaching guidance without human review.
+Nothing in this file should be treated as approved HitterLoop coaching guidance without human review.
 
 Numeric claims, source-quality claims, age thresholds, sport-specific ranges, and causal assertions may be inaccurate or unsupported and require verification.
 
@@ -32,7 +32,7 @@ Evaluating the 10 prioritized sources collectively reveals distinct instructiona
 - **Video:** [How To Coach Hitting Mechanics Pt. 1 | Driveline Baseball](https://www.youtube.com/watch?v=tXKjS3iKgAk&utm_source=gemini)
 - **Timestamp:** ~01:45
 - **Claim / Concept:** Internal verbal cues ("keep your hands inside," "squish the bug") fail to produce game-transferable motor patterns compared to external environmental constraints (plyo-balls, offset tee placements, varied bat weights).
-- **Assessment:** Highly valid for BarrelTrace. Directly supports BarrelTrace’s philosophy that automated diagnostic feedback must pair flaws with tangible drill constraints rather than abstract anatomical commands that confuse youth hitters.
+- **Assessment:** Highly valid for HitterLoop. Directly supports HitterLoop’s philosophy that automated diagnostic feedback must pair flaws with tangible drill constraints rather than abstract anatomical commands that confuse youth hitters.
 - **Confidence:** High
 
 #### Finding 2: Youth Fastpitch Load, Connection, and Pop-Up Prevention
@@ -53,13 +53,13 @@ Evaluating the 10 prioritized sources collectively reveals distinct instructiona
 
 ### Source Decision Matrix
 
-| **Source** | **Decision Tier** | **Role in BarrelTrace Knowledge Base** |
+| **Source** | **Decision Tier** | **Role in HitterLoop Knowledge Base** |
 | --- | --- | --- |
 | **Driveline Baseball** | **APPROVED CORE** | Primary benchmark for kinematic sequencing, bat-speed metrics, and constraint drill design. |
 | **MegRem Softball** | **APPROVED CORE** | Primary fastpitch youth (10U–14U) drill library and relatable coaching cues. |
 | **Coach Dan Blewett** | **APPROVED CORE** | Context-sensitive translator between physics, coaching cues, and youth/teen adaptations. |
 | **Antonelli Baseball** | **APPROVED CORE** | Visual flaw-to-fix mapping; identifying amateur swing compensations. |
-| **The Hitting Vault** | **APPROVED CORE** | Structured checkpoint-to-drill mapping matching BarrelTrace's 11 checkpoints. |
+| **The Hitting Vault** | **APPROVED CORE** | Structured checkpoint-to-drill mapping matching HitterLoop's 11 checkpoints. |
 | **USA Baseball** | **SECONDARY** | Age-level guardrails, motor milestones, and safety thresholds for youth athletes. |
 | **ABCA Clinics** | **SECONDARY** | High-level collegiate tactical context, game approach, and elite coach consensus. |
 | **Blast Motion** | **SECONDARY** | Reference metric definitions (rotational acceleration, time to contact, connection). |
@@ -68,7 +68,7 @@ Evaluating the 10 prioritized sources collectively reveals distinct instructiona
 
 ### Synthesis Specifications
 
-- **WHY:** The core approved sources collectively anchor BarrelTrace in empirical sports science (Driveline) while maintaining age-appropriate and fastpitch-accurate communication (MegRem, Blewett, Antonelli). Dogmatic channels are relegated to research to prevent automated systems from serving rigid, single-path diagnoses.
+- **WHY:** The core approved sources collectively anchor HitterLoop in empirical sports science (Driveline) while maintaining age-appropriate and fastpitch-accurate communication (MegRem, Blewett, Antonelli). Dogmatic channels are relegated to research to prevent automated systems from serving rigid, single-path diagnoses.
 - **BEST TOPICS TO INGEST:**
   - Kinematic sequencing checkpoints (pelvis lead, torso rotation, arm extension).
   - Pitch-location-specific bat paths (adjusting attack angle and depth for inside/outside pitches).
@@ -82,7 +82,7 @@ Evaluating the 10 prioritized sources collectively reveals distinct instructiona
   - Pro/Adult Bias: Driveline/Tread assume adult strength and rotational capacity.
   - Fastpitch Conservatism: Older softball clinicians can over-index on "slapping" or extreme downward chops to beat out bunts.
   - Dogmatic Launch Bias: Teacherman assumes all hitters must swing identically to Aaron Judge.
-- **CONTRADICTIONS:** Downward hand chop ("swing down to create backspin") versus modern rotational barrel turn ("drop the barrel early to match pitch plane"). BarrelTrace resolves this by emphasizing plane matching based on incoming ball trajectory.
+- **CONTRADICTIONS:** Downward hand chop ("swing down to create backspin") versus modern rotational barrel turn ("drop the barrel early to match pitch plane"). HitterLoop resolves this by emphasizing plane matching based on incoming ball trajectory.
 - **AGE/LEVEL LIMITATIONS:**
   - 8U–12U: Focus strictly on balance, athletic stance, posture retention, and barrel control.
   - 13U–18U: Introduce kinematic sequencing, bat speed enhancement, and attack angle awareness.

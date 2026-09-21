@@ -11,12 +11,12 @@
 // all for exactly this reason, on an already-installed app, even after a
 // full rebuild+reinstall. Confirmed the fix was correct all along; only the
 // cache-bust was missing.
-const CACHE_NAME = "barreltrace-coach-386a1b1dd2";
+const CACHE_NAME = "hitterloop-coach-9a421ab29e";
 // Separate, unversioned cache for cross-origin CDN libs (currently just
 // Three.js, see skeletonScene.js) - kept apart from CACHE_NAME so a normal
 // app-shell version bump doesn't force re-downloading a large lib that
 // hasn't changed, and so the activate handler below never wipes it.
-const CDN_CACHE = "barreltrace-coach-cdn-v1";
+const CDN_CACHE = "hitterloop-coach-cdn-v1";
 const ASSETS = [
   "./index.html",
   "./team.html",
@@ -28,7 +28,7 @@ const ASSETS = [
   "./compare.html",
   "./atbat.html",
   "./session.html",
-  "./coach.css?v=386a1b1dd2",
+  "./coach.css?v=9a421ab29e",
   "./shared.js",
   "./config.js",
   "./manifest.json",

@@ -1,6 +1,6 @@
 {
-  "appId": "com.barreltrace.coach",
-  "appName": "BarrelTrace",
+  "appId": "com.hitterloop.coach",
+  "appName": "HitterLoop",
   "webDir": "../coach",
   "android": {
     "allowMixedContent": true

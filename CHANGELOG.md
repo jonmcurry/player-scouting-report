@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.18.2] - 2026-09-21
+
+### Changed
+
+- Renamed the product from BarrelTrace to HitterLoop across the coach app (titles, login, public report brand strip and footer), PWA manifest, Android app label (launcher and task switcher), Capacitor app name, npm package names, documentation and product metadata. Brand migration only: no behavior, schema, RLS, pipeline or AI changes.
+- Android application ID / namespace / URL scheme `com.barreltrace.coach` -> `com.hitterloop.coach`, and `MainActivity` moved to `com/hitterloop/coach`. This is a separate Android app identity, not an in-place upgrade: an existing BarrelTrace install coexists until uninstalled (`adb uninstall com.barreltrace.coach`), and local app data is not carried over.
+- `window.__BARRELTRACE_LOCAL_CONFIG__` is now `window.__HITTERLOOP_LOCAL_CONFIG__` (a gitignored `coach/config.local.js` must be updated). PWA cache names now start with `hitterloop-coach-`; the service worker's activate step deletes the old caches.
+- Kept the persisted format identifiers `barreltrace-reconstruction-v1` and `barreltrace-x-right-y-up-z-pitcher`: stored reconstructions are validated against them on load, so renaming them would invalidate existing data.
+
+### Added
+
+- Brand-consistency test (`scripts/brand-consistency.test.mjs`) that fails if the old product name or Android application ID reappears in active source, build config or current docs.
+
 ## [0.18.1] - 2026-09-21
 
 ### Fixed

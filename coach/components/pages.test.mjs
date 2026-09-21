@@ -97,7 +97,7 @@ test("new pages and modules are precached and cache-stamped", () => {
 
 test("Android Back delegates to overlay history without adding @capacitor/app", () => {
   const root = path.resolve(coach, "..");
-  const activity = fs.readFileSync(path.join(root, "mobile/android/app/src/main/java/com/barreltrace/coach/MainActivity.java"), "utf8");
+  const activity = fs.readFileSync(path.join(root, "mobile/android/app/src/main/java/com/hitterloop/coach/MainActivity.java"), "utf8");
   const mobilePackage = JSON.parse(fs.readFileSync(path.join(root, "mobile/package.json"), "utf8"));
   assert.match(activity, /#btOverlayHost \.bt-overlay/);
   assert.match(activity, /history\.back\(\)/);

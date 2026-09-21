@@ -1,8 +1,8 @@
 {
-  "name": "barreltrace",
-  "version": "0.18.1",
+  "name": "hitterloop",
+  "version": "0.18.2",
   "private": true,
-  "description": "Node/TypeScript CLI layer for BarrelTrace's swing-analysis pipeline: Supabase-backed coach editing, GCS media, Gemini-assisted drafts. Separate from and does not replace the existing Python pose3d pipeline (scripts/pose3d/).",
+  "description": "Node/TypeScript CLI layer for HitterLoop's swing-analysis pipeline: Supabase-backed coach editing, GCS media, Gemini-assisted drafts. Separate from and does not replace the existing Python pose3d pipeline (scripts/pose3d/).",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -19,7 +19,7 @@
     "backfill-analysis-quality": "tsx src/cli/backfillAnalysisQuality.ts",
     "validate:swings": "node --experimental-strip-types scripts/process-validation-batch.ts",
     "provision-coach": "tsx src/cli/provisionCoach.ts",
-    "test": "npm run build && node --test dist/**/*.test.js && node --test coach/components/developmentLogic.test.mjs coach/components/pages.test.mjs coach/components/ui.test.mjs coach/components/phase1bScreens.test.mjs coach/components/phase2aScreens.test.mjs coach/components/reviewQueue.test.mjs coach/components/pitchEntry.test.mjs coach/components/comparePairs.test.mjs coach/components/phase2bScreens.test.mjs",
+    "test": "npm run build && node --test dist/**/*.test.js && node --test coach/components/developmentLogic.test.mjs coach/components/pages.test.mjs coach/components/ui.test.mjs coach/components/phase1bScreens.test.mjs coach/components/phase2aScreens.test.mjs coach/components/reviewQueue.test.mjs coach/components/pitchEntry.test.mjs coach/components/comparePairs.test.mjs coach/components/phase2bScreens.test.mjs scripts/brand-consistency.test.mjs",
     "test:contrast": "node scripts/verify-ux-contrast.mjs",
     "coach:bump-cache": "node scripts/bump-coach-cache.mjs",
     "db:migrate": "npx supabase db push",

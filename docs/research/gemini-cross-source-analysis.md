@@ -4,7 +4,7 @@ This file contains Gemini-generated research output.
 
 It is **CANDIDATE RESEARCH ONLY**.
 
-Nothing in this file should be treated as approved BarrelTrace coaching guidance without human review.
+Nothing in this file should be treated as approved HitterLoop coaching guidance without human review.
 
 Numeric claims, source-quality claims, age thresholds, sport-specific ranges, and causal assertions may be inaccurate or unsupported and require verification.
 
@@ -20,7 +20,7 @@ Numeric claims, source-quality claims, age thresholds, sport-specific ranges, an
 - **Contextual Differences:** Stance width varies by height, physical strength, and stride strategy. Hitters with long strides often start narrower; no-stride hitters start wide.
 - **Unsupported Universal Claims:** Teaching that all hitters must start with an exact 50/50 weight split, or that an open stance is inherently superior for two-eyed vision.
 - **Player-Specific Implications:** Young hitters (8U–12U) benefit from a wider, stable base to minimize extraneous balance variables.
-- **BarrelTrace Recommendation:**
+- **HitterLoop Recommendation:**
   - *Strong shared principle:* Dynamic balance and unimpeded two-eyed vision to the pitcher's release window.
   - *Optional coaching interpretation:* Feet orientation (open/square/closed), bat angle in setup.
   - *Not suitable for production guidance:* Enforcing precise initial stance width or joint angle targets.
@@ -33,7 +33,7 @@ Numeric claims, source-quality claims, age thresholds, sport-specific ranges, an
 - **Contextual Differences:** Pitch velocity dictates load tempo. Softball's 43-foot distance requires a more direct, compact load timing window than baseball.
 - **Unsupported Universal Claims:** Asserting that all hitters must perform a radical rearward bat tip or exaggerated scapular clamp.
 - **Player-Specific Implications:** Slender or younger hitters who lack rotational power may need a more deliberate inward turn to generate elastic tension; strong, twitchy hitters thrive with a quieter, shorter load.
-- **BarrelTrace Recommendation:**
+- **HitterLoop Recommendation:**
   - *Strong shared principle:* Controlled internal rotation/hinge of the rear hip without drifting over the back foot.
   - *Disputed concept:* Hand drift during load vs. stationary hand position.
   - *Not suitable for production guidance:* Demanding extreme scapular pinch or extreme barrel tips for youth players.
@@ -46,7 +46,7 @@ Numeric claims, source-quality claims, age thresholds, sport-specific ranges, an
 - **Contextual Differences:** High-velocity pitching forces hitters toward shorter strides or no-stride approaches to preserve reaction time.
 - **Unsupported Universal Claims:** "The front stride foot must point directly at a 45-degree angle on contact," or "Leg kicks do not work in fastpitch softball."
 - **Player-Specific Implications:** Youth hitters with balance issues or frequent lunges perform far better with a slide step or no-stride approach.
-- **BarrelTrace Recommendation:**
+- **HitterLoop Recommendation:**
   - *Strong shared principle:* Soft, controlled forward advance; front foot establishes stable ground contact before upper body rotation begins.
   - *Optional coaching interpretation:* Leg kick vs. no-stride vs. toe-tap.
   - *Disputed concept:* Precise lead-foot angle at initial plant (0° vs. 30° vs. 45°).
@@ -59,7 +59,7 @@ Numeric claims, source-quality claims, age thresholds, sport-specific ranges, an
 - **Contextual Differences:** Mature athletes produce 20°–35° of separation on 3D motion capture. Pre-pubescent youth (8U–12U) physically lack the musculoskeletal control for high separation and typically rotate their torso and pelvis simultaneously.
 - **Unsupported Universal Claims:** Mandating that youth hitters reach pro-level separation degrees (e.g., "Hitters must have 30° separation at landing").
 - **Player-Specific Implications:** Forcing young athletes to delay the shoulders often creates lumbar spine hyperextension rather than safe thoracic dissociation.
-- **BarrelTrace Recommendation:**
+- **HitterLoop Recommendation:**
   - *Strong shared principle:* Pelvis turns before the upper torso.
   - *Disputed concept:* Actively counter-rotating shoulders vs. letting separation occur naturally.
   - *Not suitable for production guidance:* Quantified separation angle targets for players under 14.
@@ -72,7 +72,7 @@ Numeric claims, source-quality claims, age thresholds, sport-specific ranges, an
 - **Contextual Differences:** Outside pitches demand an extended hand path; tight inside pitches require the hands to stay extremely close to the chest to prevent hooking foul.
 - **Unsupported Universal Claims:** "Take the knob directly down to the ball" (traditional linear flaw that induces slice/whiffs).
 - **Player-Specific Implications:** Hitters who push/cast the hands outward need "hands tight" cues; hitters who get handcuffed on inside pitches need rotational turn guidance.
-- **BarrelTrace Recommendation:**
+- **HitterLoop Recommendation:**
   - *Strong shared principle:* Hands stay connected to torso turn without casting or pushing away prematurely.
   - *Source-specific terminology:* "Knob to the ball" (must be flagged as a high-risk cue).
   - *Disputed concept:* Pure linear hand path vs. rotational hand trajectory.
@@ -85,7 +85,7 @@ Numeric claims, source-quality claims, age thresholds, sport-specific ranges, an
 - **Contextual Differences:** Downward trajectory in baseball (averaging -6° to -10°) requires a positive attack angle of +6° to +14°. Fastpitch underhand trajectory (dropping less, with high rise balls) requires a much flatter attack angle (0° to +8°).
 - **Unsupported Universal Claims:** "All hitters must swing up at a 15-degree launch angle," or "Swing down to hit line drives."
 - **Player-Specific Implications:** Fastpitch players facing high rise balls must stay flatter through the zone; baseball hitters facing downward sinkers need more vertical shoulder tilt.
-- **BarrelTrace Recommendation:**
+- **HitterLoop Recommendation:**
   - *Strong shared principle:* Matching the incoming vertical and horizontal path of the ball.
   - *Disputed concept:* Intentional early rearward barrel snap behind the shoulder.
   - *Not suitable for production guidance:* Blanket attack angle targets across both baseball and softball.
@@ -98,7 +98,7 @@ Numeric claims, source-quality claims, age thresholds, sport-specific ranges, an
 - **Contextual Differences:** Pitch location dictates the optimal contact point; there is no single geometric contact coordinate.
 - **Unsupported Universal Claims:** "Always hit the ball out in front of home plate," or "Let every pitch get deep."
 - **Player-Specific Implications:** Youth hitters often struggle with late reaction times, making "contact out front" an essential spatial baseline to prevent being handcuffed.
-- **BarrelTrace Recommendation:**
+- **HitterLoop Recommendation:**
   - *Strong shared principle:* Dynamic contact depth governed by pitch location (front for inside, middle for middle, deeper for outside).
   - *Not suitable for production guidance:* A single static 2D/3D contact point coordinate.
 
@@ -110,7 +110,7 @@ Numeric claims, source-quality claims, age thresholds, sport-specific ranges, an
 - **Contextual Differences:** Outside pitches show pronounced linear lead-arm extension; inside pitches maintain a bent front elbow throughout extension.
 - **Unsupported Universal Claims:** "You must reach full arm lockout at the exact instant of ball contact."
 - **Player-Specific Implications:** Instructing youth hitters to "reach extension" before contact often causes casting and bat drag.
-- **BarrelTrace Recommendation:**
+- **HitterLoop Recommendation:**
   - *Strong shared principle:* Full radial extension is a post-contact product of momentum, with front arm structure maintained at contact.
   - *Disputed concept:* Consciously trying to push into extension through the ball.
   - *Not suitable for production guidance:* Flagging bent elbows at contact as an error on inside pitches.
@@ -123,7 +123,7 @@ Numeric claims, source-quality claims, age thresholds, sport-specific ranges, an
 - **Contextual Differences:** Taller hitters display more head motion during aggressive strides than compact hitters.
 - **Unsupported Universal Claims:** "You must see the ball hit the bat" (physically impossible under biological saccadic eye movement limits).
 - **Player-Specific Implications:** Head movement is the single most common cause of high whiff rates in 8U–12U players.
-- **BarrelTrace Recommendation:**
+- **HitterLoop Recommendation:**
   - *Strong shared principle:* Minimizing head movement (especially forward head thrust) from stride plant through contact.
   - *Source-specific terminology:* "See the ball hit the bat" (treated as an intent cue, not an empirical expectation).
 
@@ -135,7 +135,7 @@ Numeric claims, source-quality claims, age thresholds, sport-specific ranges, an
 - **Contextual Differences:** Pitch location dictates the finish. Low pitches naturally produce high finishes; high pitches produce flatter finishes.
 - **Unsupported Universal Claims:** "All hitters must finish with two hands on the bat," or "A one-handed release causes weak contact."
 - **Player-Specific Implications:** Hitters with smaller hands or limited wrist strength (youth) should hold with two hands to maintain barrel control through deceleration.
-- **BarrelTrace Recommendation:**
+- **HitterLoop Recommendation:**
   - *Strong shared principle:* Controlled deceleration supported by a firm front side that absorbs rotational energy.
   - *Optional coaching interpretation:* One-handed vs. two-handed release.
   - *Not suitable for production guidance:* Penalizing either finish style as inherently flawed.
@@ -147,8 +147,8 @@ Numeric claims, source-quality claims, age thresholds, sport-specific ranges, an
 - **Meaningful Disagreements:** "Hunt fastball, react to off-speed" vs. "Hunt a specific zone regardless of pitch type."
 - **Contextual Differences:** Pitch counts heavily alter selection strategy (e.g., 2-0 hitters hunt an exact quadrant; 0-2 hitters expand to protect the border). Fastpitch hitters face shorter reaction times, requiring earlier commitment.
 - **Unsupported Universal Claims:** "Never swing at a first pitch," or "Always take until you get a strike."
-- **Player-Specific Implications:** Youth hitters often struggle with strike zone awareness; BarrelTrace must separate chase-induced swing errors from mechanical movement flaws.
-- **BarrelTrace Recommendation:**
+- **Player-Specific Implications:** Youth hitters often struggle with strike zone awareness; HitterLoop must separate chase-induced swing errors from mechanical movement flaws.
+- **HitterLoop Recommendation:**
   - *Strong shared principle:* Context-driven pitch selection based on count, pitch location, and situational goals.
   - *Optional coaching interpretation:* Fastball-hunting vs. quadrant-sitting approaches.
   - *System rule:* Do not diagnose a mechanical swing flaw if video confirms the swing was an emergency adjustment on a pitch out of the strike zone.

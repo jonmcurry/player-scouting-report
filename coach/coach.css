@@ -838,7 +838,7 @@ details.drawer .drawer-body { padding: 0 16px 16px; }
 .dev-grid .dev-card li { margin-bottom:4px; }
 
 /* ---------------------------------------------------------------------
-   BarrelTrace Phase 1A shared component foundation
+   HitterLoop Phase 1A shared component foundation
    --------------------------------------------------------------------- */
 .bt-icon { display:inline-block; flex:none; fill:none; stroke:currentColor; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; vertical-align:-0.15em; }
 .bt-display { font:600 1.75rem/2rem var(--font-display); }

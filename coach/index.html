@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>BarrelTrace — Coach Login</title>
-<link rel="stylesheet" href="./coach.css?v=386a1b1dd2">
+<title>HitterLoop — Coach Login</title>
+<link rel="stylesheet" href="./coach.css?v=9a421ab29e">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -13,7 +13,7 @@
 <div class="wrap">
   <div id="loginView" class="login-form">
     <div class="jersey-badge lg" style="margin:0 auto 4px;">⚾</div>
-    <h1 style="text-align:center;">BarrelTrace</h1>
+    <h1 style="text-align:center;">HitterLoop</h1>
     <p class="hint" style="text-align:center;margin-top:-8px;">Coach Sign In</p>
     <input type="email" id="email" placeholder="Email" autocomplete="username">
     <input type="password" id="password" placeholder="Password" autocomplete="current-password">
@@ -47,7 +47,7 @@
       <input type="text" id="newTeamSlug" placeholder="URL slug (auto-filled from name)">
       <select id="newTeamSport" aria-label="Sport"><option value="">Sport (unknown)</option><option value="softball">Softball</option><option value="baseball">Baseball</option></select>
       <input type="text" id="newTeamLevel" placeholder="Level (optional, e.g. 10U)">
-      <input type="text" id="newTeamAccessCode" placeholder="Access code (ask your BarrelTrace contact)">
+      <input type="text" id="newTeamAccessCode" placeholder="Access code (ask your HitterLoop contact)">
       <button class="primary tap-target" id="createTeamBtn">Create Team</button>
       <p class="error-text" id="createTeamErrorMsg"></p>
     </div>
@@ -239,7 +239,7 @@
     if (!data?.id) {
       errorMsg.textContent =
         `That access code isn't right, or you've tried too many times - wait a few minutes and try again, ` +
-        `or ask your BarrelTrace contact for the team setup code.`;
+        `or ask your HitterLoop contact for the team setup code.`;
       return;
     }
     const { error: contextError } = await supabase.from("teams").update({ sport, level_label: levelLabel }).eq("id", data.id);

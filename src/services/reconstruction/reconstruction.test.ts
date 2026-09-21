@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { barrelTraceToThree, mirrorBatterLeftRight, videoPose3dToBarrelTrace } from "./coordinates.js";
+import { hitterLoopToThree, mirrorBatterLeftRight, videoPose3dToHitterLoop } from "./coordinates.js";
 import { inferHandedness } from "./handedness.js";
 import { interpolateShortGaps } from "./temporal.js";
 import { boneLengthVariance, footSlidingScore, lockPlantedFoot, stabilizeBoneLengths } from "./stabilization.js";
@@ -29,8 +29,8 @@ test("foot locking reduces planted sliding but leaves fast stride motion", () =>
 });
 
 test("coordinate conversion is explicit and mirroring only flips X", () => {
-  assert.deepEqual(videoPose3dToBarrelTrace([1,2,3]),[1,3,2]);
-  assert.deepEqual(barrelTraceToThree([1,3,2]),[1,3,-2]);
+  assert.deepEqual(videoPose3dToHitterLoop([1,2,3]),[1,3,2]);
+  assert.deepEqual(hitterLoopToThree([1,3,2]),[1,3,-2]);
   assert.deepEqual(mirrorBatterLeftRight([1,3,2]),[-1,3,2]);
 });
 

@@ -1,4 +1,4 @@
-// BarrelTrace shared Phase-1A UI primitives. This module is framework-free so
+// HitterLoop shared Phase-1A UI primitives. This module is framework-free so
 // every static coach page can use the same components without a build step.
 
 const ICONS = new Set([
@@ -162,7 +162,7 @@ export function topOverlayId() {
 
 export function overlayHistoryDecision(stackIds, nextState) {
   const top = stackIds.at(-1) ?? null;
-  return top && nextState?.barrelTraceOverlay !== top ? top : null;
+  return top && nextState?.hitterLoopOverlay !== top ? top : null;
 }
 
 function ensureHost() {
@@ -206,7 +206,7 @@ function finalizeOverlay(record, reason = "close") {
 
 function requestOverlayClose(record, reason = "close") {
   if (!record || record.closed) return;
-  if (history.state?.barrelTraceOverlay === record.id) history.back();
+  if (history.state?.hitterLoopOverlay === record.id) history.back();
   else finalizeOverlay(record, reason);
 }
 
@@ -260,7 +260,7 @@ function registerOverlay(element, { onClose = null, initialFocus = null } = {}) 
   element.remove = () => requestOverlayClose(record);
   ensureHost().appendChild(element);
   setBackgroundInert(true);
-  history.pushState({ ...(history.state ?? {}), barrelTraceOverlay: record.id }, "", location.href);
+  history.pushState({ ...(history.state ?? {}), hitterLoopOverlay: record.id }, "", location.href);
   requestAnimationFrame(() => (initialFocus ? element.querySelector(initialFocus) : element.querySelector("[data-overlay-focus], button, input, select, textarea, a"))?.focus());
   return { record, close: (reason) => requestOverlayClose(record, reason) };
 }

@@ -1,10 +1,10 @@
-# BarrelTrace
+# HitterLoop
 
 **Video-based swing analysis and player development for youth baseball and softball.**
 
-BarrelTrace helps coaches and hitters break down real swings, identify what to work on next, assign
+HitterLoop helps coaches and hitters break down real swings, identify what to work on next, assign
 drills, and track whether improvements carry from practice into games. A coach films real at-bats and
-practice swings on a phone; BarrelTrace locates the swing, reconstructs the batter in 3D, and drafts a
+practice swings on a phone; HitterLoop locates the swing, reconstructs the batter in 3D, and drafts a
 review that the coach approves, edits or rejects.
 Approved observations become **priorities** with drills, follow-ups and evidence over time. The
 product is a coaching loop, not a one-off report: *see it, name it, assign a drill, check whether
@@ -193,7 +193,7 @@ of the DOM and of Supabase. Config is resolved in `coach/config.js` in three tie
 `PROD_*` constants if filled in, otherwise the browser's own hostname on port 54321, otherwise the
 gitignored `coach/config.local.js` LAN host for the native shell.
 
-**Android shell (`mobile/`).** Capacitor 6.2.1 with `appId com.barreltrace.coach`. `webDir` points at
+**Android shell (`mobile/`).** Capacitor 6.2.1 with `appId com.hitterloop.coach`. `webDir` points at
 `../coach`, so there is no duplicated code. It is installed as a debug APK. The iOS project is
 scaffolded but has not been built.
 
@@ -385,7 +385,7 @@ It is not a canned animation or a stick figure.
 - **Side by side:** compare mode links two viewers to a shared viewpoint (3D A | 3D B).
 - **Original-video review:** the 3D view sits next to the private original video, sharing a frame
   timeline.
-- **Coordinates:** canonical BarrelTrace axes are X = batter left/right, Y = vertical, Z = toward
+- **Coordinates:** canonical HitterLoop axes are X = batter left/right, Y = vertical, Z = toward
   pitcher. Units are normalized body units.
 
 ---
@@ -610,8 +610,30 @@ Things that need a one-time action on an existing machine or device:
 - **Local permission approvals:** `.claude/settings.json` still lists `adb` approvals for the old
   package name; new-name commands will simply prompt once.
 
-No domain, email address, database object, bucket or function ever used the old name. When a BarrelTrace
+No domain, email address, database object, bucket or function ever used the old name. When a HitterLoop
 domain is chosen it will need to go in `PROD_SUPABASE_URL` and any share-link base URL.
+
+### Upgrading from BarrelTrace
+
+The product was renamed from BarrelTrace to HitterLoop in 0.18.2. This was a brand migration only: no
+behavior, schema, RLS, pipeline or AI change. One-time actions on an existing machine or device:
+
+- **Android:** the application ID changed from `com.barreltrace.coach` to `com.hitterloop.coach`. These are
+  separate Android app identities, not an in-place upgrade: an existing BarrelTrace install keeps its name and
+  data and coexists with the new app until you uninstall it (`adb uninstall com.barreltrace.coach`). Local app
+  data is not carried over. Any store or distribution implications are separate release work.
+- **Local config:** if you have a gitignored `coach/config.local.js`, rename its global from
+  `window.__BARRELTRACE_LOCAL_CONFIG__` to `window.__HITTERLOOP_LOCAL_CONFIG__` (see
+  `coach/config.local.example.js`).
+- **PWA caches:** cache names now start with `hitterloop-coach-`; the service worker's activate step deletes
+  the old ones, so installed apps refetch the shell (and the Three.js CDN cache once) on next load.
+- **Persisted format identifiers kept:** stored reconstructions and pipeline/validation output are stamped
+  `barreltrace-reconstruction-v1` and `barreltrace-x-right-y-up-z-pitcher`, and the animation loader validates
+  the coordinate-system value. They are format identifiers rather than branding, so they were deliberately not
+  renamed; renaming would make existing stored animations fail that check.
+- **Local permission approvals:** `.claude/settings.json` still lists `adb` approvals for the old package
+  name; new-name commands will simply prompt once.
+- **Emulator name:** an AVD created as `BarrelIQ_Test` keeps that name (it lives on your machine).
 
 ---
 

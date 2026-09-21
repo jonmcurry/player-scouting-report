@@ -60,4 +60,4 @@ for (const [label, foreground, background, minimum] of checks) {
   console.log(`${label}: ${ratio.toFixed(2)}:1 (minimum ${minimum}:1)`);
 }
 
-console.log("All BarrelTrace Phase 1A contrast checks passed.");
+console.log("All HitterLoop Phase 1A contrast checks passed.");
