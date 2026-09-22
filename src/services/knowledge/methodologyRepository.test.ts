@@ -57,15 +57,26 @@ after(async () => {
     await svc.from("methodology_version_items").delete().in("version_label", createdVersionLabels);
     await svc.from("methodology_versions").delete().in("version_label", createdVersionLabels);
   }
-  await svc.from("methodology_claims").delete().eq("material_id", materialId);
-  await svc.from("methodology_materials").delete().eq("id", materialId);
-  await svc.from("methodology_sources").delete().eq("id", sourceId);
+  // Strict dependency order (claims -> materials -> sources; none of these
+  // FKs cascade per 00029), and error-checked rather than a bare await, so
+  // a real FK-violation failure here is never silently swallowed - the
+  // exact class of bug docs/research/methodology-codex-audit-v1.md found
+  // in the sibling suite (src/services/db/methodology.test.ts).
+  const claimsDel = await svc.from("methodology_claims").delete().eq("material_id", materialId);
+  if (claimsDel.error) console.error(`[methodologyRepository.test.ts cleanup] delete claims for material ${materialId} failed: ${claimsDel.error.message}`);
+  const materialDel = await svc.from("methodology_materials").delete().eq("id", materialId);
+  if (materialDel.error) console.error(`[methodologyRepository.test.ts cleanup] delete material ${materialId} failed: ${materialDel.error.message}`);
+  const sourceDel = await svc.from("methodology_sources").delete().eq("id", sourceId);
+  if (sourceDel.error) console.error(`[methodologyRepository.test.ts cleanup] delete source ${sourceId} failed: ${sourceDel.error.message}`);
   // If this run's publish() left a non-baseline version active (e.g. an
   // earlier assertion failed before reaching a later publish), make sure a
-  // real DB is never left with zero active versions for the next test run.
+  // real DB is never left with zero active versions for the next test run -
+  // and restore k-0.1.0 fully (active=true AND status='published'), not
+  // just the active flag, so a prior publish's status='retired' can't
+  // linger on the baseline row.
   const stillActive = must(await svc.from("methodology_versions").select("version_label").eq("active", true), "active check");
   if ((stillActive as unknown[]).length === 0) {
-    await svc.from("methodology_versions").update({ active: true }).eq("version_label", "k-0.1.0");
+    await svc.from("methodology_versions").update({ active: true, status: "published" }).eq("version_label", "k-0.1.0");
   }
   await svc.auth.admin.deleteUser(adminUserId);
 });
@@ -81,7 +92,7 @@ async function approveClaim(overrides: Record<string, unknown>): Promise<string>
   );
   must(
     await adminClient.rpc("review_methodology_claim", {
-      p_claim_id: claim.id, p_decision: "approved", p_approved_text: "Approved text for repo test",
+      p_claim_id: claim.id, p_decision: "approved", p_approved_text: "Approved text for repo test", p_review_method: "dual_model",
     }),
     "approve via review_methodology_claim (reviewer identity must come from auth.uid(), not a raw service-role update)",
   );
@@ -104,7 +115,7 @@ test("loading picks up exactly the frozen items of the currently active version,
 
   const versionLabel = `k-repo-test-${suffix}`;
   createdVersionLabels.push(versionLabel);
-  must(await adminClient.rpc("publish_methodology_snapshot", { p_version_label: versionLabel, p_notes: "repo test" }), "publish");
+  must(await adminClient.rpc("publish_methodology_snapshot", { p_version_label: versionLabel, p_claim_ids: [approvedId], p_notes: "repo test" }), "publish");
 
   const snapshot = await loadActiveMethodologySnapshot();
   assert.equal(snapshot.versionLabel, versionLabel);
@@ -113,9 +124,22 @@ test("loading picks up exactly the frozen items of the currently active version,
   assert.equal(ids.length, 1, "only the one approved+active claim should be frozen in, never the candidate");
 });
 
+test("an approved-but-unpublished claim never enters the runtime knowledge pack, even though it's fully approved", async () => {
+  const approvedButUnpublishedId = await approveClaim({ concept: "posture", sport_scope: "baseball", age_guardrail: "advanced_only" });
+
+  // Confirm it really is approved (not e.g. still candidate) before checking it's excluded.
+  const row = must(await svc.from("methodology_claims").select("review_status, active").eq("id", approvedButUnpublishedId).single(), "read approved claim");
+  assert.equal(row.review_status, "approved");
+  assert.equal(row.active, false, "approval alone must not activate it");
+
+  const snapshot = await loadActiveMethodologySnapshot();
+  const ids = snapshot.items.map((i) => i.claimId);
+  assert.ok(!ids.includes(approvedButUnpublishedId), "an approved-but-unpublished claim must never reach the runtime snapshot");
+});
+
 function stubItem(overrides: Partial<MethodologyItem>): MethodologyItem {
   return {
-    claimId: "stub", concept: "load", approvedText: "text", observableEvidence: "", coachingCue: null,
+    claimId: "stub", candidateId: null, reviewMethod: null, humanVerified: false, concept: "load", approvedText: "text", observableEvidence: "", coachingCue: null,
     appliesWhen: "", doesNotApplyWhen: "", sportScope: "baseball", levelScope: [], ageGuardrail: "advanced_only",
     evidenceType: "coaching_experience", numericClaim: false, numericEvidenceRef: null, sourceName: "", sourceUrl: "",
     materialTitle: "", materialUrl: "", materialExternalId: null, materialPublishedAt: null, sourceStartSeconds: null,

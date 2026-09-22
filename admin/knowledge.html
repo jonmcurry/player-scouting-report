@@ -48,7 +48,7 @@
           <tbody>
             ${items.length ? items.map((i) => `
               <tr data-claim-id="${i.claim_id}">
-                <td>${escapeHtml(i.item_payload.concept)}</td>
+                <td>${i.item_payload.candidate_id ? `<code>${escapeHtml(i.item_payload.candidate_id)}</code> ` : ""}${escapeHtml(i.item_payload.concept)}</td>
                 <td>${escapeHtml(i.item_payload.approved_text)}</td>
                 <td>${escapeHtml(i.item_payload.source_name)}</td>
                 <td><button class="danger hotfixBtn" data-id="${i.claim_id}">Deactivate (hotfix)</button></td>

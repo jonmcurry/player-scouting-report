@@ -22,6 +22,12 @@
   <h1>Versions</h1>
   <p class="hint">Publishing a version is atomic and immutable - historical labels are never reused or rewritten. A rollback is a new version containing the desired historical claim set, not a reactivation of the old label. Publishing here never requires an Android/PWA release.</p>
 
+  <div class="card">
+    <h2>Select claims for this release</h2>
+    <p class="hint">Approved &ne; selected for release. An approved claim only becomes part of a release - and only then can become active - when you explicitly check it here and publish. Approving a claim never stages it automatically.</p>
+    <div id="claimSelector">Loading approved claims&hellip;</div>
+  </div>
+
   <div class="card" id="previewCard">Loading preview&hellip;</div>
 
   <div class="card">
@@ -31,7 +37,7 @@
       <input name="version_label" required placeholder="k-0.2.0">
       <label>Notes</label>
       <textarea name="notes" placeholder="What changed and why"></textarea>
-      <div class="actions"><button class="primary" type="submit">Publish</button></div>
+      <div class="actions"><button class="primary" type="submit">Publish selected claims</button></div>
       <p class="error-text" id="publishError"></p>
     </form>
   </div>
@@ -51,20 +57,55 @@
 
   document.getElementById("signOutLink").addEventListener("click", (e) => { e.preventDefault(); signOut(); });
 
+  let currentItems = [];
+
+  function selectedClaimIds() {
+    return Array.from(document.querySelectorAll('#claimSelector input[type="checkbox"]:checked')).map((el) => el.value);
+  }
+
+  async function loadClaimSelector() {
+    const el = document.getElementById("claimSelector");
+    const [active, approvedClaims] = await Promise.all([getActiveVersion(), previewSnapshot()]);
+    currentItems = active ? await getActiveVersionItems(active.version_label) : [];
+    const activeIds = new Set(currentItems.map((i) => i.claim_id));
+    if (!approvedClaims.length) {
+      el.innerHTML = `<div class="empty-state">No approved claims yet - review candidates on <a href="./claims.html">Claims</a> first.</div>`;
+      return;
+    }
+    el.innerHTML = `
+      <table>
+        <thead><tr><th></th><th>Candidate ID</th><th>Concept</th><th>Currently active?</th></tr></thead>
+        <tbody>
+          ${approvedClaims.map((c) => `
+            <tr>
+              <td><input type="checkbox" value="${c.id}" ${activeIds.has(c.id) ? "checked" : ""}></td>
+              <td>${c.candidate_id ? `<code>${escapeHtml(c.candidate_id)}</code>` : `<span class="hint">&mdash;</span>`}</td>
+              <td><a href="./claim.html?id=${c.id}">${escapeHtml(c.concept)}</a></td>
+              <td>${activeIds.has(c.id) ? "yes" : "no"}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+      <p class="hint">Defaults to the currently active set - check/uncheck to stage a different release. Approved claims left unchecked stay approved and inactive; they can be selected into a later release at any time.</p>
+    `;
+    el.querySelectorAll('input[type="checkbox"]').forEach((cb) => cb.addEventListener("change", loadPreview));
+  }
+
   async function loadPreview() {
     const el = document.getElementById("previewCard");
     try {
-      const [active, previewClaims] = await Promise.all([getActiveVersion(), previewSnapshot()]);
-      const currentItems = active ? await getActiveVersionItems(active.version_label) : [];
+      const selectedIds = selectedClaimIds();
+      const active = await getActiveVersion();
+      const selected = selectedIds.length ? await previewSnapshot(selectedIds) : [];
       const currentIds = new Set(currentItems.map((i) => i.claim_id));
-      const nextIds = new Set(previewClaims.map((c) => c.id));
-      const added = previewClaims.filter((c) => !currentIds.has(c.id));
+      const nextIds = new Set(selected.map((c) => c.id));
+      const added = selected.filter((c) => !currentIds.has(c.id));
       const removed = currentItems.filter((i) => !nextIds.has(i.claim_id));
       el.innerHTML = `
         <h2>Next snapshot preview</h2>
-        <p class="hint">Currently active: <code>${active ? escapeHtml(active.version_label) : "none"}</code> (${currentItems.length} item(s)). Publishing now would freeze ${previewClaims.length} approved+active claim(s).</p>
-        ${added.length ? `<p><b class="diff-added">+${added.length} added:</b> ${added.map((c) => escapeHtml(c.concept)).join(", ")}</p>` : ""}
-        ${removed.length ? `<p><b class="diff-removed">-${removed.length} removed:</b> ${removed.map((i) => escapeHtml(i.item_payload.concept)).join(", ")}</p>` : ""}
+        <p class="hint">Currently active: <code>${active ? escapeHtml(active.version_label) : "none"}</code> (${currentItems.length} item(s)). Publishing now would freeze exactly the ${selectedIds.length} claim(s) checked above.</p>
+        ${added.length ? `<p><b class="diff-added">+${added.length} added:</b> ${added.map((c) => escapeHtml(c.candidate_id || c.concept)).join(", ")}</p>` : ""}
+        ${removed.length ? `<p><b class="diff-removed">-${removed.length} removed:</b> ${removed.map((i) => escapeHtml(i.item_payload.candidate_id || i.item_payload.concept)).join(", ")}</p>` : ""}
         ${!added.length && !removed.length ? `<p class="hint">No change from the current active snapshot.</p>` : ""}
       `;
     } catch (err) {
@@ -92,20 +133,23 @@
     errorEl.textContent = "";
     const form = new FormData(e.target);
     const label = form.get("version_label");
-    if (!confirm(`Publish "${label}"? This is atomic and immutable once it commits.`)) return;
+    const claimIds = selectedClaimIds();
+    if (!confirm(`Publish "${label}" with exactly ${claimIds.length} selected claim(s)? This is atomic and immutable once it commits.`)) return;
     try {
-      await publishSnapshot(label, form.get("notes") || "");
+      await publishSnapshot(label, claimIds, form.get("notes") || "");
       e.target.reset();
-      await Promise.all([loadPreview(), loadHistory()]);
+      await Promise.all([loadClaimSelector(), loadHistory()]);
+      await loadPreview();
     } catch (err) {
       errorEl.textContent = err.message;
     }
   });
 
-  requireMethodologyAdmin().then((session) => {
+  requireMethodologyAdmin().then(async (session) => {
     if (!session) return;
-    loadPreview();
-    loadHistory();
+    await loadClaimSelector();
+    await loadPreview();
+    await loadHistory();
   });
 </script>
 </body>

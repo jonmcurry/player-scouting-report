@@ -51,10 +51,15 @@
     const otherCandidates = published ? [] : await listClaims({ reviewStatus: "approved" });
 
     main.innerHTML = `
-      <h1>Claim: ${escapeHtml(claim.concept)}</h1>
+      <h1>Claim: ${escapeHtml(claim.concept)}${claim.candidate_id ? ` <code>${escapeHtml(claim.candidate_id)}</code>` : ""}</h1>
       <div class="card">
         <table>
-          ${fieldRow("Status", `<span class="badge ${escapeHtml(claim.review_status)}">${escapeHtml(claim.review_status)}</span> ${claim.active ? "&middot; active" : ""}`)}
+          ${fieldRow("Candidate ID", claim.candidate_id ? `<code>${escapeHtml(claim.candidate_id)}</code>` : `<span class="hint">none (hand-authored)</span>`)}
+          ${fieldRow("Review status", `<span class="badge ${escapeHtml(claim.review_status)}">${escapeHtml(claim.review_status)}</span>`)}
+          ${fieldRow("Active in production", claim.active ? `<span class="badge approved">YES - in the current published snapshot</span>` : `<span class="badge candidate">no</span>`)}
+          ${fieldRow("Review method", claim.review_method ? escapeHtml(claim.review_method) : `<span class="hint">not yet reviewed</span>`)}
+          ${fieldRow("Human verified", claim.human_verified ? `<span class="badge approved">YES</span>` : `<span class="badge candidate">no${claim.review_method && claim.review_method !== "human" ? " (AI review only - not human verification)" : ""}</span>`)}
+          <tr><td colspan="2" class="hint" style="padding-top:0;">Approved &ne; Active: an approved claim only influences production once it's included in a <em>published</em> snapshot (see <a href="./versions.html">Versions</a>). AI-reviewed &ne; human-verified: review_method=dual_model/mixed never implies a human confirmed this claim.</td></tr>
           ${fieldRow("Source", `${escapeHtml(source?.name ?? "")} &mdash; <a href="${escapeHtml(source?.canonical_url ?? "#")}" target="_blank" rel="noopener">${escapeHtml(source?.canonical_url ?? "")}</a>`)}
           ${fieldRow("Material", `${escapeHtml(material?.title ?? "")} (${escapeHtml(material?.material_type ?? "")}) &mdash; <a href="${escapeHtml(material?.canonical_url ?? "#")}" target="_blank" rel="noopener">${escapeHtml(material?.canonical_url ?? "")}</a>`)}
           ${fieldRow("Timestamp / location", `${claim.source_start_seconds != null ? escapeHtml(String(claim.source_start_seconds)) + "s" : ""}${claim.source_end_seconds != null ? " - " + escapeHtml(String(claim.source_end_seconds)) + "s" : ""} ${escapeHtml(claim.source_location ?? "")}`)}
@@ -81,6 +86,13 @@
           <h2>Review this claim</h2>
           <label>Approved text (required to approve - preserves original extracted_text separately)</label>
           <textarea id="approvedText">${escapeHtml(claim.approved_text || claim.extracted_text)}</textarea>
+          <label>Review method (required to approve - never implies human verification unless "human")</label>
+          <select id="reviewMethod">
+            <option value="">-</option>
+            <option value="human">Human - I reviewed this end to end</option>
+            <option value="dual_model">Dual-model - independent AI passes only (e.g. Gemini verification + Claude adjudication), no human review</option>
+            <option value="mixed">Mixed - some human involvement short of full human review</option>
+          </select>
           <label>Review notes</label>
           <textarea id="reviewNotes"></textarea>
           <label>Rejection reason (required to reject)</label>
@@ -134,7 +146,11 @@
         errorEl.textContent = err.message;
       }
     };
-    document.getElementById("approveBtn").addEventListener("click", () => doReview("approved"));
+    document.getElementById("approveBtn").addEventListener("click", () => {
+      const reviewMethod = document.getElementById("reviewMethod").value;
+      if (!reviewMethod) { errorEl.textContent = "Review method is required to approve (human, dual_model, or mixed)."; return; }
+      doReview("approved", { reviewMethod });
+    });
     document.getElementById("rejectBtn").addEventListener("click", () => {
       const reason = document.getElementById("rejectionReason").value;
       if (!reason) { errorEl.textContent = "Rejection reason is required."; return; }

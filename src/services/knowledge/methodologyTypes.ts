@@ -18,12 +18,16 @@ export type MethodologyAgeGuardrail = (typeof METHODOLOGY_AGE_GUARDRAILS)[number
 
 export const METHODOLOGY_EVIDENCE_TYPES = [
   "research", "instrumented_measurement", "coaching_experience", "video_observation",
-  "expert_opinion", "analogy", "unknown",
+  "expert_opinion", "analogy", "unknown", "drill_prescription", "biomechanical_explanation",
 ] as const;
 export type MethodologyEvidenceType = (typeof METHODOLOGY_EVIDENCE_TYPES)[number];
 
 export interface MethodologyItem {
   claimId: string;
+  /** Durable research/import-pipeline ID (e.g. "DRV2-001"), if the claim has one - see methodologyEvidenceMapping.ts's header for why this is kept separate from claimId (the generated uuid). */
+  candidateId: string | null;
+  reviewMethod: "human" | "dual_model" | "mixed" | null;
+  humanVerified: boolean;
   concept: string;
   approvedText: string;
   observableEvidence: string;
@@ -85,6 +89,9 @@ export function parseMethodologyItem(claimId: string, payload: unknown): Methodo
   }
   return {
     claimId,
+    candidateId: strOrNull(payload.candidate_id),
+    reviewMethod: (payload.review_method === "human" || payload.review_method === "dual_model" || payload.review_method === "mixed") ? payload.review_method : null,
+    humanVerified: payload.human_verified === true,
     concept: str(payload.concept),
     approvedText: payload.approved_text,
     observableEvidence: str(payload.observable_evidence),

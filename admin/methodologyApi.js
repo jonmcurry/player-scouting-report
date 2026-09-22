@@ -79,8 +79,12 @@ export async function updateCandidateClaim(id, fields) {
 
 /**
  * decision: 'approved' | 'rejected' | 'disputed' | 'duplicate' | 'superseded'
+ * reviewMethod: 'human' | 'dual_model' | 'mixed' - required when decision is
+ * 'approved' (the RPC itself enforces this; human_verified is derived from
+ * it server-side, never sent as a separate flag here, so the UI can't
+ * accidentally claim human verification for an AI-only review).
  */
-export async function reviewClaim({ claimId, decision, approvedText, reviewNotes, rejectionReason, duplicateOfClaimId, supersedesClaimId }) {
+export async function reviewClaim({ claimId, decision, approvedText, reviewNotes, rejectionReason, duplicateOfClaimId, supersedesClaimId, reviewMethod }) {
   return unwrap(
     await supabase.rpc("review_methodology_claim", {
       p_claim_id: claimId,
@@ -90,6 +94,7 @@ export async function reviewClaim({ claimId, decision, approvedText, reviewNotes
       p_rejection_reason: rejectionReason ?? null,
       p_duplicate_of_claim_id: duplicateOfClaimId ?? null,
       p_supersedes_claim_id: supersedesClaimId ?? null,
+      p_review_method: reviewMethod ?? null,
     }),
     "reviewing claim",
   );
@@ -97,9 +102,13 @@ export async function reviewClaim({ claimId, decision, approvedText, reviewNotes
 
 /** "Editing" a published claim: create a fresh candidate with
  * supersedes_claim_id set, per the immutable-publication rule - never
- * mutate the original row. */
+ * mutate the original row. Deliberately does NOT copy candidate_id,
+ * review_method, or human_verified from the original - this is a distinct
+ * new claim requiring its own review and, if it should carry a durable ID,
+ * its own explicit one (e.g. "DRV2-001-v2"), not an inherited one that
+ * would misrepresent its own review history. */
 export async function createSupersedingCandidate(originalClaim, fields) {
-  const { id, review_status, reviewed_by, reviewed_at, active, created_at, updated_at, duplicate_of_claim_id, ...rest } = originalClaim;
+  const { id, review_status, reviewed_by, reviewed_at, active, created_at, updated_at, duplicate_of_claim_id, candidate_id, review_method, human_verified, ...rest } = originalClaim;
   return createClaim({
     ...rest,
     ...fields,
@@ -108,6 +117,8 @@ export async function createSupersedingCandidate(originalClaim, fields) {
     approved_text: null,
     reviewed_by: null,
     reviewed_at: null,
+    review_method: null,
+    human_verified: false,
     active: false,
   });
 }
@@ -129,10 +140,18 @@ export async function getActiveVersionItems(versionLabel) {
   );
 }
 
-export async function previewSnapshot() {
-  return unwrap(await supabase.rpc("preview_methodology_snapshot"), "previewing snapshot");
+/** With no argument: every currently-approved claim (the pool to build a
+ * release from). With claimIds: previews exactly that selection. */
+export async function previewSnapshot(claimIds) {
+  return unwrap(await supabase.rpc("preview_methodology_snapshot", { p_claim_ids: claimIds ?? null }), "previewing snapshot");
 }
 
-export async function publishSnapshot(versionLabel, notes) {
-  return unwrap(await supabase.rpc("publish_methodology_snapshot", { p_version_label: versionLabel, p_notes: notes ?? "" }), "publishing snapshot");
+/** claimIds is required - publish never implicitly includes every approved
+ * claim (approved != selected for this release). Pass [] to publish a
+ * deliberately empty snapshot. */
+export async function publishSnapshot(versionLabel, claimIds, notes) {
+  return unwrap(
+    await supabase.rpc("publish_methodology_snapshot", { p_version_label: versionLabel, p_claim_ids: claimIds, p_notes: notes ?? "" }),
+    "publishing snapshot",
+  );
 }

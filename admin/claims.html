@@ -26,6 +26,8 @@
     <form id="createForm">
       <label>Material</label>
       <select name="material_id" id="materialSelect" required></select>
+      <label>Candidate ID (optional, durable research-pipeline ID, e.g. "DRV2-001")</label>
+      <input name="candidate_id" placeholder="leave blank for a hand-authored claim">
       <label>Concept</label>
       <input name="concept" required placeholder="e.g. load, hand_path, timing">
       <label>Extracted text (as found in the source)</label>
@@ -60,6 +62,8 @@
         <option value="expert_opinion">Expert opinion</option>
         <option value="analogy">Analogy</option>
         <option value="unknown">Unknown</option>
+        <option value="drill_prescription">Drill prescription</option>
+        <option value="biomechanical_explanation">Biomechanical explanation</option>
       </select>
       <label><input type="checkbox" name="numeric_claim" style="width:auto;display:inline-block;"> Numeric claim (requires an evidence reference before it can be approved)</label>
       <label>Numeric evidence ref (if numeric)</label>
@@ -88,7 +92,7 @@
       <option value="superseded">Superseded</option>
     </select>
     <table id="claimsTable">
-      <thead><tr><th>Concept</th><th>Source / material</th><th>Status</th><th>Active</th></tr></thead>
+      <thead><tr><th>Candidate ID</th><th>Concept</th><th>Source / material</th><th>Status</th><th>Review method</th><th>Human verified</th><th>Active</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -112,14 +116,17 @@
     const reviewStatus = document.getElementById("statusFilter").value || undefined;
     const claims = await listClaims({ reviewStatus });
     if (!claims.length) {
-      tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state">No claims match this filter.</div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">No claims match this filter.</div></td></tr>`;
       return;
     }
     tbody.innerHTML = claims.map((c) => `
       <tr>
+        <td>${c.candidate_id ? `<code>${escapeHtml(c.candidate_id)}</code>` : `<span class="hint">&mdash;</span>`}</td>
         <td><a href="./claim.html?id=${c.id}">${escapeHtml(c.concept)}</a></td>
         <td>${escapeHtml(c.methodology_materials?.methodology_sources?.name ?? "")} &mdash; ${escapeHtml(c.methodology_materials?.title ?? "")}</td>
         <td><span class="badge ${escapeHtml(c.review_status)}">${escapeHtml(c.review_status)}</span></td>
+        <td>${c.review_method ? escapeHtml(c.review_method) : `<span class="hint">&mdash;</span>`}</td>
+        <td>${c.human_verified ? "yes" : "no"}</td>
         <td>${c.active ? "yes" : "no"}</td>
       </tr>
     `).join("");
@@ -135,6 +142,7 @@
     try {
       await createClaim({
         material_id: form.get("material_id"),
+        candidate_id: form.get("candidate_id") || null,
         concept: form.get("concept"),
         extracted_text: form.get("extracted_text"),
         observable_evidence: form.get("observable_evidence") || "",
