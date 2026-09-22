@@ -2,8 +2,94 @@
 // Loaded as `<script type="module">`, no bundler.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
+import { getDemoConfig, isDemoMode } from "./demoConfig.js";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ---------------------------------------------------------------------
+// Demo mode (Phase 3 of the approved demo architecture). Everything here
+// is a no-op unless isDemoMode() is true (see demoConfig.js - the only
+// place that's ever decided). Banner injection is unconditional-if-demo
+// at module load, since shared.js is imported by every coach/*.html page
+// including report.html (the public report must show it too); anonymous
+// bootstrap only happens inside requireSession() below, since report.html
+// never calls requireSession() and a report viewer must not get their own
+// team cloned just for viewing a shared link.
+// ---------------------------------------------------------------------
+
+function injectDemoBanner() {
+  if (typeof document === "undefined" || document.getElementById("hitterloopDemoBanner")) return;
+  const demo = getDemoConfig();
+  const bar = document.createElement("div");
+  bar.id = "hitterloopDemoBanner";
+  bar.setAttribute(
+    "style",
+    "position:sticky;top:0;z-index:9999;display:flex;align-items:center;justify-content:center;gap:12px;" +
+      "flex-wrap:wrap;padding:6px 12px;background:#B4503A;color:#fff;font:600 13px/1.4 Inter,system-ui,sans-serif;",
+  );
+  bar.innerHTML =
+    '<span>Demo — fictional players and data</span>' +
+    '<button type="button" id="hitterloopDemoReset" style="background:transparent;border:1px solid rgba(255,255,255,0.6);color:#fff;border-radius:6px;padding:2px 10px;font:inherit;cursor:pointer;">Reset demo</button>' +
+    `<a href="${demo.returnUrl}" style="color:#fff;text-decoration:underline;">Return to HitterLoop</a>`;
+  document.body.prepend(bar);
+  document.getElementById("hitterloopDemoReset").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const { data, error } = await supabase.rpc("reset_demo_session");
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      window.location.href = `${demo.basePath}team.html?team=${encodeURIComponent(row.team_slug)}`;
+    } catch {
+      btn.disabled = false;
+      alert("Could not reset the demo. Please try again.");
+    }
+  });
+}
+
+function injectDemoUploadHiding() {
+  if (typeof document === "undefined" || getDemoConfig().capabilities.uploads) return;
+  const style = document.createElement("style");
+  // Best-effort UI hiding on top of the real functional gate in
+  // videoUpload.js's uploadRawClip() (which is what actually prevents an
+  // upload from ever happening). Covers the upload controls that carry a
+  // stable, targetable selector today (player.html's .upload-control
+  // wrapper and its "Choose Video" trigger); atbat.html's record-pitch
+  // flow builds its file input purely in JS with no dedicated wrapper to
+  // target here, so that path still relies on the functional gate alone -
+  // called out explicitly rather than silently claimed as covered.
+  style.textContent =
+    'body.hitterloop-demo-no-uploads .upload-control,' +
+    'body.hitterloop-demo-no-uploads #newVideoTrigger,' +
+    'body.hitterloop-demo-no-uploads .add-clip-input,' +
+    'body.hitterloop-demo-no-uploads .attach-video-input { display:none !important; }';
+  document.head.appendChild(style);
+  document.body.classList.add("hitterloop-demo-no-uploads");
+}
+
+if (isDemoMode()) {
+  injectDemoBanner();
+  injectDemoUploadHiding();
+}
+
+/**
+ * Demo-mode anonymous bootstrap: signs in anonymously if there's no
+ * session yet, then calls start_demo_session() so the visitor has their
+ * own cloned team before any page tries to query team-scoped data. Only
+ * ever called from requireSession() below - report.html's public,
+ * unauthenticated path never triggers this.
+ */
+async function bootstrapDemoSession() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    const { error } = await supabase.auth.signInAnonymously();
+    if (error) throw new Error(`Demo anonymous sign-in failed: ${error.message}`);
+  }
+  const { error: startErr } = await supabase.rpc("start_demo_session");
+  if (startErr) throw new Error(`Demo session bootstrap failed: ${startErr.message}`);
+  const { data: { session: fresh } } = await supabase.auth.getSession();
+  return fresh;
+}
 
 /** The 11 fixed checkpoints, canonical order. Duplicated from
  * src/types/scouting.ts's CHECKPOINTS by necessity, not oversight - this is
@@ -27,8 +113,24 @@ export const CHECKPOINTS = [
 ];
 
 /** Redirects to login if there's no active session; otherwise returns it.
- * Call at the top of every page except index.html. */
+ * Call at the top of every page except index.html.
+ *
+ * In demo mode, there is no login page to redirect to at all: a missing
+ * session instead triggers anonymous bootstrap (bootstrapDemoSession()
+ * above), so a demo visitor lands directly on real product pages without
+ * ever seeing the normal coach sign-in form - matching the architecture's
+ * "creates an anonymous demo session without showing normal login"
+ * requirement. Normal (non-demo) mode is completely unchanged. */
 export async function requireSession() {
+  if (isDemoMode()) {
+    try {
+      return await bootstrapDemoSession();
+    } catch (err) {
+      console.error(err);
+      document.body.innerHTML = '<p style="padding:24px;">Could not start the demo. Please reload the page.</p>';
+      return null;
+    }
+  }
   const {
     data: { session },
   } = await supabase.auth.getSession();

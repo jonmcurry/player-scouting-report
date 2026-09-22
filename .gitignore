@@ -61,3 +61,10 @@ mobile/android/keystore.properties
 # mobile/capacitor.config.json), so this genuinely ships into a native build
 # if committed - never commit it.
 coach/config.local.js
+
+# Per-dev-machine local demo-mode override (see coach/demoConfig.js) - same
+# pattern as coach/config.local.js above: coach/demo.local.example.js is the
+# tracked template. Never commit real demo project keys here even though
+# they're anon keys (RLS-protected, not secret) - same reasoning as
+# config.local.js not being committed.
+coach/demo.local.js

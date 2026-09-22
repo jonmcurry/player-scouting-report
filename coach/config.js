@@ -5,6 +5,12 @@
 // commit, including real hosted values below once you have them.
 //
 // Resolution order (see resolveConfig()):
+//   0. Demo mode (see demoConfig.js) - if window.__HITTERLOOP_DEMO_CONFIG__
+//      sets mode: "demo", its own supabaseUrl/supabaseAnonKey are used
+//      unconditionally and NONE of the branches below ever run. Demo mode
+//      never touches local-dev or production Supabase config, and normal/
+//      native-shell mode never reads the demo config - the two are fully
+//      partitioned by demoConfig.js's single mode check.
 //   1. PROD_SUPABASE_URL/KEY below, if both are filled in - always wins,
 //      browser or native shell alike. Fill these in from your hosted
 //      Supabase project (Project Settings -> API) before shipping this app
@@ -25,6 +31,8 @@
 //      elsewhere in this repo). Throws a clear, actionable error if none of
 //      the three are available, rather than silently pointing a coach's
 //      real device at some other dev's home network.
+import { getDemoConfig } from "./demoConfig.js";
+
 const PROD_SUPABASE_URL = "";
 const PROD_SUPABASE_ANON_KEY = "";
 
@@ -41,6 +49,10 @@ const isNativeShell =
   window.Capacitor.isNativePlatform();
 
 function resolveConfig() {
+  const demo = getDemoConfig();
+  if (demo.mode === "demo") {
+    return { url: demo.supabaseUrl, key: demo.supabaseAnonKey };
+  }
   if (PROD_SUPABASE_URL && PROD_SUPABASE_ANON_KEY) {
     return { url: PROD_SUPABASE_URL, key: PROD_SUPABASE_ANON_KEY };
   }

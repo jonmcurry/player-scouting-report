@@ -7,6 +7,7 @@
 // (see step ordering below) - a dangling pending row for bytes that never
 // arrived would just confuse the worker and the coach.
 import { supabase } from "../shared.js";
+import { getDemoConfig } from "../demoConfig.js";
 
 function sanitizeForSlug(name) {
   return name.replace(/[^A-Za-z0-9_-]/g, "");
@@ -19,6 +20,13 @@ function sanitizeForSlug(name) {
  * @returns {Promise<string>} created clip id
  */
 export async function uploadRawClip(gameLogEntryId, file, link = {}) {
+  // The one real functional chokepoint for uploads (get-upload-url is the
+  // only path that ever produces a writable destination) - centralized
+  // capability check here, per the demo architecture's "uploads disabled
+  // in demo mode" requirement, rather than only hiding a button in the UI.
+  if (!getDemoConfig().capabilities.uploads) {
+    throw new Error("Uploads are disabled in this demo. Explore the pre-seeded swings instead.");
+  }
   const dotIndex = file.name.lastIndexOf(".");
   const stem = dotIndex > 0 ? file.name.slice(0, dotIndex) : file.name;
   const ext = dotIndex > 0 ? file.name.slice(dotIndex) : ".mp4";

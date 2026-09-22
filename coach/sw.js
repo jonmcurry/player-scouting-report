@@ -31,6 +31,7 @@ const ASSETS = [
   "./coach.css?v=9a421ab29e",
   "./shared.js",
   "./config.js",
+  "./demoConfig.js",
   "./manifest.json",
   "./components/appShell.js",
   "./components/shellState.js",
