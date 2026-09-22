@@ -13,12 +13,20 @@
 // the existing window.__HITTERLOOP_LOCAL_CONFIG__ pattern coach/config.js
 // already uses for the native-shell case - same inert-if-absent contract.
 //
-// Shape (exactly per the approved architecture doc):
+// Shape (per the approved architecture doc, amended for the temporary
+// same-project + isolated `demo` Postgres schema architecture - see
+// docs/research/demo-shared-project-architecture.md):
 //   {
 //     mode: "demo" | "normal",
 //     basePath: string,
 //     supabaseUrl: string,
 //     supabaseAnonKey: string,
+//     dataNamespace: string,  // Postgres schema demo queries/RPCs resolve
+//                              // against - "demo", never "public". This is
+//                              // the ONLY thing that changes between the
+//                              // demo and normal Supabase clients; every
+//                              // .from()/.rpc() call site elsewhere in
+//                              // coach/ is completely unchanged.
 //     capabilities: { uploads: boolean, liveAnalysis: boolean },
 //     returnUrl: string,
 //   }
@@ -28,6 +36,7 @@ const NORMAL_CONFIG = Object.freeze({
   basePath: "./",
   supabaseUrl: null,
   supabaseAnonKey: null,
+  dataNamespace: "public",
   capabilities: Object.freeze({ uploads: true, liveAnalysis: true }),
   returnUrl: null,
 });
@@ -52,6 +61,12 @@ export function getDemoConfig() {
     basePath: raw.basePath || "/hitterloop/demo/",
     supabaseUrl: raw.supabaseUrl,
     supabaseAnonKey: raw.supabaseAnonKey,
+    // Always "demo" - not reader-configurable. The whole point of this
+    // field is that demo mode can never accidentally resolve against
+    // "public" (real production data) no matter what a hand-edited
+    // demo.local.js/site-publish config gets wrong; see
+    // docs/research/demo-shared-project-architecture.md.
+    dataNamespace: "demo",
     capabilities: Object.freeze({
       uploads: raw.capabilities?.uploads === true,
       liveAnalysis: raw.capabilities?.liveAnalysis === true,

@@ -1,3 +1,21 @@
+-- ===========================================================================
+-- OBSOLETE / REFERENCE-ONLY as of 2026-09-22. Preserved for history only -
+-- NOT the authoritative demo implementation anymore, and NOT applied
+-- anywhere.
+--
+-- This file targeted a DEDICATED demo Supabase project (a full second copy
+-- of the real production schema via supabase/migrations/*.sql, plus these
+-- additions, with demo teams/players stored directly in that project's
+-- public.teams/public.players). That plan is superseded by the temporary
+-- SAME-PROJECT + isolated `demo` Postgres schema architecture - see
+-- supabase/migrations/00031_demo_shared_project_schema.sql (the real,
+-- authoritative migration) and docs/research/demo-shared-project-architecture.md
+-- for why and what changed. supabase/demo/README.md documents both the
+-- historical dedicated-project plan (still the eventual target - see that
+-- doc's "future migration back to a dedicated project" section) and today's
+-- interim reality.
+-- ===========================================================================
+
 -- Demo-only additions (Phases 1-2 of the approved HitterLoop demo
 -- architecture). Applied ONLY to a dedicated demo Supabase project, AFTER
 -- supabase/migrations/*.sql (the real, unmodified production schema) - see

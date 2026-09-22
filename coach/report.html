@@ -4,14 +4,22 @@
 </head><body class="bt-public-report"><div class="bt-report-brand">HitterLoop</div><main class="wrap"><div id="reportRoot"><div class="bt-report-skeleton"><div></div><div></div><div></div></div></div></main>
 <script src="./demo.local.js"></script><script src="./config.local.js"></script><script type="module">
 import { supabase, qs, escapeHtml } from "./shared.js";
+import { isDemoMode } from "./demoConfig.js";
 import { icon } from "./components/ui.js";
 const root=document.getElementById("reportRoot"),token=qs("token");
 const scoreWord=(score)=>({3:"Solid",2:"Developing",1:"Working on it"}[score]??"");
+// The ONE branch on demo mode this page needs: which Edge Function to call.
+// get-demo-player-report is the schema-isolated counterpart of
+// get-player-report (queries demo.* instead of public.*, never both) - see
+// supabase/functions/get-demo-player-report/index.ts. Everything else
+// about this page - rendering, video handling, error states - is
+// completely unchanged between the two modes.
+const reportFunction = isDemoMode() ? "get-demo-player-report" : "get-player-report";
 
 async function main(){
   if(!token)return invalid();
   let response;
-  try{response=await supabase.functions.invoke("get-player-report",{body:{token}});}catch{return network();}
+  try{response=await supabase.functions.invoke(reportFunction,{body:{token}});}catch{return network();}
   if(response.error&&!response.data){const status=response.error?.context?.status;if(status>=400&&status<500)return invalid();return network();}
   if(!response.data||response.data.error)return invalid();
   render(response.data);
@@ -33,6 +41,6 @@ function render(data){
     <footer>Shared by your coach with HitterLoop · Read-only</footer>`;
   root.querySelectorAll("[data-clip]").forEach((button)=>button.onclick=()=>loadVideo(button));
 }
-async function loadVideo(button){button.disabled=true;let response;try{response=await supabase.functions.invoke("get-player-report",{body:{token,videoClipId:button.dataset.clip}});}catch{}button.disabled=false;const host=document.getElementById("reportVideo");if(!response?.data?.url){host.innerHTML='<p>Video unavailable. <button class="bt-button bt-button-tertiary" id="reloadVideo">Reload to try again</button></p>';host.querySelector("#reloadVideo").onclick=()=>loadVideo(button);return;}host.innerHTML=`<video src="${escapeHtml(response.data.url)}" controls playsinline preload="metadata"></video>`;host.querySelector("video").addEventListener("error",()=>{host.innerHTML='<p>Video unavailable. <button class="bt-button bt-button-tertiary" id="reloadVideo">Reload to try again</button></p>';host.querySelector("#reloadVideo").onclick=()=>loadVideo(button);},{once:true});}
+async function loadVideo(button){button.disabled=true;let response;try{response=await supabase.functions.invoke(reportFunction,{body:{token,videoClipId:button.dataset.clip}});}catch{}button.disabled=false;const host=document.getElementById("reportVideo");if(!response?.data?.url){host.innerHTML='<p>Video unavailable. <button class="bt-button bt-button-tertiary" id="reloadVideo">Reload to try again</button></p>';host.querySelector("#reloadVideo").onclick=()=>loadVideo(button);return;}host.innerHTML=`<video src="${escapeHtml(response.data.url)}" controls playsinline preload="metadata"></video>`;host.querySelector("video").addEventListener("error",()=>{host.innerHTML='<p>Video unavailable. <button class="bt-button bt-button-tertiary" id="reloadVideo">Reload to try again</button></p>';host.querySelector("#reloadVideo").onclick=()=>loadVideo(button);},{once:true});}
 main();
 </script></body></html>

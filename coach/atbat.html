@@ -7,6 +7,7 @@
 <div id="pitchActions"></div><nav class="bottom-nav" id="bottomNav"></nav>
 <script src="./demo.local.js"></script><script src="./config.local.js"></script><script type="module">
 import { supabase, requireSession, qs, escapeHtml, getMyDisplayName } from "./shared.js";
+import { getDemoConfig } from "./demoConfig.js";
 import { L, buildContext, PLAYER_SELECT, emptyState } from "./components/devUi.js";
 import { renderBottomNav, renderDrillInAppBar } from "./components/appShell.js";
 import { button, confirmDialog, icon, openBottomSheet, openOverflowMenu, showSnackbar, statusChip } from "./components/ui.js";
@@ -42,7 +43,7 @@ async function reload() {
 function clipState(list, pitchId) {
   const local = uploads.get(pitchId); if (local?.state === "uploading") return statusChip("pending", { domain: "processing", label: "Uploading…" });
   if (local?.state === "failed") return `<button class="bt-evidence-chip failed" data-action="retry">Failed · Retry</button>`;
-  if (local?.state === "failed_lost") return `<button class="bt-evidence-chip failed" data-action="camera">Re-record to try again</button>`;
+  if (local?.state === "failed_lost") return `<button class="bt-evidence-chip failed upload-control" data-action="camera">Re-record to try again</button>`;
   if (!list.length) return '<span class="bt-evidence-chip">No video</span>';
   if (list.length > 1) return `<span class="bt-evidence-chip">${list.length} clips</span>`;
   const clip = list[0]; return statusChip(clip.status, { domain: "processing", label: clip.status === "pending" ? "Waiting to process" : undefined });
@@ -56,15 +57,15 @@ function render() {
   else host.innerHTML = inferred.map(({ pitch, balls, strikes, inferred: countInferred }) => {
     const list = clips.filter((clip) => clip.at_bat_pitch_id === pitch.id); const label = L.PITCH_OUTCOME_LABELS[pitch.pitch_outcome] ?? "Outcome not recorded"; const swung = pitch.swung ?? L.swungFromOutcome(pitch.pitch_outcome);
     const meta = pitchMetaParts(label, swung, pitch.pitch_zone ? zoneLabel(pitch.pitch_zone) : "").join(" · ");
-    return `<article class="bt-pitch-row" data-pid="${pitch.id}" role="listitem"><span class="bt-pitch-number" aria-hidden="true">${pitch.pitch_number}</span><button type="button" class="bt-list-row-copy bt-pitch-main" data-action="details" aria-label="Pitch ${pitch.pitch_number}, ${escapeHtml(meta)}, ${L.countLabel(balls, strikes)}. Edit details"><strong>${escapeHtml(meta)}</strong><small>${L.countLabel(balls, strikes)}${countInferred ? " · derived" : ""}${pitch.pitch_location ? ` · From earlier entry: ${escapeHtml(pitch.pitch_location)}` : ""}</small>${pitch.notes ? `<small>${escapeHtml(pitch.notes)}</small>` : ""}${pitch === pitches.at(-1) && end ? '<small>At-bat likely over</small>' : ""}</button>${clipState(list, pitch.id)}<button class="bt-icon-button" data-action="camera" aria-label="Add video to pitch ${pitch.pitch_number}">${icon("camera", { size: 20 })}</button><button class="bt-icon-button" data-action="menu" aria-label="More actions for pitch ${pitch.pitch_number}">${icon("ellipsis-vertical", { size: 20 })}</button></article>`;
+    return `<article class="bt-pitch-row" data-pid="${pitch.id}" role="listitem"><span class="bt-pitch-number" aria-hidden="true">${pitch.pitch_number}</span><button type="button" class="bt-list-row-copy bt-pitch-main" data-action="details" aria-label="Pitch ${pitch.pitch_number}, ${escapeHtml(meta)}, ${L.countLabel(balls, strikes)}. Edit details"><strong>${escapeHtml(meta)}</strong><small>${L.countLabel(balls, strikes)}${countInferred ? " · derived" : ""}${pitch.pitch_location ? ` · From earlier entry: ${escapeHtml(pitch.pitch_location)}` : ""}</small>${pitch.notes ? `<small>${escapeHtml(pitch.notes)}</small>` : ""}${pitch === pitches.at(-1) && end ? '<small>At-bat likely over</small>' : ""}</button>${clipState(list, pitch.id)}<button class="bt-icon-button upload-control" data-action="camera" aria-label="Add video to pitch ${pitch.pitch_number}">${icon("camera", { size: 20 })}</button><button class="bt-icon-button" data-action="menu" aria-label="More actions for pitch ${pitch.pitch_number}">${icon("ellipsis-vertical", { size: 20 })}</button></article>`;
   }).join("");
   host.setAttribute("role", "list"); host.onclick = onPitchClick;
   const summary = L.summarizeAtBat(entry, pitches, clips);
   document.getElementById("facts").innerHTML = `<details class="bt-disclosure" id="factsDisclosure"><summary><span>At-bat summary</span><span class="bt-caption">${summary.pitchCount} pitches · ${summary.swings} swings</span></summary><div class="bt-disclosure-body"><p>${escapeHtml(L.atBatFactsSummary(summary))}</p>${button("Save summary", { variant: "secondary", attrs: 'id="saveSummary"' })}</div></details>`;
   document.getElementById("saveSummary")?.addEventListener("click", saveSummary);
   document.getElementById("pitchActions").innerHTML = end
-    ? `<div class="bt-sticky-action-bar"><a class="bt-button bt-button-primary" href="${ctx.url("player")}">Done</a>${button(`Record pitch ${next}`, { variant: "tertiary", attrs: 'id="recordPitch"' })}${button("Log without video", { variant: "tertiary", attrs: 'id="logPitch"' })}</div>`
-    : `<div class="bt-sticky-action-bar">${button(`Record pitch ${next}`, { variant: "primary", attrs: 'id="recordPitch"' })}${button("Log without video", { variant: "secondary", attrs: 'id="logPitch"' })}</div>`;
+    ? `<div class="bt-sticky-action-bar"><a class="bt-button bt-button-primary" href="${ctx.url("player")}">Done</a>${button(`Record pitch ${next}`, { variant: "tertiary", className: "upload-control", attrs: 'id="recordPitch"' })}${button("Log without video", { variant: "tertiary", attrs: 'id="logPitch"' })}</div>`
+    : `<div class="bt-sticky-action-bar">${button(`Record pitch ${next}`, { variant: "primary", className: "upload-control", attrs: 'id="recordPitch"' })}${button("Log without video", { variant: "secondary", attrs: 'id="logPitch"' })}</div>`;
   document.getElementById("recordPitch")?.addEventListener("click", recordPitch);
   document.getElementById("logPitch")?.addEventListener("click", async () => openOutcome(await createPitch()));
 }
@@ -72,7 +73,18 @@ async function createPitch() {
   try { return await insertPitchCollisionSafe({ loadPitches, insertPitch: async (pitch_number) => { const { data, error } = await supabase.from("at_bat_pitches").insert({ game_log_entry_id: entryId, pitch_number }).select("*").single(); if (error) throw error; pitches.push(data); render(); return data; } }); }
   catch { showSnackbar("Couldn't add the pitch. Try again."); return null; }
 }
-function chooseVideo({ capture = true, onFile }) { const input = document.createElement("input"); input.type = "file"; input.accept = "video/*"; if (capture) input.capture = "environment"; input.onchange = () => { const file = input.files?.[0]; if (file) onFile(file); }; input.click(); }
+// The single chokepoint every upload/camera/"add another video" entry
+// point on this page routes through (Record pitch, the per-pitch camera
+// icon, and the overflow menu's "Add another video" item all call this).
+// Demo mode never creates or clicks the OS file/camera picker at all - not
+// just a post-pick network block (that's videoUpload.js's uploadRawClip()
+// gate, still in place as defense in depth) - matching the same
+// capabilities.uploads flag player.html's upload controls already use, via
+// the one centralized demoConfig.js, not a pathname check.
+function chooseVideo({ capture = true, onFile }) {
+  if (!getDemoConfig().capabilities.uploads) { showSnackbar("Uploads are turned off in this demo."); return; }
+  const input = document.createElement("input"); input.type = "file"; input.accept = "video/*"; if (capture) input.capture = "environment"; input.onchange = () => { const file = input.files?.[0]; if (file) onFile(file); }; input.click();
+}
 function recordPitch() { chooseVideo({ onFile: async (file) => { const pitch = await createPitch(); if (!pitch) return; uploads.set(pitch.id, { state: "uploading", file }); render(); openOutcome(pitch); uploadForPitch(pitch, file); } }); }
 async function uploadForPitch(pitch, file) {
   if (!file) return showSnackbar("Re-record to try again.");
@@ -104,7 +116,11 @@ function onPitchClick(event) {
 function openPitchMenu(pitch, anchor) {
   const list = clips.filter((clip) => clip.at_bat_pitch_id === pitch.id); const ready = list.find((clip) => clip.status === "ready");
   openOverflowMenu({ title: `Pitch ${pitch.pitch_number}`, anchor, items: [
-    { label: "Change outcome", icon: "pencil", onSelect: () => openOutcome(pitch) }, { label: "Edit details", icon: "pencil", onSelect: () => openDetails(pitch) }, { label: "Add another video", icon: "camera", onSelect: () => chooseVideo({ onFile: (file) => uploadForPitch(pitch, file) }) },
+    { label: "Change outcome", icon: "pencil", onSelect: () => openOutcome(pitch) }, { label: "Edit details", icon: "pencil", onSelect: () => openDetails(pitch) },
+    // Excluded from the menu entirely in demo mode, not just gated after
+    // the fact - matches the "hide or disable" requirement, not merely
+    // "block after the picker already opened".
+    ...(getDemoConfig().capabilities.uploads ? [{ label: "Add another video", icon: "camera", onSelect: () => chooseVideo({ onFile: (file) => uploadForPitch(pitch, file) }) }] : []),
     ...(ready ? [{ label: "Review swing", icon: "video", onSelect: () => location.href = ctx.url("review", { clip: ready.id }) }] : []),
     { label: "Delete pitch", icon: "trash-2", destructive: true, onSelect: () => deletePitch(pitch) },
   ] });

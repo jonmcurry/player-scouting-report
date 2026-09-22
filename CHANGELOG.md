@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.19.0] - 2026-09-22
+
+### Added
+
+- Public HitterLoop demo backend, complete and deployed to the real cloud Supabase project: an isolated `demo` Postgres schema (no demo row ever lives in `public.*`, no FK from `demo.*` into production tables) inside the same shared project, since a dedicated second project wasn't available. Anonymous visitors get a private, resettable clone of a fictional team via `start_demo_session()`/`reset_demo_session()`, transactionally cloned-then-repointed-then-deleted with per-visitor advisory-lock concurrency safety.
+- Full canonical demo narrative: Jordan Lee's complete coaching loop (swing evidence -> reviewed finding -> priority -> assigned drill -> practice follow-up -> resolution -> shareable report), Maya Torres's exact 4-pitch game at-bat with a pending review finding, and Riley Chen's longitudinal development history (one resolved, one monitoring priority) - covering every real coach page (team, player, at-bat, review, development, practice, compare, report) with meaningful fictional data, none of it fabricated AI provenance.
+- `get-demo-player-report` Edge Function: the demo-mode counterpart to `get-player-report`, schema-scoped to `demo`, reusing the same report-shaping logic; `report.html` now branches on demo mode to call it.
+- Centralized demo runtime config (`coach/demoConfig.js`, `dataNamespace`) drives a single schema-scoped Supabase client construction in `coach/shared.js` - every existing `.from()`/`.rpc()` call site across the app is unchanged.
+
+### Fixed
+
+- At-bat page (and the Practice page's equivalent file-picker flows) no longer open the OS camera/file picker in demo mode - `chooseVideo()` and `practicePage.js`'s upload chokepoints now check the same `capabilities.uploads` flag `player.html` already used, closing a gap where Record-pitch/camera-icon/"Add another video" stayed clickable even though the resulting upload was already blocked after the fact.
+
 ## [0.18.2] - 2026-09-21
 
 ### Changed

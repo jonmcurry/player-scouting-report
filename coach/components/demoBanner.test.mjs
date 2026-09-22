@@ -24,6 +24,21 @@ test("getDemoConfig defaults to normal mode with no global set (the case for eve
   assert.equal(getDemoConfig().mode, "normal");
   assert.equal(isDemoMode(), false);
   assert.equal(getDemoConfig().capabilities.uploads, true, "normal mode must not carry demo capability restrictions");
+  assert.equal(getDemoConfig().dataNamespace, "public", "normal mode must resolve against the real public schema");
+});
+
+test("getDemoConfig always forces dataNamespace to \"demo\" in demo mode, even if a raw config tried to override it", async () => {
+  globalThis.window = {
+    __HITTERLOOP_DEMO_CONFIG__: {
+      mode: "demo",
+      supabaseUrl: "https://demo-project.supabase.co",
+      supabaseAnonKey: "demo-anon-key",
+      dataNamespace: "public",
+    },
+  };
+  const { getDemoConfig } = await freshImport("../demoConfig.js");
+  assert.equal(getDemoConfig().dataNamespace, "demo", "dataNamespace must never be settable to \"public\" from raw config - that would point demo traffic at real production data");
+  delete globalThis.window;
 });
 
 test("getDemoConfig ignores a global with mode !== \"demo\"", async () => {
@@ -75,6 +90,39 @@ test("shared.js: demo banner is injected unconditionally at module load (so it a
   assert.match(src, /if \(isDemoMode\(\)\) \{\s*\n\s*injectDemoBanner\(\);/);
   assert.match(src, /Demo — fictional players and data/);
   assert.match(src, /rpc\(["']reset_demo_session["']\)/, "the banner's Reset action must call reset_demo_session()");
+});
+
+test("shared.js: the Supabase client is constructed with db.schema bound to the centralized dataNamespace, never a hardcoded schema", () => {
+  const src = read("shared.js");
+  assert.match(src, /db:\s*\{\s*schema:\s*getDemoConfig\(\)\.dataNamespace\s*\}/, "the client's schema must come from getDemoConfig().dataNamespace, not be hardcoded, so demo mode can never accidentally resolve against public");
+});
+
+test("atbat.html: chooseVideo() (the sole chokepoint for Record pitch / camera icon / Add another video) never opens the OS picker when capabilities.uploads is false", () => {
+  const src = read("atbat.html");
+  const fnStart = src.indexOf("function chooseVideo(");
+  const fnBody = src.slice(fnStart, src.indexOf("\n}", fnStart));
+  assert.match(fnBody, /getDemoConfig\(\)\.capabilities\.uploads/, "chooseVideo must check the centralized capability flag");
+  const guardIndex = fnBody.indexOf("capabilities.uploads");
+  const clickIndex = fnBody.indexOf("input.click()");
+  assert.ok(guardIndex > -1 && clickIndex > -1 && guardIndex < clickIndex, "the capability check must come before input.click(), not after");
+  assert.match(src, /class="bt-icon-button upload-control" data-action="camera"/, "the per-pitch camera icon must carry .upload-control so demo mode's existing CSS hiding covers it");
+  assert.match(src, /className: "upload-control", attrs: 'id="recordPitch"'/, "the Record pitch button must carry .upload-control");
+  assert.match(src, /getDemoConfig\(\)\.capabilities\.uploads \? \[\{ label: "Add another video"/, "the overflow menu must exclude Add another video entirely in demo mode, not just gate it after opening");
+});
+
+test("practicePage.js: attachVideo/addRepsWithVideo (the practice-page file-picker chokepoints) never open the OS picker when capabilities.uploads is false", () => {
+  const src = read("components/practicePage.js");
+  for (const fnName of ["attachVideo", "addRepsWithVideo"]) {
+    const fnStart = src.indexOf(`function ${fnName}(`);
+    assert.ok(fnStart > -1, `${fnName} must exist`);
+    const fnBody = src.slice(fnStart, src.indexOf("\n}", fnStart));
+    const guardIndex = fnBody.indexOf("capabilities.uploads");
+    const clickIndex = fnBody.indexOf("input.click()");
+    assert.ok(guardIndex > -1 && clickIndex > -1 && guardIndex < clickIndex, `${fnName} must check capabilities.uploads before input.click()`);
+  }
+  assert.match(src, /upload-control" id="quickAddRep"/, "quickAddRep must carry .upload-control");
+  assert.match(src, /upload-control" id="addRepVideo"/, "addRepVideo must carry .upload-control");
+  assert.match(src, /upload-control" data-rep-action="attach"/, "the per-rep attach-video button must carry .upload-control");
 });
 
 test("videoUpload.js: uploadRawClip refuses to run when capabilities.uploads is false, before any network call", () => {

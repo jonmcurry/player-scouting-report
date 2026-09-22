@@ -7,6 +7,7 @@ import { openObservationSheet, openFollowUpSheet } from "./devActions.js";
 import { uploadRawClip } from "./videoUpload.js";
 import { renderDrillInAppBar } from "./appShell.js";
 import { icon, openOverflowMenu } from "./ui.js";
+import { getDemoConfig } from "../demoConfig.js";
 import {
   existingSessionForDate, practicePrimaryAction, practiceProgression,
   practiceStartDefaults, repPrimaryAction,
@@ -236,14 +237,14 @@ function renderReps(views) {
     const action = repPrimaryAction(rep);
     const primary = action.key === "review"
       ? `<a class="bt-button bt-button-tertiary" href="${ctx.url("review", { clip: rep.clip.id })}">Review</a>`
-      : rep.clip ? '<span class="bt-caption">Open menu</span>' : '<button class="bt-button bt-button-tertiary" data-rep-action="attach">Attach video</button>';
+      : rep.clip ? '<span class="bt-caption">Open menu</span>' : '<button class="bt-button bt-button-tertiary upload-control" data-rep-action="attach">Attach video</button>';
     return `<div class="bt-list-row p2a-rep-row ${rep.usable === false ? "is-unusable" : ""}" data-rid="${rep.id}">
       <span class="p2a-rep-number">${rep.rep.rep_number}</span><span class="bt-list-row-copy"><span class="bt-list-row-title">Rep ${rep.rep.rep_number}</span>
         <span class="bt-list-row-supporting">${escapeHtml(L.GROUPING_LABELS[rep.grouping])}${rep.usable === false ? " · Rejected" : ""}</span></span>${clipState(rep)}${primary}
       <button class="bt-icon-button" aria-label="More actions for rep ${rep.rep.rep_number}" data-rep-action="menu">${icon("ellipsis-vertical", { size: 22 })}</button></div>`;
   };
   document.getElementById("reps").innerHTML = `<section class="p2a-rep-section"><div class="p2a-section-head"><h2>${escapeHtml(L.GROUPING_LABELS[currentGroup])}</h2>
-      <button class="bt-button bt-button-secondary" id="quickAddRep">Add rep</button></div>
+      <button class="bt-button bt-button-secondary upload-control" id="quickAddRep">Add rep</button></div>
     <p class="bt-caption">${views.filter((rep) => rep.usable !== false).length} usable${rejected ? ` · ${rejected} rejected` : ""} · New reps go to ${escapeHtml(L.GROUPING_LABELS[currentGroup])}</p>
     <div class="bt-list">${active.length ? active.map(row).join("") : emptyState(`No ${L.GROUPING_LABELS[currentGroup].toLowerCase()} reps`, "Add a rep with video when you're ready.")}</div>
     ${other.length ? `<details class="bt-disclosure"><summary><span>Other reps (${other.length})</span></summary><div class="bt-disclosure-body bt-list">${other.map(row).join("")}</div></details>` : ""}</section>`;
@@ -329,7 +330,7 @@ function renderPrimaryAction(beforeAfter) {
     host.innerHTML = `<div class="bt-sticky-action-bar"><a class="bt-button bt-button-primary" href="${href}">Compare baseline → post-drill</a></div>`;
     return;
   }
-  host.innerHTML = '<div class="bt-sticky-action-bar"><button class="bt-button bt-button-primary" id="addRepVideo">Add rep with video</button><button class="bt-button bt-button-secondary" id="addRepBare">Add without video</button></div>';
+  host.innerHTML = '<div class="bt-sticky-action-bar"><button class="bt-button bt-button-primary upload-control" id="addRepVideo">Add rep with video</button><button class="bt-button bt-button-secondary" id="addRepBare">Add without video</button></div>';
   document.getElementById("addRepVideo").onclick = addRepsWithVideo;
   document.getElementById("addRepBare").onclick = async () => { await addRep(); await reloadSession(); };
 }
@@ -355,7 +356,7 @@ async function onRepClick(event) {
   if (button.dataset.repAction !== "menu") return;
   openOverflowMenu({ title: `Rep ${rep.rep_number}`, anchor: button, items: [
     ...(rep.video_clips.some((clip) => clip.status === "ready") ? [{ label: "Review swing", icon: "video", onSelect: () => { location.href = ctx.url("review", { clip: rep.video_clips.find((clip) => clip.status === "ready").id }); } }] : []),
-    { label: rep.video_clips.length ? "Add another video" : "Attach video", icon: "camera", onSelect: () => attachVideo(rep) },
+    ...(getDemoConfig().capabilities.uploads ? [{ label: rep.video_clips.length ? "Add another video" : "Attach video", icon: "camera", onSelect: () => attachVideo(rep) }] : []),
     ...["baseline", "drill", "post_drill"].filter((group) => group !== rep.grouping).map((group) => ({ label: `Move to ${L.GROUPING_LABELS[group]}`, icon: "repeat", onSelect: () => updateRepWithUndo(rep, { grouping: group }, `Moved to ${L.GROUPING_LABELS[group]}`) })),
     { label: rep.usable === false ? "Mark usable" : "Mark unusable", icon: rep.usable === false ? "check" : "x", onSelect: () => updateRepWithUndo(rep, { usable: rep.usable === false }, rep.usable === false ? "Rep marked usable" : "Rep marked unusable") },
     { label: "Delete rep", icon: "trash-2", destructive: true, onSelect: () => deleteRep(rep) },
@@ -379,7 +380,13 @@ async function deleteRep(rep) {
   await reloadSession();
 }
 
+// Both file-picker chokepoints below (attachVideo, addRepsWithVideo) check
+// the centralized demo capability flag before ever creating/clicking the
+// OS file/camera picker - same pattern as atbat.html's chooseVideo() and
+// videoUpload.js's uploadRawClip() gate, via the one demoConfig.js, never
+// a pathname check.
 function attachVideo(rep) {
+  if (!getDemoConfig().capabilities.uploads) { toast("Uploads are turned off in this demo."); return; }
   const input = document.createElement("input");
   input.type = "file";
   input.accept = "video/*";
@@ -415,6 +422,7 @@ async function addRep() {
 }
 
 function addRepsWithVideo() {
+  if (!getDemoConfig().capabilities.uploads) { toast("Uploads are turned off in this demo."); return; }
   const input = document.createElement("input");
   input.type = "file";
   input.accept = "video/*";

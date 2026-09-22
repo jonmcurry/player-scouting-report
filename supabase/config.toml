@@ -10,7 +10,13 @@ enabled = true
 port = 54321
 # Schemas to expose in your API. Tables, views and stored procedures in this schema will get API
 # endpoints. `public` and `graphql_public` schemas are included by default.
-schemas = ["public", "graphql_public"]
+# "demo" added for the temporary same-project HitterLoop public demo (see
+# supabase/migrations/00031_demo_shared_project_schema.sql and
+# docs/research/demo-shared-project-architecture.md). On the real hosted
+# project this must also be set under Dashboard -> Project Settings -> API
+# -> Exposed schemas (or `supabase config push` once linked) - this file
+# only controls the local dev stack directly.
+schemas = ["public", "graphql_public", "demo"]
 # Extra schemas to add to the search_path of every request.
 extra_search_path = ["public", "extensions"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size

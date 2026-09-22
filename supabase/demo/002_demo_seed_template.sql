@@ -1,3 +1,10 @@
+-- ===========================================================================
+-- OBSOLETE / REFERENCE-ONLY as of 2026-09-22 - superseded by
+-- supabase/migrations/00032_demo_seed_v1.sql (same content, targets
+-- demo.demo_seed_templates in the shared project's isolated `demo` schema).
+-- See 001_demo_lifecycle.sql's header in this directory for the full story.
+-- ===========================================================================
+
 -- Canonical fictional demo seed template, v1. Deliberately minimal for
 -- Phase 1-3: just enough (one team, three unmistakably fictional players)
 -- to prove the clone/isolate/reset mechanics end-to-end per the Phase 1-3

@@ -4,7 +4,18 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 import { getDemoConfig, isDemoMode } from "./demoConfig.js";
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Schema selection is the ONLY difference between the demo and normal
+// clients (temporary same-project + isolated `demo` Postgres schema
+// architecture - see docs/research/demo-shared-project-architecture.md).
+// In demo mode, every .from()/.rpc() call anywhere in coach/ - completely
+// unchanged at every call site - transparently resolves against the
+// `demo` schema (demo.teams, demo.players, demo.start_demo_session(), ...)
+// instead of `public`. Normal mode is byte-for-byte what it always was:
+// dataNamespace is "public", which is supabase-js's own default, so this
+// is a no-op there.
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  db: { schema: getDemoConfig().dataNamespace },
+});
 
 // ---------------------------------------------------------------------
 // Demo mode (Phase 3 of the approved demo architecture). Everything here
