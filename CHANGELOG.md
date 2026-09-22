@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.19.1] - 2026-09-22
+
+### Fixed
+
+- Demo schema compatibility gaps surfaced by the live deployed demo: `player_priorities.follow_up_set_at` (and its stamping trigger) was missing, breaking Team and Player; `swing_phases.reconstruction_reliable` and `analysis_runs.no_action_needed`/`no_action_reason` were missing, breaking Review; `game_log_entries.session_note` was missing and `result` incorrectly kept a `NOT NULL` production had already dropped, breaking new practice reps.
+- `coach_profiles` 404 in demo mode - added a minimal demo-owned `coach_profiles` table (fixed "Coach Demo" display name, no production identity link), auto-populated on bootstrap.
+- Review and Compare no longer show a bare "Video unavailable" state in demo mode - `getVideoUrl()` skips the undeployed `get-video-url` function entirely and both pages render an explicit "Demo evidence placeholder" instead.
+- Added 7 exact-frontend-query-shape regression tests (`supabase/demo/demo.test.ts`) covering Team/Player/At-Bat/Review/Development/Practice/Compare, since the prior suite proved data existed without mirroring the real `.select()` shapes closely enough to catch these gaps.
+
 ## [0.19.0] - 2026-09-22
 
 ### Added

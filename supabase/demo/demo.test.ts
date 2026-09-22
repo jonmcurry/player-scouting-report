@@ -466,6 +466,107 @@ test("Android/Capacitor remains normal mode (no demo config ever set there)", ()
   assert.doesNotMatch(src, /__HITTERLOOP_DEMO_CONFIG__/);
 });
 
+// ===========================================================================
+// D. Exact-query compatibility regression tests (2026-09-22 live-audit fix
+// pass). The prior test suite proved data EXISTS but never replicated the
+// real frontend's exact PostgREST select() shapes - that's how the schema
+// gaps below shipped to the live cloud project without a local/cloud test
+// catching them. Every test in this section uses the literal column list
+// (or a semantically-identical one) copied directly from the real
+// coach/*.html source, not a paraphrase.
+// ===========================================================================
+
+test("TEAM: teamDashboard.js's exact player_priorities query (incl. follow_up_set_at) succeeds", async () => {
+  const { c, teamId } = await bootstrappedDemoTeam();
+  // Exact column list from coach/components/teamDashboard.js's loadTeamDashboard().
+  const result = await c.from("player_priorities")
+    .select("id, title, status, follow_up_kind, follow_up_date, follow_up_swings, follow_up_set_at, follow_up_done_at, priority_order, players!inner(id, name, slug, team_id)")
+    .eq("players.team_id", teamId).in("status", ["active", "monitoring"]);
+  assert.equal(result.error, null, `team.html's dashboard query must not error: ${result.error?.message}`);
+  // Jordan's priority resolves (active->resolved during the loop) so only
+  // Riley's monitoring priority should still be active/monitoring team-wide.
+  assert.ok((result.data ?? []).length >= 1, "at least Riley's monitoring priority must be visible");
+});
+
+test("PLAYER: player.html's exact priority/activity query (incl. follow_up_set_at) succeeds and the trigger stamped it", async () => {
+  const { c, teamId } = await bootstrappedDemoTeam();
+  const riley = await playerId(c, teamId, "riley-chen");
+  const result = await c.from("player_priorities")
+    .select("id, title, description, status, follow_up_kind, follow_up_date, follow_up_swings, follow_up_set_at, follow_up_done_at")
+    .eq("player_id", riley).in("status", ["active", "monitoring"]).order("priority_order").limit(3);
+  assert.equal(result.error, null, `player.html's priority query must not error: ${result.error?.message}`);
+  const monitoring = (result.data ?? []).find((p: { follow_up_kind: string | null }) => p.follow_up_kind != null);
+  assert.ok(monitoring, "Riley's monitoring priority (follow_up_kind set) must be present");
+  assert.ok(monitoring.follow_up_set_at, "follow_up_set_at must be auto-stamped by the trigger, not left null, for a priority with a follow_up_kind");
+});
+
+test("AT-BAT: atbat.html's exact entry + four-pitch query shape returns all 4 of Maya's pitches with players!inner embed intact", async () => {
+  const { c, teamId } = await bootstrappedDemoTeam();
+  const maya = await playerId(c, teamId, "maya-torres");
+  const entries = must(await c.from("game_log_entries").select("id").eq("player_id", maya).eq("session_type", "game"), "maya entries");
+  const entryId = entries[0].id;
+
+  const PLAYER_SELECT = "id, name, jersey_number, slug, teams!inner(id, slug, name)";
+  const entryResult = await c.from("game_log_entries")
+    .select(`id,date,opponent,ab,result,session_type,ai_summary,ai_summary_generated_at,players!inner(${PLAYER_SELECT})`)
+    .eq("id", entryId).single();
+  assert.equal(entryResult.error, null, `atbat.html's entry query must not error: ${entryResult.error?.message}`);
+  assert.equal((entryResult.data as { players: { name: string } }).players.name, "Maya Torres");
+
+  const pitchesResult = await c.from("at_bat_pitches").select("*").eq("game_log_entry_id", entryId).order("pitch_number");
+  assert.equal(pitchesResult.error, null, `atbat.html's loadPitches() query must not error: ${pitchesResult.error?.message}`);
+  assert.equal(pitchesResult.data?.length, 4, "all 4 of Maya's pitches must return from the exact atbat.html query shape");
+
+  const clipsResult = await c.from("video_clips").select("id,status,error_message,at_bat_pitch_id,created_at").eq("game_log_entry_id", entryId).order("created_at");
+  assert.equal(clipsResult.error, null);
+  assert.equal(clipsResult.data?.length, 4, "all 4 evidence clips must return");
+});
+
+test("REVIEW: review.html's exact analysis_runs and swing_phases (incl. reconstruction_reliable) query shapes succeed", async () => {
+  const { c } = await bootstrappedDemoTeam();
+  // Exact column list from review.html's analysis_runs query.
+  const runs = await c.from("analysis_runs").select("id,no_action_needed,no_action_reason,created_at").eq("video_clip_id", "00000000-0000-0000-0000-000000000000").order("created_at", { ascending: false }).limit(1);
+  assert.equal(runs.error, null, `review.html's analysis_runs query must not error: ${runs.error?.message}`);
+  // Exact column list from devUi.js's loadPhases(), used by review.html/compare.html.
+  const phases = await c.from("swing_phases").select("frame, time_s, confidence, reconstruction_reliable, swing_phase_types!inner(slug, label, sort_order)").eq("video_clip_id", "00000000-0000-0000-0000-000000000000").order("sort_order", { referencedTable: "swing_phase_types" });
+  assert.equal(phases.error, null, `review.html's swing_phases query must not error: ${phases.error?.message}`);
+});
+
+test("DEVELOPMENT/PRACTICE: getMyDisplayName() resolves coach_profiles to \"Coach Demo\", auto-populated by start_demo_session()", async () => {
+  const { c } = await bootstrappedDemoTeam();
+  const userId = (await c.auth.getUser()).data.user!.id;
+  const profile = await c.from("coach_profiles").select("display_name").eq("user_id", userId).single();
+  assert.equal(profile.error, null, `coach_profiles lookup must not error: ${profile.error?.message}`);
+  assert.equal(profile.data?.display_name, "Coach Demo");
+});
+
+test("PRACTICE: practicePage.js's addRep() insert shape (incl. session_note) succeeds against demo.game_log_entries", async () => {
+  const { c, teamId } = await bootstrappedDemoTeam();
+  const jordan = await playerId(c, teamId, "jordan-lee");
+  const inserted = await c.from("game_log_entries").insert({
+    player_id: jordan, session_type: "practice", date: new Date().toISOString().slice(0, 10), ab: 99, session_note: "regression test rep", position: 0,
+  }).select("id").single();
+  assert.equal(inserted.error, null, `addRep()'s exact insert shape (incl. session_note) must not error: ${inserted.error?.message}`);
+});
+
+test("COMPARE: compare.html's exact detail() query shapes (phases, metrics, pose3d) succeed for both selected evidence records", async () => {
+  const { c, teamId } = await bootstrappedDemoTeam();
+  const jordan = await playerId(c, teamId, "jordan-lee");
+  const reps = must(
+    await c.from("video_clips").select("id, practice_repetitions!inner(grouping, practice_sessions!inner(player_id))").eq("practice_repetitions.practice_sessions.player_id", jordan),
+    "jordan's baseline/post-drill clips",
+  );
+  assert.equal(reps.length, 2, "Compare needs exactly Jordan's baseline + post-drill clips");
+  for (const clip of reps) {
+    const phases = await c.from("swing_phases").select("frame, time_s, confidence, reconstruction_reliable, swing_phase_types!inner(slug, label, sort_order)").eq("video_clip_id", clip.id).order("sort_order", { referencedTable: "swing_phase_types" });
+    assert.equal(phases.error, null, `phases query for clip ${clip.id} must not error: ${phases.error?.message}`);
+    const metrics = await c.from("video_clip_metrics").select("*").eq("video_clip_id", clip.id).maybeSingle();
+    assert.equal(metrics.error, null, `metrics query for clip ${clip.id} must not error: ${metrics.error?.message}`);
+    const pose = await c.from("video_clip_pose3d").select("id").eq("video_clip_id", clip.id).maybeSingle();
+    assert.equal(pose.error, null, `pose3d query for clip ${clip.id} must not error: ${pose.error?.message}`);
+  }
+});
+
 test("production coach behavior remains unchanged: an ordinary signed-in user with no coach_team_access still sees zero public.teams rows", async () => {
   const svc = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
   const email = `demo-regression-${Date.now()}@test.local`;

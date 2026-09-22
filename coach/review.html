@@ -42,6 +42,7 @@
     openPromoteSheet, openAssignDrillSheet, openObservationSheet, openEditIssueSheet, reviewIssue,
   } from "./components/devActions.js";
   import { getMyDisplayName, requireSession } from "./shared.js";
+  import { isDemoMode } from "./demoConfig.js";
   import { loadClipSkeletonData, renderSkeletonComparison } from "./components/skeletonComparison.js";
   import { loadSwingMetrics, renderSwingMetricsPanel } from "./components/swingMetricsPanel.js";
   import { invalidateReviewCount, renderDrillInAppBar } from "./components/appShell.js";
@@ -145,7 +146,12 @@
     const el = document.getElementById("watch");
     if (clip.status !== "ready") { el.innerHTML = ""; return; }
     const url = await getVideoUrl(clipId);
-    if (!url) { el.innerHTML = emptyState("Video unavailable", "The original video couldn't be loaded right now."); return; }
+    if (!url) {
+      el.innerHTML = isDemoMode()
+        ? emptyState("Demo evidence placeholder", "The public demo doesn't store real swing video. Phase timing and the coaching notes below are real seeded demo data.")
+        : emptyState("Video unavailable", "The original video couldn't be loaded right now.");
+      return;
+    }
     el.innerHTML = `
       <video id="swingVideo" class="review-video" src="${url}" controls playsinline preload="metadata"></video>
       <div class="p1b-phase-track" id="phaseChips" aria-label="Swing phases">${phases.filter((p) => p.timeS != null).map((p) => `<button class="p1b-phase-tick tap-target" data-phase="${p.slug}" data-confidence="${escapeHtml(p.confidence ?? "")}"><span aria-hidden="true"></span>${escapeHtml(p.slug === "follow-through" ? "Finish" : p.label)}</button>`).join("")}</div>

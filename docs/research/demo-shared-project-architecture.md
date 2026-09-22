@@ -1,16 +1,139 @@
 # HitterLoop demo: temporary same-project + isolated `demo` schema
 
-**Status as of 2026-09-22 (cloud-configuration pass 3): CLOUD DEMO BACKEND
-READY.** Both Dashboard settings (Data API schema exposure, Anonymous
-Sign-Ins) are enabled and live-verified. The full 25-test
-`supabase/demo/demo.test.ts` suite passed against the real cloud project —
-bootstrap, cross-session isolation, production-table isolation, reset,
-3-way concurrent reset, the full Jordan/Maya/Riley Phase 4 narrative, and
-`get-demo-player-report` all confirmed working live. Synthetic test
-fixtures (28 anonymous auth users + their cloned teams, created by running
-the suite) were fully cleaned up afterward — 0 residue confirmed. See
-"CLOUD DEPLOYMENT STATUS" below for full detail. Not yet wired to
-joncurry.co (out of scope — separate repo, separate task).
+**Status as of 2026-09-22 (live-audit compatibility fix pass): the
+deployed public demo at joncurry.co/hitterloop/demo surfaced real
+frontend/schema mismatches once real traffic hit it — the schema/RLS
+architecture and cloud deployment itself were sound, but several `demo.*`
+tables were missing columns/tables the real (unmodified) coach frontend
+genuinely selects, and Review/Compare had no demo-safe video strategy.
+Every gap was traced to the exact frontend source line before touching
+schema (never guessed from the audit's own wording), fixed with a single
+additive migration (00035), and proven with new exact-query regression
+tests. See "LIVE-AUDIT COMPATIBILITY FIX PASS" below for the full
+trace-by-trace detail. The underlying same-project/isolated-schema
+architecture, RLS model, and reset/isolation guarantees were not touched
+or redesigned.
+
+## LIVE-AUDIT COMPATIBILITY FIX PASS (2026-09-22)
+
+**Root cause of each reported live failure**, traced against the actual
+frontend source before any schema change (Rule 1 of this pass — the
+8-item failure list from the live audit was a symptom description, not a
+spec to blindly implement against):
+
+1. **`demo.player_priorities.follow_up_set_at` does not exist** —
+   genuinely selected by `coach/player.html`, `coach/components/teamDashboard.js`
+   (team.html's dashboard — the actual cause of "Team — FAIL"), and read by
+   `coach/components/developmentLogic.js`'s `isFollowUpDue()`. Production
+   sets this column via a `BEFORE INSERT/UPDATE` trigger
+   (`00026_priority_followup_and_quality.sql`), not app code. **Fix:**
+   added the column plus the identical trigger, schema-qualified, to
+   `demo.player_priorities` — existing seed INSERTs (which already set
+   `follow_up_kind`) get it stamped automatically, no seed-logic change.
+2. **Expected `game_log_entries`/pitch-related columns do not exist** —
+   traced to `demo.game_log_entries.session_note`, genuinely selected by
+   `player.html`'s practice-activity list and genuinely INSERTed by
+   `practicePage.js`'s `addRep()` (adding a new practice rep from the UI
+   fails outright without it). **Also found, not named by the audit but
+   caught by this pass's own new regression test:** `demo.game_log_entries.result`
+   incorrectly kept `NOT NULL` — production dropped that constraint in
+   `00015_practice_sessions.sql` specifically because a practice rep has
+   no game result, and `addRep()` never sets it. **Fix:** added
+   `session_note`, dropped `result`'s `NOT NULL`. (Maya's seeded 4-pitch
+   at-bat itself was independently verified correct and unaffected — see
+   item 6 below.)
+3. **`demo.swing_phases.reconstruction_reliable` does not exist** —
+   genuinely selected by `player.html` and `devUi.js`'s `loadPhases()`
+   (used by Review and Compare). Production added it in
+   `00023_swing_phase_reconstruction_reliability.sql`. **Fix:** added the
+   column. `demo.swing_phases` is still never seeded with rows (no
+   lab-grade metrics fabricated, unchanged from Phase 4) — this is purely
+   "the column must exist for the query not to 400."
+4. **`analysis_runs` queries fail against the demo schema** — traced to
+   `demo.analysis_runs` missing `no_action_needed`/`no_action_reason`,
+   genuinely selected by `review.html`. **Fix:** added both columns plus
+   production's own check constraint. Table remains unseeded (no specific
+   AI backend simulated as having run).
+5. **`coach_profiles` returns 404** — genuinely queried by
+   `coach/shared.js`'s `getMyDisplayName()` (called from atbat.html,
+   review.html, player.html, devUi.js). Its own error handling already
+   falls back to the literal `"Coach"` on any error, so this was never a
+   page-breaking failure, but it is a real, fixable gap: demo visitors
+   should see "Coach Demo," not a generic fallback and console noise.
+   **Fix:** new `demo.coach_profiles` table (no FK to
+   `public.coach_profiles`, no real identity linkage — the display name
+   is always the fixed literal `"Coach Demo"`), auto-populated once per
+   visitor by `demo.start_demo_session()` (identity bookkeeping, survives
+   reset — not per-clone content).
+6. **Maya's four pitches don't render (At-Bat — PARTIAL)** — reproduced
+   the *exact* live browser query sequence (`game_log_entries` entry
+   lookup with the real `players!inner(...)` embed, `loadPitches()`,
+   the clips query) directly against the cloud project before changing
+   anything: **all 4 pitches, all 4 clips, zero errors, byte-for-byte
+   correct.** No code-level bug was found in the pitch-fetch or
+   pitch-render path (`inferCounts()`, `pitchMetaParts()`, the render
+   template were all re-checked against this exact data shape and are
+   safe). Reported honestly rather than claiming an invented fix: this
+   specific symptom could not be reproduced against the current deployed
+   schema/frontend, and is most plausibly explained by a stale/cached
+   page load at audit time (see item 8) rather than a data or query
+   defect. A new regression test (`AT-BAT: atbat.html's exact entry +
+   four-pitch query shape...`) proves the exact frontend query shape
+   returns all 4 pitches, as insurance.
+7. **Review source video / Compare selected videos "unavailable"** — both
+   already had graceful, non-crashing fallback UI for a null video URL;
+   the audit's complaint is about UX quality, not a crash. **Fix: demo
+   media strategy Option C** (explicit placeholder, no fabricated
+   footage) — see below.
+8. **`get-video-url` 404/CORS** — root cause: that function is
+   deliberately not deployed to the demo project (real private-video
+   signing has no place in a public demo). **Resolved by not needing the
+   function at all** — see below.
+
+### Demo media strategy: Option C (explicit placeholder, no signing function)
+
+No existing public-safe/synthetic video asset was found in the repo
+(checked). Building one is real media-production work, out of scope for a
+"surgical compatibility fix." Chose Option C per the task's own
+preference ordering:
+
+- `devUi.js`'s `getVideoUrl()` — the single chokepoint both `review.html`
+  and `compare.html` call — now checks `isDemoMode()` first and returns
+  `null` immediately, **never invoking `get-video-url` at all** in demo
+  mode. No CORS/404 noise, no attempted call to a function that doesn't
+  exist for this project.
+- `review.html`'s `renderWatch()` and `compare.html`'s three
+  "no video element" render sites (`renderVideo`'s two panes,
+  `renderFrames`' `frame()` helper — factored into one shared
+  `videoPlaceholderHtml()`/`emptyState(...)` call) now render an explicit
+  **"Demo evidence placeholder — the public demo doesn't store real swing
+  video"** message instead of "Video unavailable" *specifically and only*
+  in demo mode. Production's genuine "Video unavailable / Try again
+  later" state (a real load failure, e.g. `dropVideo()`'s `error` handler)
+  is completely unchanged — the placeholder branch is only reachable when
+  `url` is null, which in demo mode is now the deterministic outcome by
+  design, never a failure being disguised.
+- **No demo-safe video-signing function was created.** The demo never
+  needs one: no real media exists to protect, so there is nothing to sign
+  a URL for. This directly satisfies "avoid a signing function entirely
+  if possible."
+- Phase timing, coach notes, drill assignments, and progress history
+  (all real seeded data) still render normally alongside the placeholder
+  — the flow stays understandable, nothing about it claims real footage
+  exists.
+
+### `config.local.js` — flagged for the website-sync task, not fixed here
+
+Every `coach/*.html` page (all 10) unconditionally loads
+`<script src="./demo.local.js"></script><script src="./config.local.js"></script>`.
+This is pre-existing, intentional app-source behavior (the local-dev
+override pattern, mirrored in `demoBanner.test.mjs`'s own assertions) —
+a missing file 404s silently and harmlessly in a real browser; nothing
+depends on it loading. The live audit's `config.local.js 404` is this
+exact, by-design, inert 404 — not an app bug. The website-sync task can
+either accept it as harmless or add an empty stub file at that path if
+the 404 itself is noisy in its own monitoring; either is a website-repo
+decision, not an app-source change.
 
 ## CLOUD DEPLOYMENT STATUS (2026-09-22, cloud pass 3 — READY)
 

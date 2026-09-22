@@ -4,6 +4,7 @@
 // logic lives in developmentLogic.js (unit-tested); this file only touches the
 // DOM and Supabase.
 import { supabase, requireSession, getMyDisplayName, qs, escapeHtml } from "../shared.js";
+import { isDemoMode } from "../demoConfig.js";
 import { renderPlayerAppBar, renderBottomNav, loadRosterWithProgress, setLastPlayerSlug } from "./appShell.js";
 import {
   confirmDialog, emptyState as emptyStatePrimitive, mountSegmentedTabs, openBottomSheet,
@@ -240,6 +241,13 @@ export async function loadPhases(clipId) {
 }
 
 export async function getVideoUrl(clipId) {
+  // The public demo never stores real swing video and get-video-url is
+  // deliberately not deployed to the demo project (see
+  // docs/research/demo-shared-project-architecture.md's media strategy) -
+  // skip the call entirely rather than let it fail against a nonexistent
+  // function. Callers distinguish "demo, by design" from "real failure"
+  // via isDemoMode() themselves when choosing what empty state to render.
+  if (isDemoMode()) return null;
   const { data } = await supabase.functions.invoke("get-video-url", { body: { videoClipId: clipId } });
   return data?.url ?? null;
 }
