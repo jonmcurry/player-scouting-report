@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claims - HitterLoop Methodology Admin</title>
+<link rel="stylesheet" href="./admin.css">
+</head>
+<body>
+<div class="topbar">
+  <a class="brand" href="./index.html">HitterLoop Methodology Admin</a>
+  <nav>
+    <a href="./sources.html">Sources</a>
+    <a href="./materials.html">Materials</a>
+    <a href="./claims.html" class="active">Claims</a>
+    <a href="./knowledge.html">Active Knowledge</a>
+    <a href="./versions.html">Versions</a>
+    <a href="#" id="signOutLink">Sign out</a>
+  </nav>
+</div>
+<main>
+  <h1>Claims</h1>
+
+  <div class="card">
+    <h2>Add candidate claim</h2>
+    <form id="createForm">
+      <label>Material</label>
+      <select name="material_id" id="materialSelect" required></select>
+      <label>Concept</label>
+      <input name="concept" required placeholder="e.g. load, hand_path, timing">
+      <label>Extracted text (as found in the source)</label>
+      <textarea name="extracted_text" required></textarea>
+      <label>Observable evidence</label>
+      <textarea name="observable_evidence"></textarea>
+      <label>Coaching cue (optional)</label>
+      <input name="coaching_cue">
+      <label>Applies when</label>
+      <input name="applies_when">
+      <label>Does not apply when</label>
+      <input name="does_not_apply_when">
+      <label>Sport scope</label>
+      <select name="sport_scope" required>
+        <option value="baseball">Baseball</option>
+        <option value="softball">Softball</option>
+        <option value="both">Both</option>
+      </select>
+      <label>Age guardrail</label>
+      <select name="age_guardrail" required>
+        <option value="youth_appropriate">Youth appropriate</option>
+        <option value="teen_appropriate">Teen appropriate</option>
+        <option value="advanced_only">Advanced only</option>
+        <option value="requires_physical_screening">Requires physical screening</option>
+      </select>
+      <label>Evidence type</label>
+      <select name="evidence_type" required>
+        <option value="research">Research</option>
+        <option value="instrumented_measurement">Instrumented measurement</option>
+        <option value="coaching_experience">Coaching experience</option>
+        <option value="video_observation">Video observation</option>
+        <option value="expert_opinion">Expert opinion</option>
+        <option value="analogy">Analogy</option>
+        <option value="unknown">Unknown</option>
+      </select>
+      <label><input type="checkbox" name="numeric_claim" style="width:auto;display:inline-block;"> Numeric claim (requires an evidence reference before it can be approved)</label>
+      <label>Numeric evidence ref (if numeric)</label>
+      <input name="numeric_evidence_ref">
+      <label>Source timestamp (seconds, for video) or location note</label>
+      <div style="display:flex;gap:8px;">
+        <input name="source_start_seconds" type="number" placeholder="start (sec)">
+        <input name="source_end_seconds" type="number" placeholder="end (sec)">
+      </div>
+      <input name="source_location" placeholder="or a verified location note (e.g. page/paragraph)">
+      <div class="actions"><button class="primary" type="submit">Add candidate claim</button></div>
+      <p class="error-text" id="createError"></p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>All claims</h2>
+    <label>Filter by status</label>
+    <select id="statusFilter">
+      <option value="">All</option>
+      <option value="candidate">Candidate</option>
+      <option value="approved">Approved</option>
+      <option value="rejected">Rejected</option>
+      <option value="disputed">Disputed</option>
+      <option value="duplicate">Duplicate</option>
+      <option value="superseded">Superseded</option>
+    </select>
+    <table id="claimsTable">
+      <thead><tr><th>Concept</th><th>Source / material</th><th>Status</th><th>Active</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</main>
+
+<script type="module">
+  import { requireMethodologyAdmin, escapeHtml, signOut } from "./shared.js";
+  import { listMaterials, listClaims, createClaim } from "./methodologyApi.js";
+
+  document.getElementById("signOutLink").addEventListener("click", (e) => { e.preventDefault(); signOut(); });
+
+  async function loadMaterialOptions() {
+    const materials = await listMaterials();
+    document.getElementById("materialSelect").innerHTML = materials.length
+      ? materials.map((m) => `<option value="${m.id}">${escapeHtml(m.title)} (${escapeHtml(m.methodology_sources?.name ?? "")})</option>`).join("")
+      : `<option value="">No materials yet - add one first</option>`;
+  }
+
+  async function loadTable() {
+    const tbody = document.querySelector("#claimsTable tbody");
+    const reviewStatus = document.getElementById("statusFilter").value || undefined;
+    const claims = await listClaims({ reviewStatus });
+    if (!claims.length) {
+      tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state">No claims match this filter.</div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = claims.map((c) => `
+      <tr>
+        <td><a href="./claim.html?id=${c.id}">${escapeHtml(c.concept)}</a></td>
+        <td>${escapeHtml(c.methodology_materials?.methodology_sources?.name ?? "")} &mdash; ${escapeHtml(c.methodology_materials?.title ?? "")}</td>
+        <td><span class="badge ${escapeHtml(c.review_status)}">${escapeHtml(c.review_status)}</span></td>
+        <td>${c.active ? "yes" : "no"}</td>
+      </tr>
+    `).join("");
+  }
+
+  document.getElementById("statusFilter").addEventListener("change", loadTable);
+
+  document.getElementById("createForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById("createError");
+    errorEl.textContent = "";
+    const form = new FormData(e.target);
+    try {
+      await createClaim({
+        material_id: form.get("material_id"),
+        concept: form.get("concept"),
+        extracted_text: form.get("extracted_text"),
+        observable_evidence: form.get("observable_evidence") || "",
+        coaching_cue: form.get("coaching_cue") || null,
+        applies_when: form.get("applies_when") || "",
+        does_not_apply_when: form.get("does_not_apply_when") || "",
+        sport_scope: form.get("sport_scope"),
+        age_guardrail: form.get("age_guardrail"),
+        evidence_type: form.get("evidence_type"),
+        numeric_claim: form.get("numeric_claim") === "on",
+        numeric_evidence_ref: form.get("numeric_evidence_ref") || null,
+        source_start_seconds: form.get("source_start_seconds") || null,
+        source_end_seconds: form.get("source_end_seconds") || null,
+        source_location: form.get("source_location") || null,
+      });
+      e.target.reset();
+      await loadTable();
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
+  });
+
+  requireMethodologyAdmin().then((session) => {
+    if (!session) return;
+    loadMaterialOptions();
+    loadTable();
+  });
+</script>
+</body>
+</html>

@@ -19,6 +19,7 @@
     "backfill-analysis-quality": "tsx src/cli/backfillAnalysisQuality.ts",
     "validate:swings": "node --experimental-strip-types scripts/process-validation-batch.ts",
     "provision-coach": "tsx src/cli/provisionCoach.ts",
+    "provision-methodology-admin": "tsx src/cli/provisionMethodologyAdmin.ts",
     "test": "npm run build && node --test dist/**/*.test.js && node --test coach/components/developmentLogic.test.mjs coach/components/pages.test.mjs coach/components/ui.test.mjs coach/components/phase1bScreens.test.mjs coach/components/phase2aScreens.test.mjs coach/components/reviewQueue.test.mjs coach/components/pitchEntry.test.mjs coach/components/comparePairs.test.mjs coach/components/phase2bScreens.test.mjs scripts/brand-consistency.test.mjs",
     "test:contrast": "node scripts/verify-ux-contrast.mjs",
     "coach:bump-cache": "node scripts/bump-coach-cache.mjs",

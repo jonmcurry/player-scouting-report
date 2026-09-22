@@ -40,6 +40,8 @@ export interface AnalysisInput {
   coachReviewedDecisions: { concept: string | null; phase: string | null; videoClipId: string | null; status: string }[];
   knowledgePack: string;
   knowledgeClaimIds: string[];
+  /** The active methodology_versions.version_label this run's knowledgePack was rendered from. */
+  knowledgeVersion: string;
 }
 
 export const unknown = <T>(value: T | null | undefined): T | "unknown" => value ?? "unknown";
@@ -78,5 +80,6 @@ export function buildInputManifest(input: AnalysisInput): Record<string, unknown
     },
     coach_reviewed_decisions: input.coachReviewedDecisions,
     knowledge_claim_ids: [...input.knowledgeClaimIds],
+    methodology_version: input.knowledgeVersion,
   };
 }

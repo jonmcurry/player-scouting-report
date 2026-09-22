@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Active Knowledge - HitterLoop Methodology Admin</title>
+<link rel="stylesheet" href="./admin.css">
+</head>
+<body>
+<div class="topbar">
+  <a class="brand" href="./index.html">HitterLoop Methodology Admin</a>
+  <nav>
+    <a href="./sources.html">Sources</a>
+    <a href="./materials.html">Materials</a>
+    <a href="./claims.html">Claims</a>
+    <a href="./knowledge.html" class="active">Active Knowledge</a>
+    <a href="./versions.html">Versions</a>
+    <a href="#" id="signOutLink">Sign out</a>
+  </nav>
+</div>
+<main id="mainContent">Loading&hellip;</main>
+
+<script type="module">
+  import { requireMethodologyAdmin, escapeHtml, signOut } from "./shared.js";
+  import { getActiveVersion, getActiveVersionItems, reviewClaim } from "./methodologyApi.js";
+
+  document.getElementById("signOutLink").addEventListener("click", (e) => { e.preventDefault(); signOut(); });
+
+  async function render() {
+    const main = document.getElementById("mainContent");
+    const active = await getActiveVersion();
+    if (!active) {
+      main.innerHTML = `
+        <div class="card">
+          <h1>No active methodology snapshot</h1>
+          <p class="error-text">Production analysis will fail closed until a version is published. See <a href="./versions.html">Versions</a>.</p>
+        </div>`;
+      return;
+    }
+    const items = await getActiveVersionItems(active.version_label);
+    main.innerHTML = `
+      <h1>Active knowledge: <code>${escapeHtml(active.version_label)}</code></h1>
+      <p class="hint">Published ${escapeHtml(active.published_at ?? "")} &middot; ${escapeHtml(active.notes || "")}</p>
+      <div class="card">
+        <h2>${items.length} frozen item(s) in production right now</h2>
+        <table>
+          <thead><tr><th>Concept</th><th>Approved text</th><th>Source</th><th>Hotfix</th></tr></thead>
+          <tbody>
+            ${items.length ? items.map((i) => `
+              <tr data-claim-id="${i.claim_id}">
+                <td>${escapeHtml(i.item_payload.concept)}</td>
+                <td>${escapeHtml(i.item_payload.approved_text)}</td>
+                <td>${escapeHtml(i.item_payload.source_name)}</td>
+                <td><button class="danger hotfixBtn" data-id="${i.claim_id}">Deactivate (hotfix)</button></td>
+              </tr>
+            `).join("") : `<tr><td colspan="4"><div class="empty-state">This is an empty baseline snapshot - no approved methodology in production yet.</div></td></tr>`}
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <p class="hint">Deactivating a claim here disputes it immediately (removing it from the NEXT publish) without rewriting this already-frozen snapshot. You must still publish a new version on <a href="./versions.html">Versions</a> for the change to take effect in production.</p>
+      </div>
+    `;
+    main.querySelectorAll(".hotfixBtn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("Deactivate this claim? It will be excluded from the next published snapshot. This does not rewrite the current active snapshot by itself - publish a new version afterward.")) return;
+        try {
+          await reviewClaim({ claimId: btn.dataset.id, decision: "disputed", reviewNotes: "Hotfix: deactivated from knowledge.html" });
+          render();
+        } catch (err) { alert(err.message); }
+      });
+    });
+  }
+
+  requireMethodologyAdmin().then((session) => { if (session) render(); });
+</script>
+</body>
+</html>

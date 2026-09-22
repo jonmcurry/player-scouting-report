@@ -1,0 +1,104 @@
+/* Internal methodology-admin tool. Desktop-first (this is a small,
+   allowlisted-human back office, not a coach-facing product surface) but
+   still usable on a laptop at any reasonable width. Reuses coach/coach.css's
+   core "infield dirt at night" color tokens for brand consistency, trimmed
+   to what forms/tables need - no touch-target sizing, no jersey badges. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+
+:root {
+  color-scheme: dark;
+  --bg: #121418;
+  --surface-1: #1A1E25;
+  --surface-2: #232830;
+  --surface-3: #2C323B;
+  --border: rgba(244,239,234,0.10);
+  --border-strong: rgba(244,239,234,0.40);
+  --text-1: #F4EFEA;
+  --text-2: #BDB6AB;
+  --text-3: #9A9588;
+  --brand-fill: #B4503A;
+  --brand-fill-pressed: #9C4632;
+  --on-brand: #FFFFFF;
+  --success: #34D399;
+  --success-subtle: rgba(52,211,153,0.14);
+  --warning: #F2B84B;
+  --warning-subtle: rgba(242,184,75,0.14);
+  --danger: #E0584C;
+  --danger-fill: #C7443A;
+  --danger-subtle: rgba(224,88,76,0.14);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text-1);
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+a { color: var(--brand-fill); }
+h1, h2, h3 { font-weight: 700; margin: 0 0 12px; }
+h1 { font-size: 20px; }
+h2 { font-size: 16px; }
+code { font-family: "JetBrains Mono", monospace; font-size: 0.9em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; background: var(--surface-1); border-bottom: 1px solid var(--border);
+}
+.topbar nav { display: flex; gap: 16px; flex-wrap: wrap; }
+.topbar nav a { color: var(--text-2); text-decoration: none; font-weight: 600; }
+.topbar nav a:hover, .topbar nav a.active { color: var(--text-1); }
+.topbar .brand { font-weight: 700; color: var(--text-1); text-decoration: none; }
+
+main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 64px; }
+
+.card {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px; margin-bottom: 16px;
+}
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--text-2); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+tr:hover td { background: var(--surface-2); }
+
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+}
+.badge.candidate { background: var(--surface-3); color: var(--text-2); }
+.badge.approved { background: var(--success-subtle); color: var(--success); }
+.badge.rejected, .badge.do_not_use { background: var(--danger-subtle); color: var(--danger); }
+.badge.disputed, .badge.limited { background: var(--warning-subtle); color: var(--warning); }
+.badge.duplicate, .badge.superseded { background: var(--surface-3); color: var(--text-3); }
+.badge.approved_for_scope { background: var(--success-subtle); color: var(--success); }
+
+label { display: block; font-weight: 600; margin: 12px 0 4px; color: var(--text-2); }
+input, select, textarea {
+  width: 100%; background: var(--surface-2); border: 1px solid var(--border-strong); color: var(--text-1);
+  border-radius: 8px; padding: 8px 10px; font: inherit;
+}
+textarea { min-height: 80px; resize: vertical; }
+.field-hint { color: var(--text-3); font-size: 12px; margin-top: 2px; }
+
+button {
+  font: inherit; font-weight: 600; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+  border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text-1);
+}
+button.primary { background: var(--brand-fill); border-color: var(--brand-fill); color: var(--on-brand); }
+button.primary:hover { background: var(--brand-fill-pressed); }
+button.danger { background: var(--danger-fill); border-color: var(--danger-fill); color: #fff; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+.error-text { color: var(--danger); font-weight: 600; }
+.hint { color: var(--text-3); }
+.empty-state { color: var(--text-3); padding: 24px; text-align: center; }
+
+.access-denied { max-width: 500px; margin: 80px auto; padding: 0 20px; }
+
+.login-form { max-width: 340px; margin: 80px auto; display: flex; flex-direction: column; gap: 10px; padding: 0 20px; }
+
+.diff-added { color: var(--success); }
+.diff-removed { color: var(--danger); text-decoration: line-through; }

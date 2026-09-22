@@ -6,9 +6,9 @@ import { pathToFileURL } from "node:url";
 import { analyzeSwing, type FrameImage } from "../services/ai/geminiAnalyzer.js";
 import { analyzeSwingViaClaudeCli } from "../services/ai/claudeCliAnalyzer.js";
 import { buildInputManifest, type AnalysisInput, type PitchContext } from "../services/ai/analysisContext.js";
-import { ANALYSIS_POLICY_VERSION, KNOWLEDGE_VERSION, PROMPT_VERSION } from "../services/ai/analysisVersions.js";
+import { ANALYSIS_POLICY_VERSION, PROMPT_VERSION } from "../services/ai/analysisVersions.js";
 import { findingIdentity, validateSwingAnalysisResult, type SwingAnalysisResult } from "../services/ai/swingAnalysisShared.js";
-import { loadKnowledgeClaims, renderKnowledgePack } from "../services/knowledge/knowledgePack.js";
+import { loadActiveMethodologySnapshot, filterApplicableMethodology, renderMethodologyPack } from "../services/knowledge/methodologyRepository.js";
 import { findPlayerId, loadCheckpointSlugToId, upsertChecklistScore } from "../services/db/checklistUpsert.js";
 import { getSupabaseClient } from "../services/db/supabaseClient.js";
 
@@ -79,7 +79,14 @@ async function buildAnalysisInput(args: {
     .eq("player_id", args.playerId)
     .neq("review_status", "draft");
   if (decisionsErr) throw new Error(`Loading coach-reviewed decisions: ${decisionsErr.message}`);
-  const claims = loadKnowledgeClaims();
+  // Fail-closed: loadActiveMethodologySnapshot() throws (rather than
+  // falling back to knowledge/claims.json or candidate claims) if no
+  // active methodology snapshot exists. That error propagates up through
+  // analyzeAndSync and is caught by the existing per-clip try/catch in
+  // processUploadQueue.ts, which logs it clearly and leaves the clip ready
+  // rather than crashing the worker - the same non-fatal boundary every
+  // other per-clip failure already uses.
+  const snapshot = await loadActiveMethodologySnapshot();
   const playerContext = {
     sport: team.sport,
     level: team.level_label,
@@ -87,7 +94,8 @@ async function buildAnalysisInput(args: {
     bats: player.bats as AnalysisInput["player"]["bats"],
     throws: player.throws as AnalysisInput["player"]["throws"],
   };
-  const pack = renderKnowledgePack({ claims, sport: playerContext.sport, ageBand: playerContext.ageBand });
+  const applicable = filterApplicableMethodology(snapshot.items, { sport: playerContext.sport, ageBand: playerContext.ageBand });
+  const pack = renderMethodologyPack(applicable);
   return {
     player: playerContext,
     pitch,
@@ -98,6 +106,7 @@ async function buildAnalysisInput(args: {
     },
     knowledgePack: pack.text,
     knowledgeClaimIds: pack.claimIds,
+    knowledgeVersion: snapshot.versionLabel,
   };
 }
 
@@ -113,7 +122,7 @@ async function createAnalysisRun(args: {
     ai_model_version: args.result.aiModelVersion,
     prompt_version: PROMPT_VERSION,
     analysis_policy_version: ANALYSIS_POLICY_VERSION,
-    knowledge_version: KNOWLEDGE_VERSION,
+    knowledge_version: args.input.knowledgeVersion,
     pipeline_version: args.input.swing.pipelineVersion,
     input_manifest: buildInputManifest(args.input),
     no_action_needed: args.result.noActionNeeded,

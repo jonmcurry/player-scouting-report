@@ -15,7 +15,7 @@ const input = (overrides: Partial<AnalysisInput> = {}): AnalysisInput => ({
       { field: "pelvis_tilt_at_contact_deg", reason: "unreliable" },
     ],
   },
-  knowledgePack: "No approved claims.", knowledgeClaimIds: [], ...overrides,
+  knowledgePack: "No approved claims.", knowledgeClaimIds: [], knowledgeVersion: "k-0.1.0", ...overrides,
 });
 
 const validNoAction = {

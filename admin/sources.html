@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sources - HitterLoop Methodology Admin</title>
+<link rel="stylesheet" href="./admin.css">
+</head>
+<body>
+<div class="topbar">
+  <a class="brand" href="./index.html">HitterLoop Methodology Admin</a>
+  <nav>
+    <a href="./sources.html" class="active">Sources</a>
+    <a href="./materials.html">Materials</a>
+    <a href="./claims.html">Claims</a>
+    <a href="./knowledge.html">Active Knowledge</a>
+    <a href="./versions.html">Versions</a>
+    <a href="#" id="signOutLink">Sign out</a>
+  </nav>
+</div>
+<main>
+  <h1>Sources</h1>
+  <p class="hint">A source's approval status describes what it's considered useful <em>for</em> (scope/limitations) - it never implies every claim from it is automatically accepted. See <code>trust_status</code> in <a href="../docs/METHODOLOGY_ADMIN_RUNBOOK.md">the runbook</a>.</p>
+
+  <div class="card">
+    <h2>Add source</h2>
+    <form id="createForm">
+      <label>Name</label>
+      <input name="name" required>
+      <label>Source type</label>
+      <select name="source_type" required>
+        <option value="governing_body">Governing body</option>
+        <option value="association">Association</option>
+        <option value="research">Research</option>
+        <option value="training_org">Training org</option>
+        <option value="educator">Educator</option>
+        <option value="publication">Publication</option>
+        <option value="other">Other</option>
+      </select>
+      <label>Canonical URL</label>
+      <input name="canonical_url" type="url" required>
+      <label>Sport scope</label>
+      <select name="sport_scope" required>
+        <option value="baseball">Baseball</option>
+        <option value="softball">Softball</option>
+        <option value="both">Both</option>
+      </select>
+      <label>Level scope (comma-separated, optional)</label>
+      <input name="level_scope">
+      <label>Topic strengths (comma-separated, optional)</label>
+      <input name="topic_strengths">
+      <label>Trust status</label>
+      <select name="trust_status">
+        <option value="candidate">Candidate (default - not yet reviewed)</option>
+        <option value="approved_for_scope">Approved for scope</option>
+        <option value="limited">Limited</option>
+        <option value="do_not_use">Do not use</option>
+      </select>
+      <label>Limitations notes</label>
+      <textarea name="limitations_notes"></textarea>
+      <div class="actions">
+        <button class="primary" type="submit">Add source</button>
+      </div>
+      <p class="error-text" id="createError"></p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>All sources</h2>
+    <table id="sourcesTable">
+      <thead><tr><th>Name</th><th>Type</th><th>Sport</th><th>Trust status</th><th>Active</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</main>
+
+<script type="module">
+  import { requireMethodologyAdmin, escapeHtml, signOut } from "./shared.js";
+  import { listSources, createSource, updateSource } from "./methodologyApi.js";
+
+  document.getElementById("signOutLink").addEventListener("click", (e) => { e.preventDefault(); signOut(); });
+
+  async function loadTable() {
+    const tbody = document.querySelector("#sourcesTable tbody");
+    const sources = await listSources();
+    if (!sources.length) {
+      tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state">No sources yet.</div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = sources.map((s) => `
+      <tr data-id="${s.id}">
+        <td>${escapeHtml(s.name)}<br><a href="${escapeHtml(s.canonical_url)}" target="_blank" rel="noopener" class="hint">${escapeHtml(s.canonical_url)}</a></td>
+        <td>${escapeHtml(s.source_type)}</td>
+        <td>${escapeHtml(s.sport_scope)}</td>
+        <td>
+          <select class="trustSelect" data-id="${s.id}">
+            ${["candidate", "approved_for_scope", "limited", "do_not_use"].map((v) => `<option value="${v}" ${v === s.trust_status ? "selected" : ""}>${v}</option>`).join("")}
+          </select>
+        </td>
+        <td><input type="checkbox" class="activeCheckbox" data-id="${s.id}" ${s.active ? "checked" : ""}></td>
+      </tr>
+    `).join("");
+
+    tbody.querySelectorAll(".trustSelect").forEach((el) => {
+      el.addEventListener("change", async () => {
+        try { await updateSource(el.dataset.id, { trust_status: el.value }); }
+        catch (err) { alert(err.message); }
+      });
+    });
+    tbody.querySelectorAll(".activeCheckbox").forEach((el) => {
+      el.addEventListener("change", async () => {
+        try { await updateSource(el.dataset.id, { active: el.checked }); }
+        catch (err) { alert(err.message); el.checked = !el.checked; }
+      });
+    });
+  }
+
+  document.getElementById("createForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById("createError");
+    errorEl.textContent = "";
+    const form = new FormData(e.target);
+    const splitList = (v) => (v ? v.split(",").map((x) => x.trim()).filter(Boolean) : []);
+    try {
+      await createSource({
+        name: form.get("name"),
+        source_type: form.get("source_type"),
+        canonical_url: form.get("canonical_url"),
+        sport_scope: form.get("sport_scope"),
+        level_scope: splitList(form.get("level_scope")),
+        topic_strengths: splitList(form.get("topic_strengths")),
+        trust_status: form.get("trust_status"),
+        limitations_notes: form.get("limitations_notes") || "",
+      });
+      e.target.reset();
+      await loadTable();
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
+  });
+
+  requireMethodologyAdmin().then((session) => { if (session) loadTable(); });
+</script>
+</body>
+</html>

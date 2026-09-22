@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Versions - HitterLoop Methodology Admin</title>
+<link rel="stylesheet" href="./admin.css">
+</head>
+<body>
+<div class="topbar">
+  <a class="brand" href="./index.html">HitterLoop Methodology Admin</a>
+  <nav>
+    <a href="./sources.html">Sources</a>
+    <a href="./materials.html">Materials</a>
+    <a href="./claims.html">Claims</a>
+    <a href="./knowledge.html">Active Knowledge</a>
+    <a href="./versions.html" class="active">Versions</a>
+    <a href="#" id="signOutLink">Sign out</a>
+  </nav>
+</div>
+<main>
+  <h1>Versions</h1>
+  <p class="hint">Publishing a version is atomic and immutable - historical labels are never reused or rewritten. A rollback is a new version containing the desired historical claim set, not a reactivation of the old label. Publishing here never requires an Android/PWA release.</p>
+
+  <div class="card" id="previewCard">Loading preview&hellip;</div>
+
+  <div class="card">
+    <h2>Publish new snapshot</h2>
+    <form id="publishForm">
+      <label>Version label (e.g. k-0.2.0 - never reuse a prior label)</label>
+      <input name="version_label" required placeholder="k-0.2.0">
+      <label>Notes</label>
+      <textarea name="notes" placeholder="What changed and why"></textarea>
+      <div class="actions"><button class="primary" type="submit">Publish</button></div>
+      <p class="error-text" id="publishError"></p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>History</h2>
+    <table id="historyTable">
+      <thead><tr><th>Version</th><th>Status</th><th>Active</th><th>Notes</th><th>Published</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</main>
+
+<script type="module">
+  import { requireMethodologyAdmin, escapeHtml, signOut } from "./shared.js";
+  import { listVersions, getActiveVersion, getActiveVersionItems, previewSnapshot, publishSnapshot } from "./methodologyApi.js";
+
+  document.getElementById("signOutLink").addEventListener("click", (e) => { e.preventDefault(); signOut(); });
+
+  async function loadPreview() {
+    const el = document.getElementById("previewCard");
+    try {
+      const [active, previewClaims] = await Promise.all([getActiveVersion(), previewSnapshot()]);
+      const currentItems = active ? await getActiveVersionItems(active.version_label) : [];
+      const currentIds = new Set(currentItems.map((i) => i.claim_id));
+      const nextIds = new Set(previewClaims.map((c) => c.id));
+      const added = previewClaims.filter((c) => !currentIds.has(c.id));
+      const removed = currentItems.filter((i) => !nextIds.has(i.claim_id));
+      el.innerHTML = `
+        <h2>Next snapshot preview</h2>
+        <p class="hint">Currently active: <code>${active ? escapeHtml(active.version_label) : "none"}</code> (${currentItems.length} item(s)). Publishing now would freeze ${previewClaims.length} approved+active claim(s).</p>
+        ${added.length ? `<p><b class="diff-added">+${added.length} added:</b> ${added.map((c) => escapeHtml(c.concept)).join(", ")}</p>` : ""}
+        ${removed.length ? `<p><b class="diff-removed">-${removed.length} removed:</b> ${removed.map((i) => escapeHtml(i.item_payload.concept)).join(", ")}</p>` : ""}
+        ${!added.length && !removed.length ? `<p class="hint">No change from the current active snapshot.</p>` : ""}
+      `;
+    } catch (err) {
+      el.innerHTML = `<span class="error-text">${escapeHtml(err.message)}</span>`;
+    }
+  }
+
+  async function loadHistory() {
+    const tbody = document.querySelector("#historyTable tbody");
+    const versions = await listVersions();
+    tbody.innerHTML = versions.map((v) => `
+      <tr>
+        <td><code>${escapeHtml(v.version_label)}</code></td>
+        <td>${escapeHtml(v.status)}</td>
+        <td>${v.active ? "yes" : ""}</td>
+        <td>${escapeHtml(v.notes || "")}</td>
+        <td>${escapeHtml(v.published_at || "")}</td>
+      </tr>
+    `).join("");
+  }
+
+  document.getElementById("publishForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById("publishError");
+    errorEl.textContent = "";
+    const form = new FormData(e.target);
+    const label = form.get("version_label");
+    if (!confirm(`Publish "${label}"? This is atomic and immutable once it commits.`)) return;
+    try {
+      await publishSnapshot(label, form.get("notes") || "");
+      e.target.reset();
+      await Promise.all([loadPreview(), loadHistory()]);
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
+  });
+
+  requireMethodologyAdmin().then((session) => {
+    if (!session) return;
+    loadPreview();
+    loadHistory();
+  });
+</script>
+</body>
+</html>

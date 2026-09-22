@@ -81,8 +81,8 @@ export function loadKnowledgeClaims(root = process.cwd()): KnowledgeClaim[] {
   return validateKnowledgeClaims(JSON.parse(fs.readFileSync(path.join(root, "knowledge", "claims.json"), "utf8")));
 }
 
-const youthBands = new Set<AgeBand>(["u8", "8-10", "11-12", "13-14"]);
-function neutralize(text: string): string {
+export const youthBands = new Set<AgeBand>(["u8", "8-10", "11-12", "13-14"]);
+export function neutralize(text: string): string {
   return text
     .replace(/[\r\n]+/g, " ")
     .replace(/```/g, "'''")

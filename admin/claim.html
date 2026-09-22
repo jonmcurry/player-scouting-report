@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claim - HitterLoop Methodology Admin</title>
+<link rel="stylesheet" href="./admin.css">
+</head>
+<body>
+<div class="topbar">
+  <a class="brand" href="./index.html">HitterLoop Methodology Admin</a>
+  <nav>
+    <a href="./sources.html">Sources</a>
+    <a href="./materials.html">Materials</a>
+    <a href="./claims.html" class="active">Claims</a>
+    <a href="./knowledge.html">Active Knowledge</a>
+    <a href="./versions.html">Versions</a>
+    <a href="#" id="signOutLink">Sign out</a>
+  </nav>
+</div>
+<main id="mainContent">Loading&hellip;</main>
+
+<script type="module">
+  import { requireMethodologyAdmin, escapeHtml, signOut, qs } from "./shared.js";
+  import { getClaim, listClaims, reviewClaim, createSupersedingCandidate } from "./methodologyApi.js";
+  import { supabase } from "./shared.js";
+
+  document.getElementById("signOutLink").addEventListener("click", (e) => { e.preventDefault(); signOut(); });
+
+  const claimId = qs("id");
+  const main = document.getElementById("mainContent");
+
+  async function isPublished(id) {
+    const { data } = await supabase.from("methodology_version_items").select("version_label").eq("claim_id", id).limit(1);
+    return (data ?? []).length > 0;
+  }
+
+  function fieldRow(label, value) {
+    return `<tr><th style="white-space:nowrap;">${escapeHtml(label)}</th><td>${value}</td></tr>`;
+  }
+
+  async function render() {
+    if (!claimId) { main.innerHTML = `<div class="card error-text">No claim id given.</div>`; return; }
+    let claim;
+    try { claim = await getClaim(claimId); }
+    catch (err) { main.innerHTML = `<div class="card error-text">${escapeHtml(err.message)}</div>`; return; }
+
+    const material = claim.methodology_materials;
+    const source = material?.methodology_sources;
+    const published = await isPublished(claimId);
+    const otherCandidates = published ? [] : await listClaims({ reviewStatus: "approved" });
+
+    main.innerHTML = `
+      <h1>Claim: ${escapeHtml(claim.concept)}</h1>
+      <div class="card">
+        <table>
+          ${fieldRow("Status", `<span class="badge ${escapeHtml(claim.review_status)}">${escapeHtml(claim.review_status)}</span> ${claim.active ? "&middot; active" : ""}`)}
+          ${fieldRow("Source", `${escapeHtml(source?.name ?? "")} &mdash; <a href="${escapeHtml(source?.canonical_url ?? "#")}" target="_blank" rel="noopener">${escapeHtml(source?.canonical_url ?? "")}</a>`)}
+          ${fieldRow("Material", `${escapeHtml(material?.title ?? "")} (${escapeHtml(material?.material_type ?? "")}) &mdash; <a href="${escapeHtml(material?.canonical_url ?? "#")}" target="_blank" rel="noopener">${escapeHtml(material?.canonical_url ?? "")}</a>`)}
+          ${fieldRow("Timestamp / location", `${claim.source_start_seconds != null ? escapeHtml(String(claim.source_start_seconds)) + "s" : ""}${claim.source_end_seconds != null ? " - " + escapeHtml(String(claim.source_end_seconds)) + "s" : ""} ${escapeHtml(claim.source_location ?? "")}`)}
+          ${fieldRow("Extracted text", `<div>${escapeHtml(claim.extracted_text)}</div>`)}
+          ${fieldRow("Approved text", claim.approved_text ? `<div>${escapeHtml(claim.approved_text)}</div>` : `<span class="hint">not yet approved</span>`)}
+          ${fieldRow("Observable evidence", escapeHtml(claim.observable_evidence || ""))}
+          ${fieldRow("Coaching cue", escapeHtml(claim.coaching_cue || ""))}
+          ${fieldRow("Applies when", escapeHtml(claim.applies_when || ""))}
+          ${fieldRow("Does not apply when", escapeHtml(claim.does_not_apply_when || ""))}
+          ${fieldRow("Sport / age / evidence", `${escapeHtml(claim.sport_scope)} &middot; ${escapeHtml(claim.age_guardrail)} &middot; ${escapeHtml(claim.evidence_type)}${claim.numeric_claim ? " &middot; numeric (" + escapeHtml(claim.numeric_evidence_ref || "no ref yet") + ")" : ""}`)}
+          ${fieldRow("Contradiction group / state", `${escapeHtml(claim.contradiction_group || "none")} / ${escapeHtml(claim.contradiction_state)}`)}
+          ${fieldRow("Reviewer", claim.reviewed_by ? `${escapeHtml(claim.reviewed_by)} at ${escapeHtml(claim.reviewed_at)}` : `<span class="hint">not yet reviewed</span>`)}
+        </table>
+      </div>
+
+      ${published ? `
+        <div class="card">
+          <h2>This claim has been published</h2>
+          <p class="hint">Published claims are never edited in place. To correct it, create a new candidate that supersedes this one.</p>
+          <button id="supersedeBtn">Create superseding candidate</button>
+        </div>
+      ` : `
+        <div class="card">
+          <h2>Review this claim</h2>
+          <label>Approved text (required to approve - preserves original extracted_text separately)</label>
+          <textarea id="approvedText">${escapeHtml(claim.approved_text || claim.extracted_text)}</textarea>
+          <label>Review notes</label>
+          <textarea id="reviewNotes"></textarea>
+          <label>Rejection reason (required to reject)</label>
+          <select id="rejectionReason">
+            <option value="">-</option>
+            <option value="unsupported">Unsupported</option>
+            <option value="disputed_evidence">Disputed evidence</option>
+            <option value="out_of_scope">Out of scope</option>
+            <option value="numeric_norm_unvalidated">Numeric norm unvalidated</option>
+            <option value="other">Other</option>
+          </select>
+          <label>Duplicate of (required to mark duplicate)</label>
+          <select id="duplicateOf">
+            <option value="">-</option>
+            ${otherCandidates.map((c) => `<option value="${c.id}">${escapeHtml(c.concept)} (${escapeHtml(c.id.slice(0, 8))})</option>`).join("")}
+          </select>
+          <div class="actions">
+            <button class="primary" id="approveBtn">Approve</button>
+            <button class="danger" id="rejectBtn">Reject</button>
+            <button id="disputeBtn">Dispute</button>
+            <button id="duplicateBtn">Mark duplicate</button>
+          </div>
+          <p class="error-text" id="reviewError"></p>
+        </div>
+      `}
+    `;
+
+    if (published) {
+      document.getElementById("supersedeBtn").addEventListener("click", async () => {
+        try {
+          const created = await createSupersedingCandidate(claim, {});
+          window.location.href = `./claim.html?id=${created.id}`;
+        } catch (err) { alert(err.message); }
+      });
+      return;
+    }
+
+    const errorEl = document.getElementById("reviewError");
+    const doReview = async (decision, extra = {}) => {
+      errorEl.textContent = "";
+      try {
+        await reviewClaim({
+          claimId,
+          decision,
+          approvedText: document.getElementById("approvedText").value,
+          reviewNotes: document.getElementById("reviewNotes").value || null,
+          ...extra,
+        });
+        render();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    };
+    document.getElementById("approveBtn").addEventListener("click", () => doReview("approved"));
+    document.getElementById("rejectBtn").addEventListener("click", () => {
+      const reason = document.getElementById("rejectionReason").value;
+      if (!reason) { errorEl.textContent = "Rejection reason is required."; return; }
+      doReview("rejected", { rejectionReason: reason });
+    });
+    document.getElementById("disputeBtn").addEventListener("click", () => doReview("disputed"));
+    document.getElementById("duplicateBtn").addEventListener("click", () => {
+      const dup = document.getElementById("duplicateOf").value;
+      if (!dup) { errorEl.textContent = "Select the claim this duplicates."; return; }
+      doReview("duplicate", { duplicateOfClaimId: dup });
+    });
+  }
+
+  requireMethodologyAdmin().then((session) => { if (session) render(); });
+</script>
+</body>
+</html>

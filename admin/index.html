@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HitterLoop Methodology Admin</title>
+<link rel="stylesheet" href="./admin.css">
+</head>
+<body>
+<div id="loginView" class="login-form">
+  <h1>HitterLoop Methodology Admin</h1>
+  <p class="hint">Internal tool. Sign in with an existing coach/admin account that has been granted methodology-admin access (<code>npm run provision-methodology-admin</code>).</p>
+  <input type="email" id="email" placeholder="Email" autocomplete="username">
+  <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+  <button class="primary" id="signInBtn">Sign In</button>
+  <p class="error-text" id="errorMsg"></p>
+</div>
+
+<div id="deniedView" style="display:none;" class="access-denied">
+  <h1>Access denied</h1>
+  <p>This account is signed in but is not on the methodology-admin allowlist. Ask an existing methodology admin to run:</p>
+  <p><code>npm run provision-methodology-admin -- --email you@example.com --grant</code></p>
+  <button id="signOutBtn">Sign out</button>
+</div>
+
+<div id="landingView" style="display:none;">
+  <div class="topbar">
+    <span class="brand">HitterLoop Methodology Admin</span>
+    <nav>
+      <a href="./sources.html">Sources</a>
+      <a href="./materials.html">Materials</a>
+      <a href="./claims.html">Claims</a>
+      <a href="./knowledge.html">Active Knowledge</a>
+      <a href="./versions.html">Versions</a>
+      <a href="#" id="signOutLink">Sign out</a>
+    </nav>
+  </div>
+  <main>
+    <div class="card">
+      <h2>Publishing pipeline</h2>
+      <p class="hint">source &rarr; material &rarr; candidate claim &rarr; human review &rarr; preview &rarr; publish &rarr; active production snapshot. A methodology release never requires an Android/PWA app update.</p>
+    </div>
+    <div class="card" id="summary">Loading summary&hellip;</div>
+  </main>
+</div>
+
+<script type="module">
+  import { supabase, escapeHtml } from "./shared.js";
+
+  async function render() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      document.getElementById("loginView").style.display = "flex";
+      return;
+    }
+    const { data: isAdmin, error } = await supabase.rpc("is_methodology_admin");
+    if (error || isAdmin !== true) {
+      document.getElementById("deniedView").style.display = "block";
+      return;
+    }
+    document.getElementById("landingView").style.display = "block";
+    loadSummary();
+  }
+
+  async function loadSummary() {
+    const el = document.getElementById("summary");
+    try {
+      const [{ count: candidateCount }, { count: sourceCount }, { data: active }] = await Promise.all([
+        supabase.from("methodology_claims").select("id", { count: "exact", head: true }).eq("review_status", "candidate"),
+        supabase.from("methodology_sources").select("id", { count: "exact", head: true }),
+        supabase.from("methodology_versions").select("version_label, published_at").eq("active", true).maybeSingle(),
+      ]);
+      el.innerHTML = `
+        <h2>Summary</h2>
+        <p>Active version: <b>${active ? escapeHtml(active.version_label) : "none (fail-closed - analysis will refuse to run)"}</b></p>
+        <p>${candidateCount ?? 0} claim(s) awaiting review &middot; ${sourceCount ?? 0} source(s) registered</p>
+      `;
+    } catch (err) {
+      el.innerHTML = `<span class="error-text">${escapeHtml(err.message)}</span>`;
+    }
+  }
+
+  document.getElementById("signInBtn").addEventListener("click", async () => {
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+    const errorMsg = document.getElementById("errorMsg");
+    errorMsg.textContent = "";
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) { errorMsg.textContent = error.message; return; }
+    document.getElementById("loginView").style.display = "none";
+    render();
+  });
+
+  for (const id of ["signOutBtn", "signOutLink"]) {
+    document.getElementById(id)?.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await supabase.auth.signOut();
+      window.location.reload();
+    });
+  }
+
+  render();
+</script>
+</body>
+</html>

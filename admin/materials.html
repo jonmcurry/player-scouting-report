@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Materials - HitterLoop Methodology Admin</title>
+<link rel="stylesheet" href="./admin.css">
+</head>
+<body>
+<div class="topbar">
+  <a class="brand" href="./index.html">HitterLoop Methodology Admin</a>
+  <nav>
+    <a href="./sources.html">Sources</a>
+    <a href="./materials.html" class="active">Materials</a>
+    <a href="./claims.html">Claims</a>
+    <a href="./knowledge.html">Active Knowledge</a>
+    <a href="./versions.html">Versions</a>
+    <a href="#" id="signOutLink">Sign out</a>
+  </nav>
+</div>
+<main>
+  <h1>Materials</h1>
+  <p class="hint">One source item (video, article, clinic, &hellip;). Manual metadata entry only for now - no automated extraction yet. We do not download/rehost video or store full transcripts here.</p>
+
+  <div class="card">
+    <h2>Add material</h2>
+    <form id="createForm">
+      <label>Source</label>
+      <select name="source_id" id="sourceSelect" required></select>
+      <label>Title</label>
+      <input name="title" required>
+      <label>Canonical URL</label>
+      <input name="canonical_url" type="url" required>
+      <label>Material type</label>
+      <select name="material_type" required>
+        <option value="video">Video</option>
+        <option value="article">Article</option>
+        <option value="clinic">Clinic</option>
+        <option value="podcast">Podcast</option>
+        <option value="book">Book</option>
+        <option value="other">Other</option>
+      </select>
+      <label>External ID (e.g. YouTube video ID, optional)</label>
+      <input name="external_id">
+      <label>Published date (optional)</label>
+      <input name="published_at" type="date">
+      <label>Notes</label>
+      <textarea name="notes"></textarea>
+      <div class="actions"><button class="primary" type="submit">Add material</button></div>
+      <p class="error-text" id="createError"></p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>All materials</h2>
+    <table id="materialsTable">
+      <thead><tr><th>Title</th><th>Source</th><th>Type</th><th>Ingestion state</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</main>
+
+<script type="module">
+  import { requireMethodologyAdmin, escapeHtml, signOut } from "./shared.js";
+  import { listSources, listMaterials, createMaterial, updateMaterial } from "./methodologyApi.js";
+
+  document.getElementById("signOutLink").addEventListener("click", (e) => { e.preventDefault(); signOut(); });
+
+  async function loadSourceOptions() {
+    const sources = await listSources();
+    document.getElementById("sourceSelect").innerHTML = sources.length
+      ? sources.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("")
+      : `<option value="">No sources yet - add one first</option>`;
+  }
+
+  async function loadTable() {
+    const tbody = document.querySelector("#materialsTable tbody");
+    const materials = await listMaterials();
+    if (!materials.length) {
+      tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state">No materials yet.</div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = materials.map((m) => `
+      <tr>
+        <td>${escapeHtml(m.title)}<br><a href="${escapeHtml(m.canonical_url)}" target="_blank" rel="noopener" class="hint">${escapeHtml(m.canonical_url)}</a></td>
+        <td>${escapeHtml(m.methodology_sources?.name ?? "")}</td>
+        <td>${escapeHtml(m.material_type)}</td>
+        <td>
+          <select class="stateSelect" data-id="${m.id}">
+            ${["queued", "extracted", "reviewed", "rejected", "failed"].map((v) => `<option value="${v}" ${v === m.ingestion_state ? "selected" : ""}>${v}</option>`).join("")}
+          </select>
+        </td>
+      </tr>
+    `).join("");
+    tbody.querySelectorAll(".stateSelect").forEach((el) => {
+      el.addEventListener("change", async () => {
+        try { await updateMaterial(el.dataset.id, { ingestion_state: el.value }); }
+        catch (err) { alert(err.message); }
+      });
+    });
+  }
+
+  document.getElementById("createForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById("createError");
+    errorEl.textContent = "";
+    const form = new FormData(e.target);
+    try {
+      await createMaterial({
+        source_id: form.get("source_id"),
+        title: form.get("title"),
+        canonical_url: form.get("canonical_url"),
+        material_type: form.get("material_type"),
+        external_id: form.get("external_id") || null,
+        published_at: form.get("published_at") || null,
+        notes: form.get("notes") || "",
+      });
+      e.target.reset();
+      await loadTable();
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
+  });
+
+  requireMethodologyAdmin().then((session) => {
+    if (!session) return;
+    loadSourceOptions();
+    loadTable();
+  });
+</script>
+</body>
+</html>
