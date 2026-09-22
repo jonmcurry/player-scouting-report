@@ -1,0 +1,105 @@
+{
+  "video": {
+    "n": 8,
+    "id": "7J-JoyaSabA",
+    "label": "ABCA - Youth Practice Plan Series | Hitting Tips"
+  },
+  "url": "https://www.youtube.com/watch?v=7J-JoyaSabA",
+  "modelVersion": "gemini-3.6-flash",
+  "extraction": {
+    "verifiedTitle": "Youth Hitting Drills and Tee Placement Mechanics",
+    "verifiedChannel": "Golden Spikes Baseball",
+    "contentCharacter": "drill demonstration",
+    "overallNotes": "The video demonstrates youth hitting drills focusing on medicine ball throws to teach lower half loading and hip hinge, connection ball drills for lower body stability, and proper tee positioning for pitch location adjustments.",
+    "claims": [
+      {
+        "concept": "pitch_location_adjustment",
+        "claimText": "Adjust contact points on a batting tee according to pitch location: outside pitches off the lead hip, middle pitches off the lead foot, and inside pitches out in front of the lead foot.",
+        "sourceProposition": "When setting up a tee, pitch location dictates contact point depth relative to the body (away off lead hip, middle off front foot, inside in front of front foot) to maintain connection.",
+        "observableEvidence": "Positioning of the batting tee relative to the hitter's front foot and lead hip across different pitch locations.",
+        "sportScope": "baseball",
+        "ageGuardrail": "youth_appropriate",
+        "appliesWhen": "Setting up batting tee drills for specific pitch location practice.",
+        "doesNotApplyWhen": "Practicing dynamic pitch recognition or live pitching hitting without controlled tee setups.",
+        "evidenceType": "coaching_instruction",
+        "numericClaim": false,
+        "startSeconds": 378,
+        "timestampConfidence": "high",
+        "qualityNotes": "Clear demonstration showing tee setup geometry across outside, middle, and inside pitch locations.",
+        "approvalReadiness": "strong_candidate",
+        "causeVsSymptomNote": "Addresses contact depth geometry directly rather than treating secondary rotational errors.",
+        "coachingCue": "Outside off lead hip, middle off lead foot, inside out front.",
+        "conceptMismatchNote": null,
+        "endSeconds": 500,
+        "levelScopeNote": "Appropriate across all youth and amateur hitting levels.",
+        "numericEvidenceRef": null
+      },
+      {
+        "concept": "load",
+        "claimText": "Using a jump-back medicine ball toss teaches hitters to load into the back hip and maintain weight on the inside of the back knee.",
+        "sourceProposition": "Jumping back into a med ball toss teaches lower half loading into the back hip while keeping weight inside the back knee to ground forces effectively.",
+        "observableEvidence": "Hitter jumping back onto the rear leg, hinging at the back hip without knee collapsing outward, before throwing medicine ball into net.",
+        "sportScope": "baseball",
+        "ageGuardrail": "youth_appropriate",
+        "appliesWhen": "Developing dynamic lower-half loading and back-hip weight distribution.",
+        "doesNotApplyWhen": "Players lack basic lower body balance or have joint issues requiring physical screening.",
+        "evidenceType": "drill_prescription",
+        "numericClaim": false,
+        "startSeconds": 58,
+        "timestampConfidence": "high",
+        "qualityNotes": "Demonstrated with youth players; coach highlights modifying medicine ball weight by age.",
+        "approvalReadiness": "strong_candidate",
+        "causeVsSymptomNote": "Uses physical movement constraint (medicine ball jump back) to cause proper hip loading.",
+        "coachingCue": "Jump back and load into your back hip.",
+        "conceptMismatchNote": null,
+        "endSeconds": 150,
+        "levelScopeNote": "Adjust med ball weight (2-4 lbs) for young players.",
+        "numericEvidenceRef": null
+      }
+    ],
+    "drills": [
+      {
+        "name": "Med Ball Jump Back Toss Drill",
+        "targetedProblem": "Poor lower-half load, lack of hip rotation, and swaying over the back knee.",
+        "sportScope": "baseball",
+        "ageLevelCaution": "Use light medicine balls (2 to 4 lbs) for young hitters.",
+        "equipment": "Light medicine ball (2-4 lbs), net or wall",
+        "startSeconds": 58,
+        "tiedToSpecificFault": true,
+        "timestampConfidence": "high"
+      },
+      {
+        "name": "Med Ball Scoop Toss Drill",
+        "targetedProblem": "Lack of hip hinge and failure to release the backside through swing rotation.",
+        "sportScope": "baseball",
+        "ageLevelCaution": "Ensure correct medicine ball weight to prevent lumbar strain.",
+        "equipment": "Light medicine ball, net or wall",
+        "startSeconds": 145,
+        "tiedToSpecificFault": true,
+        "timestampConfidence": "high"
+      },
+      {
+        "name": "Volleyball Knee Squeeze Drill",
+        "targetedProblem": "Knee flare during stride and weak lower body connection.",
+        "sportScope": "baseball",
+        "ageLevelCaution": "Safe for all youth players.",
+        "equipment": "Soft dodgeball, volleyball, or connection ball",
+        "startSeconds": 249,
+        "tiedToSpecificFault": true,
+        "timestampConfidence": "high"
+      },
+      {
+        "name": "Horseshoe Seam Visual Placement Drill",
+        "targetedProblem": "Losing visual focus on the inner half of the baseball during tee work.",
+        "sportScope": "baseball",
+        "ageLevelCaution": "None",
+        "equipment": "Batting tee, baseball, bat",
+        "startSeconds": 338,
+        "tiedToSpecificFault": false,
+        "timestampConfidence": "high"
+      }
+    ],
+    "weakOrRejectedNotes": [],
+    "estimatedDurationSeconds": 600
+  }
+}

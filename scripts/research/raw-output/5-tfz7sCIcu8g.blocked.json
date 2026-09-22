@@ -1,0 +1,6 @@
+{
+  "video": { "n": 5, "id": "tfz7sCIcu8g", "label": "Antonelli Softball - Behind the Scenes Softball Lesson" },
+  "url": "https://www.youtube.com/watch?v=tfz7sCIcu8g",
+  "blocked": true,
+  "reason": "Gemini API returned repeated 503 UNAVAILABLE (model overloaded) after 4 retries, then further attempts would have exceeded the free-tier daily request quota (20 req/day). Not a content/access problem with the video itself - retry another day."
+}

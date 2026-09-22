@@ -1,0 +1,87 @@
+{
+  "video": {
+    "n": 1,
+    "id": "tXKjS3iKgAk",
+    "label": "Driveline - How To Coach Hitting Mechanics Pt. 1"
+  },
+  "url": "https://www.youtube.com/watch?v=tXKjS3iKgAk",
+  "modelVersion": "gemini-3.6-flash",
+  "extraction": {
+    "verifiedTitle": "Coaching Hitting Mechanics with Jason Ochart Pt. 1",
+    "verifiedChannel": "Driveline Baseball",
+    "contentCharacter": "philosophy/approach",
+    "overallNotes": "Jason Ochart (Director of Hitting at Driveline Baseball) presents Driveline's motor-learning approach to coaching hitting mechanics, highlighting external vs. internal cueing and constraint-led self-organization.",
+    "claims": [
+      {
+        "concept": "game_approach",
+        "claimText": "External focus cues (focusing on ball flight or target outcome) promote superior force production and movement sequencing compared to internal focus cues (focusing on body mechanics).",
+        "sourceProposition": "Athletes produce more force and sequence more efficiently when focusing externally on movement outcomes rather than internally on body movements.",
+        "observableEvidence": "Coaching instructions directed at ball flight trajectory or target outcome rather than specific body segment movement during live or cage swings.",
+        "sportScope": "both",
+        "ageGuardrail": "youth_appropriate",
+        "appliesWhen": "Delivering verbal feedback during batting practice, cage work, or game preparation.",
+        "doesNotApplyWhen": "Conducting explicit body-awareness drills or physical therapy screenings where internal focus is intentionally required.",
+        "evidenceType": "research_supported",
+        "numericClaim": false,
+        "startSeconds": 38,
+        "timestampConfidence": "high",
+        "qualityNotes": "Explicitly cites academic research studies on motor learning on screen (Wulf 2010, Wu 2012, Castaneda & Gray 2007).",
+        "approvalReadiness": "strong_candidate",
+        "causeVsSymptomNote": null,
+        "coachingCue": "Focus on ball flight trajectory and where you want to hit the ball rather than internal body movement.",
+        "conceptMismatchNote": null,
+        "endSeconds": 63,
+        "levelScopeNote": "Applies across all skill levels and age groups.",
+        "numericEvidenceRef": null
+      },
+      {
+        "concept": "game_approach",
+        "claimText": "Manipulating physical and environmental constraints allows hitters to self-organize efficient swing mechanics without creating robotic movement patterns.",
+        "sourceProposition": "The human body self-organizes to accomplish tasks within an environment, so coaches should manipulate environmental/physical constraints rather than over-cueing mechanics verbally.",
+        "observableEvidence": "Use of environmental constraints, step-behind drills, and variable overload/underload bats to induce mechanical adjustment without explicit verbal mechanics instruction.",
+        "sportScope": "both",
+        "ageGuardrail": "teen_appropriate",
+        "appliesWhen": "Designing practice environments to correct hitting mechanics and timing faults.",
+        "doesNotApplyWhen": "An athlete lacks basic movement patterns or physical mobility required for the constraint.",
+        "evidenceType": "coaching_instruction",
+        "numericClaim": false,
+        "startSeconds": 119,
+        "timestampConfidence": "high",
+        "qualityNotes": "Demonstrates constraint-based training in Driveline facility.",
+        "approvalReadiness": "strong_candidate",
+        "causeVsSymptomNote": "Direct body cueing can be a symptom-focused approach that inhibits natural self-organization; constraint design addresses the underlying cause by altering environment.",
+        "coachingCue": null,
+        "conceptMismatchNote": null,
+        "endSeconds": 145,
+        "levelScopeNote": "Best suited for players who have baseline mechanics established and need dynamic movement training.",
+        "numericEvidenceRef": null
+      }
+    ],
+    "drills": [
+      {
+        "name": "Step-Behind Momentum Drill",
+        "targetedProblem": "Gaining momentum and transferring linear force accurately into the swing using movement constraints.",
+        "sportScope": "both",
+        "ageLevelCaution": "Ensure proper footwork and balance; suited for teen and advanced hitters.",
+        "equipment": "Bat, balls, tee or toss feeder",
+        "startSeconds": 129,
+        "tiedToSpecificFault": false,
+        "timestampConfidence": "high"
+      },
+      {
+        "name": "Underload/Overload Variable Bat Training",
+        "targetedProblem": "Building swing speed, motor adaptability, and mechanical efficiency through load variation.",
+        "sportScope": "both",
+        "ageLevelCaution": "Requires appropriate load selection to avoid strain in younger athletes.",
+        "equipment": "Underload and overload weighted bats, training balls",
+        "startSeconds": 135,
+        "tiedToSpecificFault": false,
+        "timestampConfidence": "high"
+      }
+    ],
+    "weakOrRejectedNotes": [
+      "General commentary on pitch reaction times (pitch taking under 0.5s at 80-90mph) is standard physics context rather than a novel mechanical claim."
+    ],
+    "estimatedDurationSeconds": 136
+  }
+}

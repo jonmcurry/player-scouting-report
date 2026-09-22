@@ -1,0 +1,66 @@
+{
+  "video": {
+    "n": 9,
+    "id": "8tT4KXt5hhk",
+    "label": "ABCA / Bryson LeBlanc - Swinging vs. Hitting"
+  },
+  "url": "https://www.youtube.com/watch?v=8tT4KXt5hhk",
+  "modelVersion": "gemini-3.6-flash",
+  "extraction": {
+    "verifiedTitle": "Missouri Tigers Hitting Philosophy - ABCA Barnstormers",
+    "verifiedChannel": "American Baseball Coaches Association",
+    "contentCharacter": "philosophy/approach",
+    "overallNotes": "Whiteboard coaching lecture delivered at Taylor Stadium on process-driven approach over outcome bias, highlighting pitch-by-pitch focus and timing for the fastball.",
+    "claims": [
+      {
+        "concept": "timing",
+        "claimText": "Hitters should anchor their approach on being consistently on time for the pitcher's best fastball.",
+        "sourceProposition": "Our core philosophy is to be on time for his best fastball; when hitters truly believe they are on time for the best fastball, it opens up their entire offensive execution.",
+        "observableEvidence": "Hitter showing early tempo and pitch-release readiness synchronized with fastball velocity.",
+        "sportScope": "both",
+        "ageGuardrail": "youth_appropriate",
+        "appliesWhen": "Standard plate appearances across all counts.",
+        "doesNotApplyWhen": "Situational at-bats where sitting on a specific offspeed pitch is explicitly called.",
+        "evidenceType": "coaching_instruction",
+        "numericClaim": false,
+        "startSeconds": 212,
+        "timestampConfidence": "high",
+        "qualityNotes": "Focuses on pitch timing anchor point and mental readiness.",
+        "approvalReadiness": "strong_candidate",
+        "causeVsSymptomNote": null,
+        "coachingCue": "Be on time for his best fastball",
+        "conceptMismatchNote": null,
+        "endSeconds": 242,
+        "levelScopeNote": "Applicable to all levels from youth to college.",
+        "numericEvidenceRef": null
+      },
+      {
+        "concept": "game_approach",
+        "claimText": "Hitters should measure success by winning individual pitches rather than tracking box-score outcome results.",
+        "sourceProposition": "To alleviate outcome pressure, hitters must reverse-engineer success from outcome results back to winning individual pitches.",
+        "observableEvidence": "Quality at-bat metrics, pitch selectivity, and consistent approach unaffected by single-at-bat results.",
+        "sportScope": "both",
+        "ageGuardrail": "youth_appropriate",
+        "appliesWhen": "All game at-bats and practice routines.",
+        "doesNotApplyWhen": "Never; universal mental game heuristic.",
+        "evidenceType": "coaching_heuristic",
+        "numericClaim": false,
+        "startSeconds": 85,
+        "timestampConfidence": "high",
+        "qualityNotes": "Process-driven mental framework aimed at reducing outcome anxiety.",
+        "approvalReadiness": "strong_candidate",
+        "causeVsSymptomNote": null,
+        "coachingCue": "Win each pitch",
+        "conceptMismatchNote": null,
+        "endSeconds": 125,
+        "levelScopeNote": "Applicable across all levels of play.",
+        "numericEvidenceRef": null
+      }
+    ],
+    "drills": [],
+    "weakOrRejectedNotes": [
+      "No mechanical swing claims or physical drill demonstrations were included in this presentation."
+    ],
+    "estimatedDurationSeconds": 295
+  }
+}

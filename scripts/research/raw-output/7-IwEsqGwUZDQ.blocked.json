@@ -1,0 +1,6 @@
+{
+  "video": { "n": 7, "id": "IwEsqGwUZDQ", "label": "Mike Candrea / Championship Productions - Ultimate Coaching Clinic" },
+  "url": "https://www.youtube.com/watch?v=IwEsqGwUZDQ",
+  "blocked": true,
+  "reason": "Gemini API returned 429 RESOURCE_EXHAUSTED: free-tier daily quota (generativelanguage.googleapis.com/generate_content_free_tier_requests, limit 20/day for gemini-3.6-flash) exhausted for today. Not a content/access problem with the video itself - retry after quota resets (~24h) or with a paid-tier key."
+}

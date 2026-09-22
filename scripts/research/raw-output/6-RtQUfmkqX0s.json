@@ -1,0 +1,53 @@
+{
+  "video": {
+    "n": 6,
+    "id": "RtQUfmkqX0s",
+    "label": "JT Gasso (FloCollege Softball) - 3-Plate Drill"
+  },
+  "url": "https://www.youtube.com/watch?v=RtQUfmkqX0s",
+  "modelVersion": "gemini-3.6-flash",
+  "extraction": {
+    "verifiedTitle": "Hitting Technique - JT Gasso",
+    "verifiedChannel": "Oklahoma Softball",
+    "contentCharacter": "drill demonstration",
+    "overallNotes": "JT Gasso demonstrates and explains the 3-plate timing drill used by Oklahoma Softball hitters to train timing adjustments across different plate locations relative to the pitcher/tosser.",
+    "claims": [
+      {
+        "concept": "timing",
+        "claimText": "Moving hitters between three different plate distances during toss drills trains their ability to adjust swing timing and rhythm relative to pitch arrival time.",
+        "sourceProposition": "Hitters move back and forth between three different plate locations to learn how swing timing and tempo need to adjust for pitch distance.",
+        "observableEvidence": "A hitter taking swings sequentially from three different home plate markers placed in a line at varied distances from the front-toss screen.",
+        "sportScope": "softball",
+        "ageGuardrail": "teen_appropriate",
+        "appliesWhen": "Practicing timing rhythm and reaction time adjustments during front toss or live pitching practice.",
+        "doesNotApplyWhen": "Isolating stationary swing mechanics on a tee where pitch arrival time is not a factor.",
+        "evidenceType": "drill_prescription",
+        "numericClaim": false,
+        "startSeconds": 15,
+        "timestampConfidence": "high",
+        "qualityNotes": "Clear drill instruction focused on timing variability and spatial awareness relative to the tosser.",
+        "approvalReadiness": "strong_candidate",
+        "causeVsSymptomNote": null,
+        "coachingCue": null,
+        "conceptMismatchNote": null,
+        "endSeconds": 28,
+        "levelScopeNote": "Applicable for high school, travel ball, and collegiate athletes working on timing adaptability.",
+        "numericEvidenceRef": null
+      }
+    ],
+    "drills": [
+      {
+        "name": "3-Plate Timing Drill",
+        "targetedProblem": "Poor timing variability and inability to adjust to different pitch speeds or release distances.",
+        "sportScope": "softball",
+        "ageLevelCaution": "Teen appropriate; ensures hitters develop dynamic timing rather than rigid static timing.",
+        "equipment": "3 home plates (placed front-to-back at varying distances from tosser), softballs, front toss screen, bat.",
+        "startSeconds": 15,
+        "tiedToSpecificFault": false,
+        "timestampConfidence": "high"
+      }
+    ],
+    "weakOrRejectedNotes": [],
+    "estimatedDurationSeconds": 28
+  }
+}

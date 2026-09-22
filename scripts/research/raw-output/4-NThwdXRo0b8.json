@@ -1,0 +1,55 @@
+{
+  "video": {
+    "n": 4,
+    "id": "NThwdXRo0b8",
+    "label": "Blast Motion - Youth Hitting Drills - Swing Plane"
+  },
+  "url": "https://www.youtube.com/watch?v=NThwdXRo0b8",
+  "modelVersion": "gemini-3.6-flash",
+  "extraction": {
+    "verifiedTitle": "Blast Motion PVC Pipe On-Plane Drill",
+    "verifiedChannel": "Blast Motion",
+    "contentCharacter": "drill demonstration",
+    "overallNotes": "Demonstrates a PVC pipe drill where a youth hitter holds a pipe across the chest to learn how torso rotation and body posture create the swing plane across different tee locations, avoiding lunging or diving at the ball.",
+    "claims": [
+      {
+        "concept": "posture",
+        "claimText": "Hitters should adjust swing plane to different pitch locations through torso rotation and body posture rather than diving their chest forward toward the ball.",
+        "sourceProposition": "Hitters must rotate the torso to bring the pipe around to the tee, avoiding diving the chest forward at the ball.",
+        "observableEvidence": "Maintaining spinal posture during torso rotation with the pipe making contact with the tee without forward chest lunging.",
+        "sportScope": "both",
+        "ageGuardrail": "youth_appropriate",
+        "appliesWhen": "Working on swing plane control, torso rotation, and pitch location adjustment.",
+        "doesNotApplyWhen": "Full game situations where timing and stride dynamics vary unpredictably.",
+        "evidenceType": "drill_prescription",
+        "numericClaim": false,
+        "startSeconds": 52,
+        "timestampConfidence": "high",
+        "qualityNotes": "Uses a task-based constraint drill with a PVC pipe across the chest to foster rotational posture control.",
+        "approvalReadiness": "strong_candidate",
+        "causeVsSymptomNote": "Diving at the ball is identified as a mechanical flaw caused by attempting to reach the pitch with the chest rather than rotating properly.",
+        "coachingCue": "Rotate around your center so the pipe comes to the tee—don't dive your chest forward.",
+        "conceptMismatchNote": null,
+        "endSeconds": 105,
+        "levelScopeNote": "Appropriate for youth through advanced hitters as a posture and rotation isolation drill.",
+        "numericEvidenceRef": null
+      }
+    ],
+    "drills": [
+      {
+        "name": "PVC Pipe Chest Rotation Drill",
+        "targetedProblem": "Lunging/diving at the ball with the upper body and failing to use body posture to control swing plane.",
+        "sportScope": "both",
+        "ageLevelCaution": "Appropriate for youth and above.",
+        "equipment": "PVC pipe, batting tee",
+        "startSeconds": 10,
+        "tiedToSpecificFault": true,
+        "timestampConfidence": "high"
+      }
+    ],
+    "weakOrRejectedNotes": [
+      "General mention of Blast Motion 'on-plane metric' omitted as a biomechanical claim since it relies on proprietary sensor software, though the underlying mechanical drill is fully captured."
+    ],
+    "estimatedDurationSeconds": 108
+  }
+}

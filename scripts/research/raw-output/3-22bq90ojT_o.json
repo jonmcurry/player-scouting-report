@@ -1,0 +1,53 @@
+{
+  "video": {
+    "n": 3,
+    "id": "22bq90ojT_o",
+    "label": "Megan Rembielak / Tanner Tees - Two Tee Extension Drill"
+  },
+  "url": "https://www.youtube.com/watch?v=22bq90ojT_o",
+  "modelVersion": "gemini-3.6-flash",
+  "extraction": {
+    "verifiedTitle": "Softball Hitting Drill for Extension",
+    "verifiedChannel": "MegRem Softball",
+    "contentCharacter": "drill demonstration",
+    "overallNotes": "Megan Rembielak demonstrates a double-tee hitting drill aimed at maintaining barrel extension through the hitting zone post-contact to prevent premature rollover.",
+    "claims": [
+      {
+        "concept": "extension",
+        "claimText": "Extending the bat barrel through the hitting zone after contact optimizes power and directional ball flight while preventing premature wrist rollover.",
+        "sourceProposition": "Extension after contact keeps the barrel through the tunnel toward the pitcher, maximizing power and helping direct the ball rather than rolling over into weak grounders.",
+        "observableEvidence": "Observation of bat barrel path continuing forward toward the pitcher after contact with extended arms prior to the finish roll-over.",
+        "sportScope": "both",
+        "ageGuardrail": "youth_appropriate",
+        "appliesWhen": "Executing swing follow-through and extension on pitches through the middle of the zone.",
+        "doesNotApplyWhen": "Adjusting to extreme inside pitch locations where hand path must clear tightly.",
+        "evidenceType": "coaching_heuristic",
+        "numericClaim": false,
+        "startSeconds": 7,
+        "timestampConfidence": "high",
+        "qualityNotes": "Standard mechanical coaching concept for swing extension and barrel control.",
+        "approvalReadiness": "strong_candidate",
+        "causeVsSymptomNote": "Premature wrist roll is often a symptom of poor barrel path or rotational casting.",
+        "coachingCue": "Drive the barrel through the tunnel from home to the pitcher.",
+        "conceptMismatchNote": null,
+        "endSeconds": 43,
+        "levelScopeNote": "Applicable across all age groups learning proper post-contact extension.",
+        "numericEvidenceRef": null
+      }
+    ],
+    "drills": [
+      {
+        "name": "Two Tee Extension Drill",
+        "targetedProblem": "Pulling the bat barrel out of the hitting zone too early and rolling over prematurely into ground balls.",
+        "sportScope": "softball",
+        "ageLevelCaution": "Suitable for all skill levels.",
+        "equipment": "Two batting tees, two softballs",
+        "startSeconds": 44,
+        "tiedToSpecificFault": true,
+        "timestampConfidence": "high"
+      }
+    ],
+    "weakOrRejectedNotes": [],
+    "estimatedDurationSeconds": 108
+  }
+}

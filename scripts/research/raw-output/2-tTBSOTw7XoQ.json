@@ -1,0 +1,73 @@
+{
+  "video": {
+    "n": 2,
+    "id": "tTBSOTw7XoQ",
+    "label": "Driveline - 3 Drills to Improve Timing and Load When Hitting"
+  },
+  "url": "https://www.youtube.com/watch?v=tTBSOTw7XoQ",
+  "modelVersion": "gemini-3.6-flash",
+  "extraction": {
+    "verifiedTitle": "Helping An Early Hitter",
+    "verifiedChannel": "Driveline Baseball",
+    "contentCharacter": "drill demonstration",
+    "overallNotes": "Conner Watson from Driveline Baseball discusses the causes of early timing in hitters (loading too early, early forward movement, early hip extension, lunging) and demonstrates three specific drills designed to improve load control and tempo.",
+    "claims": [
+      {
+        "concept": "timing",
+        "claimText": "Hitters who consistently swing too early often initiate their load prematurely, leading to an uncontrolled forward move, early back-hip extension, and lunging.",
+        "sourceProposition": "Early hitting is usually caused by loading too early, which causes moving forward too early, early hip extension, and lunging at the ball.",
+        "observableEvidence": "Hitter shifting weight forward well before pitch release, back hip extending early, and body posture lunging toward the ball.",
+        "sportScope": "baseball",
+        "ageGuardrail": "teen_appropriate",
+        "appliesWhen": "A hitter is consistently early on pitches and lunging forward into contact.",
+        "doesNotApplyWhen": "A hitter is late on pitches or failing to initiate stride in time.",
+        "evidenceType": "coaching_heuristic",
+        "numericClaim": false,
+        "startSeconds": 28,
+        "timestampConfidence": "high",
+        "qualityNotes": "Clear heuristic explanation linking premature loading timing to downstream kinetic faults.",
+        "approvalReadiness": "strong_candidate",
+        "causeVsSymptomNote": "Identifies early loading as the root cause of early forward movement and lunging symptoms.",
+        "coachingCue": null,
+        "conceptMismatchNote": null,
+        "endSeconds": 42,
+        "levelScopeNote": "Applies across youth, teen, and advanced hitters.",
+        "numericEvidenceRef": null
+      }
+    ],
+    "drills": [
+      {
+        "name": "Step Backs",
+        "targetedProblem": "Loading too early, failing to engage the back hip/glute, and poor timing rhythm relative to the pitcher/tosser.",
+        "sportScope": "baseball",
+        "ageLevelCaution": "youth_appropriate",
+        "equipment": "bat, balls, front-toss screen/tosser",
+        "startSeconds": 79,
+        "tiedToSpecificFault": true,
+        "timestampConfidence": "high"
+      },
+      {
+        "name": "Modified Hook 'Em",
+        "targetedProblem": "Uncontrolled forward move and failing to load the upper half, which leads to spinning off pitches early.",
+        "sportScope": "baseball",
+        "ageLevelCaution": "youth_appropriate",
+        "equipment": "bat, balls, front-toss screen/tosser",
+        "startSeconds": 118,
+        "tiedToSpecificFault": true,
+        "timestampConfidence": "high"
+      },
+      {
+        "name": "Offset Open",
+        "targetedProblem": "Spinning off pitches early and failing to maintain posture through the swing phase.",
+        "sportScope": "baseball",
+        "ageLevelCaution": "youth_appropriate",
+        "equipment": "bat, balls, front-toss screen/tosser",
+        "startSeconds": 167,
+        "tiedToSpecificFault": true,
+        "timestampConfidence": "high"
+      }
+    ],
+    "weakOrRejectedNotes": [],
+    "estimatedDurationSeconds": 230
+  }
+}

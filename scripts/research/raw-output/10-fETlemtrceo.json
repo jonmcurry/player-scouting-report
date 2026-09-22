@@ -1,0 +1,66 @@
+{
+  "video": {
+    "n": 10,
+    "id": "fETlemtrceo",
+    "label": "Let's Have This Conversation - The Science Behind Hitting in Baseball with Chad Miller"
+  },
+  "url": "https://www.youtube.com/watch?v=fETlemtrceo",
+  "modelVersion": "gemini-3.6-flash",
+  "extraction": {
+    "verifiedTitle": "Let's Have This Conversation - Chad Miller",
+    "verifiedChannel": "Tevin McChan / Let's Have This Conversation",
+    "contentCharacter": "interview/podcast commentary",
+    "overallNotes": "Interview with Chad Miller, founder of the Louisville Slugger Hitting Science Center, discussing biomechanics, ground force, individual player profiling, and practice quality.",
+    "claims": [
+      {
+        "concept": "front_side_stability",
+        "claimText": "Rolling over onto the outer edge of the front foot during the swing results in significant kinetic energy loss during force transfer.",
+        "sourceProposition": "Hitters who roll over on their front foot lose 8% of energy transfer through the front foot and 11% through the backside.",
+        "observableEvidence": "Video observation of the front foot rolling onto its lateral edge during or immediately following contact.",
+        "sportScope": "both",
+        "ageGuardrail": "youth_appropriate",
+        "appliesWhen": "During the weight transfer, foot plant, and rotation phase of the swing.",
+        "doesNotApplyWhen": "When evaluating post-finish relaxation or non-swing movement.",
+        "evidenceType": "biomechanical_explanation",
+        "numericClaim": true,
+        "startSeconds": 984,
+        "timestampConfidence": "high",
+        "qualityNotes": "Cites specific percentage losses derived from force plate data gathered at the training facility.",
+        "approvalReadiness": "strong_candidate",
+        "causeVsSymptomNote": "Front foot rollover is an observable physical symptom resulting from improper foot orientation or poor ground force direction.",
+        "coachingCue": "Maintain pressure through the inside of the lead foot and big toe during rotation.",
+        "conceptMismatchNote": null,
+        "endSeconds": 995,
+        "levelScopeNote": "Applicable across all playing levels from youth to professional.",
+        "numericEvidenceRef": "Claims an 11% loss of kinetic energy transfer through the backside and an 8% loss through the front foot when rolling over the lead foot."
+      },
+      {
+        "concept": "hip_shoulder_sequencing",
+        "claimText": "Optimal hitting mechanics rely on a kinetic chain sequence transferring energy from the ground through the hips, shoulders, hands, and barrel.",
+        "sourceProposition": "Hitting a baseball is a transfer of kinetic energy derived from the ground up, delivered sequentially through hips, shoulders, hands, and bat barrel while keeping the barrel behind the ball.",
+        "observableEvidence": "High-speed video showing sequential rotation starting from ground drive, lead hip turn, trunk rotation, hand acceleration, and barrel delivery.",
+        "sportScope": "both",
+        "ageGuardrail": "youth_appropriate",
+        "appliesWhen": "Executing a full-effort rotational swing.",
+        "doesNotApplyWhen": "Executing check swings, bunts, or emergency contact swings.",
+        "evidenceType": "biomechanical_explanation",
+        "numericClaim": false,
+        "startSeconds": 943,
+        "timestampConfidence": "high",
+        "qualityNotes": "Standard kinetic chain description provided during expert interview.",
+        "approvalReadiness": "strong_candidate",
+        "causeVsSymptomNote": "Proximal-to-distal sequencing is the underlying cause of efficient bat speed and barrel extension.",
+        "coachingCue": "Drive from the ground up through hips, shoulders, and hands.",
+        "conceptMismatchNote": null,
+        "endSeconds": 970,
+        "levelScopeNote": "Universal mechanical principle applicable to all hitters.",
+        "numericEvidenceRef": null
+      }
+    ],
+    "drills": [],
+    "weakOrRejectedNotes": [
+      "General discussion on business operations, medical device background, and podcast banter excluded as non-mechanical content."
+    ],
+    "estimatedDurationSeconds": 1768
+  }
+}
