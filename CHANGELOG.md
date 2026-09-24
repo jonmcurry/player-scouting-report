@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.26.0] - 2026-09-24
+
+### Changed
+
+- The coach app and public demo lead with player development.
+  - Player Overview shows What's working, then the current Priority, Next step, Development plan, Progress and swing evidence. At-bat logging is a secondary action.
+  - Verified strengths use the checkpoint's own name with "On Target" and the coach's note.
+- Review distinguishes an unanalyzed swing ("This swing has not been analyzed.") from an analyzed swing with nothing found ("No reviewed observation from this swing."). Player-level strengths are labelled as not being an independent check of the open clip.
+- Detailed checklist:
+  - Insufficient-evidence checkpoints hide the 1/2/3 controls until the coach chooses "Score manually anyway", which is labelled as a manual score.
+  - Unscored checkpoints need a deliberate "Add a score".
+- Development shows one development state instead of stacked empty sections. History, earlier Priorities and Insights appear only when real history exists.
+- Practice can't start without a confirmed Priority and an active Drill, and shows one "No practice plan yet" state otherwise.
+- Compare offers only the modes the data supports (Video and Frames for most swings). Progress and Metrics appear only with tracked-Priority progress or published metrics.
+- At-bat: each recorded swing has a visible "Review swing" action. Unknown count, outcome and swing/take no longer fill the page or read as "0 swings".
+- Report: What's going well, Current Priority, Next step, Drill, Progress, then the full checklist, in plain parent-readable copy. Scores read On Target, Developing and Needs Work (never "Solid").
+- Terminology across the UI: Observation (not "finding"), Priority (not "focus"), Drill, Development plan.
+- The demo banner is one compact row.
+
+### Removed
+
+- The single-camera 3D skeleton viewer and "Explain in 3D" from coach and demo screens (Overview game log, Review, Compare), plus the "3D reconstruction" quality row and reconstructed joint-angle metrics. The reconstruction can look visibly wrong even when its quality label says good.
+- The Measurements drawer and metric tabs when a swing has no published metric values. There is no empty metrics card.
+
+### Fixed
+
+- Player Overview threw `loadSwingEvidence is not defined` on load. A function had been nested inside `renderStats` by an earlier edit, so the swing-evidence list and share links never rendered. A test now parses every page's inline script.
+
 ## [0.25.1] - 2026-09-24
 
 ### Fixed

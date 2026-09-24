@@ -2,7 +2,8 @@ export const DEFAULT_CAPTURE_GUIDANCE = "Capture another swing with the full bod
 
 const isVerifiedStrength = (row) => row?.review_status === "verified" && row?.score === 3;
 const needsEvidence = (row) => row?.review_status === "insufficient_evidence";
-const STRENGTH_TITLES = { "stance-setup": "Athletic setup", load: "Visible load" };
+// User-facing score words (never "Solid"): 1 Needs Work, 2 Developing, 3 On Target.
+export const SCORE_WORDS = { 1: "Needs Work", 2: "Developing", 3: "On Target" };
 
 export function derivePlayerDevelopmentSummary({
   checklist = [],
@@ -13,7 +14,9 @@ export function derivePlayerDevelopmentSummary({
 } = {}) {
   const strengths = checklist.filter(isVerifiedStrength).map((row) => ({
     slug: row.checkpoints?.slug ?? row.slug ?? "",
-    label: STRENGTH_TITLES[row.checkpoints?.slug ?? row.slug] ?? row.checkpoints?.label ?? row.label ?? "Checkpoint",
+    // The checkpoint's own name - never a re-worded characterization nobody reviewed.
+    label: row.checkpoints?.label ?? row.label ?? "Checkpoint",
+    scoreWord: SCORE_WORDS[row.score],
     note: row.notes ?? "",
     score: row.score,
   }));
@@ -41,21 +44,12 @@ export function reviewFindingState({ issues = [], hasAnalysisRun = false } = {})
   return hasAnalysisRun ? "analyzed-empty" : "unanalyzed";
 }
 
-export function canRenderExperimental3d(analysisQuality) {
-  return analysisQuality?.reconstruction === "good";
-}
-
 export function hasPublishedMetrics(metrics) {
   if (!metrics) return false;
   return [
     metrics.max_bat_speed_full_rate_value,
     metrics.max_bat_speed_value,
     metrics.attack_angle_at_contact_deg,
-    metrics.hip_shoulder_separation_at_contact_deg,
-    metrics.torso_tilt_at_contact_deg,
-    metrics.pelvis_tilt_at_contact_deg,
     metrics.stride_length_hip_widths,
-    metrics.lead_elbow_angle_at_contact_deg,
-    metrics.front_knee_angle_at_contact_deg,
   ].some((value) => value !== null && value !== undefined);
 }

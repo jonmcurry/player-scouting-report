@@ -80,13 +80,13 @@ function renderPicker() {
   const hasGuidedPlan = Boolean(plannedPriority && plannedAssignment);
   picker.innerHTML = `
     ${hasGuidedPlan || todaySession ? `<section class="bt-card p2a-practice-list-head"><div><h1>Practice</h1><p>${todaySession ? "Today's session is ready to continue." : `${escapeHtml(plannedPriority.title)} · ${escapeHtml(plannedAssignment.drill_library?.name || "Selected drill")}`}</p></div><button class="bt-button bt-button-primary" id="newSession">${todaySession ? "Continue today's session" : "Start practice"}</button></section>` : `<section class="bt-card bt-unified-development-empty"><span class="bt-eyebrow">Practice</span><h1>No practice plan yet</h1><p>Practice is tied to a confirmed development priority.</p><p>${escapeHtml(ctx.player.name)} does not have one yet because the current footage needs better evidence.</p><h2>Next step</h2><p>Review or capture another swing.</p><a class="bt-button bt-button-primary" href="${ctx.url("player")}">Review swing evidence</a></section>`}
-    <h2 class="p2a-section-label">Recent sessions</h2>
-    <div class="bt-list">${sessions.length ? sessions.map((row) => `
+    ${sessions.length ? `<h2 class="p2a-section-label">Recent sessions</h2>
+    <div class="bt-list">${sessions.map((row) => `
       <button class="bt-list-row p2a-session-row" data-sid="${row.id}">
         <span class="bt-list-row-copy"><span class="bt-list-row-title">${fmtDate(row.session_date)}</span>
-          <span class="bt-list-row-supporting">${row.practice_repetitions.length} rep${row.practice_repetitions.length === 1 ? "" : "s"}${row.player_priorities?.title ? ` · ${escapeHtml(row.player_priorities.title)}` : " · No focus"}${row.drill_library?.name ? ` · ${escapeHtml(row.drill_library.name)}` : ""}</span></span>
+          <span class="bt-list-row-supporting">${row.practice_repetitions.length} rep${row.practice_repetitions.length === 1 ? "" : "s"}${row.player_priorities?.title ? ` · ${escapeHtml(row.player_priorities.title)}` : " · No Priority"}${row.drill_library?.name ? ` · ${escapeHtml(row.drill_library.name)}` : ""}</span></span>
         ${row.outcome ? statusChip(row.outcome, { domain: "practice" }) : '<span class="bt-caption">No assessment</span>'}${icon("chevron-right", { size: 20 })}</button>`).join("")
-      : '<p class="bt-supporting">Practice history will appear here after a guided plan is used.</p>'}</div>`;
+}</div>` : ""}`;
   picker.onclick = (event) => {
     const row = event.target.closest("[data-sid]");
     if (row) openSession(row.dataset.sid);
@@ -106,7 +106,7 @@ function openNewSession(forceForm = false) {
   }
   const defaults = practiceStartDefaults({ priorities, assignments, requestedPriorityId: qs("priority") });
   const sheet = openSheet("Start practice", `
-    <div class="dev-field"><label>Focus</label><select id="nPri"><option value="">No specific focus</option>${priorities.map((p) => opt(p.id, p.title, p.id === defaults.priorityId)).join("")}</select></div>
+    <div class="dev-field"><label>Priority</label><select id="nPri"><option value="">No Priority</option>${priorities.map((p) => opt(p.id, p.title, p.id === defaults.priorityId)).join("")}</select></div>
     <div class="dev-field"><label>Drill</label><select id="nDrill"><option value="">No drill</option>${library.map((d) => opt(d.id, d.name, d.id === defaults.drillId)).join("")}</select></div>
     <button class="bt-button bt-button-tertiary" id="addGoal" ${defaults.goal ? "hidden" : ""}>Add a goal</button>
     <div class="dev-field" id="goalWrap" ${defaults.goal ? "" : "hidden"}><label>Goal</label><input id="nGoal" value="${escapeHtml(defaults.goal)}" placeholder="What should change today?"></div>
@@ -208,7 +208,7 @@ function render() {
 function renderBrief() {
   document.getElementById("sessionHead").innerHTML = `<section class="bt-card p2a-session-brief">
     <div class="p2a-section-head"><span class="bt-eyebrow">Session plan</span><button class="bt-button bt-button-tertiary" id="editSession">Edit</button></div>
-    <div class="p2a-brief-row"><span>Focus</span><strong>${escapeHtml(focusPriority()?.title ?? "No specific focus")}</strong></div>
+    <div class="p2a-brief-row"><span>Priority</span><strong>${escapeHtml(focusPriority()?.title ?? "No Priority")}</strong></div>
     <div class="p2a-brief-row"><span>Drill</span><strong>${escapeHtml(assignedDrill()?.name ?? "No drill")}</strong></div>
     <div class="p2a-brief-row"><span>Goal</span><strong>${escapeHtml(session.session_goal || "Add a goal")}</strong></div></section>`;
   document.getElementById("editSession").onclick = openEditSession;
@@ -300,8 +300,8 @@ function renderNextStep(views) {
   const host = document.getElementById("nextStep");
   if (!session.outcome) { host.innerHTML = ""; return; }
   const priority = focusPriority();
-  host.innerHTML = `<section class="bt-card p2a-next-step"><span class="bt-eyebrow">Next step</span><h2>${priority ? `Update ${escapeHtml(priority.title)}` : "Return to the coaching plan"}</h2>
-    <p>${priority ? "Record what this session means for the priority." : "Choose the next focus on Development."}</p>
+  host.innerHTML = `<section class="bt-card p2a-next-step"><span class="bt-eyebrow">Next step</span><h2>${priority ? `Update ${escapeHtml(priority.title)}` : "Return to the development plan"}</h2>
+    <p>${priority ? "Record what this session means for the priority." : "Choose the next Priority on Development."}</p>
     ${priority ? '<button class="bt-button bt-button-primary" id="markPriority">Update priority progress</button>' : `<a class="bt-button bt-button-primary" href="${ctx.url("development")}">Return to Development</a>`}
     <div><button class="bt-button bt-button-tertiary" id="followUp" ${priority ? "" : "hidden"}>Schedule follow-up</button><a class="bt-button bt-button-tertiary" href="${ctx.url("development")}">Development</a></div></section>`;
   document.getElementById("markPriority")?.addEventListener("click", () => {
@@ -447,7 +447,7 @@ function addRepsWithVideo() {
 
 function openEditSession() {
   const sheet = openSheet("Session plan", `
-    <div class="dev-field"><label>Focus</label><select id="eP"><option value="">No specific focus</option>${priorities.map((p) => opt(p.id, p.title, p.id === session.focus_priority_id)).join("")}</select></div>
+    <div class="dev-field"><label>Priority</label><select id="eP"><option value="">No Priority</option>${priorities.map((p) => opt(p.id, p.title, p.id === session.focus_priority_id)).join("")}</select></div>
     <div class="dev-field"><label>Drill</label><select id="eD"><option value="">No drill</option>${library.map((d) => opt(d.id, d.name, d.id === session.assigned_drill_id)).join("")}</select></div>
     <div class="dev-field"><label>Goal</label><input id="eG" value="${escapeHtml(session.session_goal ?? "")}"></div>
     <div class="dev-field"><label>Notes</label><textarea id="eN">${escapeHtml(session.notes ?? "")}</textarea></div>`,

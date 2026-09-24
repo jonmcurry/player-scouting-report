@@ -171,22 +171,17 @@ test("phase alignment: same phase instant in both swings; null when a phase is m
   assert.deepEqual(L.FRAME_PRESETS.map((p) => p.id), ["load-contact", "plant-contact", "contact-finish"]);
 });
 
-test("metric comparison hides reconstructed values when 3D quality is poor", () => {
-  const A = { max_bat_speed_value: 10, hip_shoulder_separation_at_contact_deg: 30 };
-  const B = { max_bat_speed_value: 12, hip_shoulder_separation_at_contact_deg: 40 };
-  const good = L.metricComparison(A, B, { reconstruction: "good" }, { reconstruction: "limited" });
-  assert.ok(good.find((r) => r.label === "Hip-shoulder separation").a === 30);
-  const poor = L.metricComparison(A, B, { reconstruction: "poor" }, { reconstruction: "good" });
-  const hidden = poor.find((r) => r.label === "Hip-shoulder separation");
-  assert.equal(hidden.a, null);
-  assert.match(hidden.note, /Hidden/);
-  assert.equal(poor.find((r) => r.label === "Bat speed (2D, body-relative)").a, 10); // 2D estimate still shown
+test("metric comparison never shows single-camera 3D reconstructions, whatever the quality label says", () => {
+  const A = { max_bat_speed_value: 10, hip_shoulder_separation_at_contact_deg: 30, torso_tilt_at_contact_deg: 20, front_knee_angle_at_contact_deg: 140 };
+  const rows = L.metricComparison(A, A, { reconstruction: "good" }, { reconstruction: "good" });
+  assert.deepEqual(rows.map((r) => r.label), ["Bat speed (2D, body-relative)"], "3D joint angles are never rows, even when rated good");
+  assert.ok(rows.every((r) => !/3D|reconstruct/i.test(`${r.source} ${r.note}`)));
 });
 
 test("metric comparison never labels an uncalibrated value a direct measurement, and every row carries a unit", () => {
   const A = { max_bat_speed_value: 10, attack_angle_at_contact_deg: -8, stride_length_hip_widths: 1.5, torso_tilt_at_contact_deg: 20 };
-  const rows = L.metricComparison(A, A, { reconstruction: "good" }, { reconstruction: "good" });
-  assert.equal(rows.length, 4);
+  const rows = L.metricComparison(A, A);
+  assert.equal(rows.length, 3, "torso tilt (a 3D reconstruction) is not a row");
   for (const r of rows) {
     assert.doesNotMatch(r.source, /direct/i, r.label);
     assert.ok(r.unit, `${r.label} has a unit`);
@@ -194,7 +189,7 @@ test("metric comparison never labels an uncalibrated value a direct measurement,
   const bat = rows.find((r) => r.label.startsWith("Bat speed"));
   assert.equal(bat.source, L.METRIC_SOURCE_2D);
   assert.match(bat.note, /not mph/);
-  assert.deepEqual(L.metricComparison({ max_bat_speed_value: null }, {}, null, null), [], "withheld metrics produce no rows");
+  assert.deepEqual(L.metricComparison({ max_bat_speed_value: null }, {}), [], "withheld metrics produce no rows");
 });
 
 test("swing filters: two-strike swings, practice groups, reviewed state, no fabricated metadata", () => {

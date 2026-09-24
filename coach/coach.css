@@ -1034,6 +1034,7 @@ body.show-team-heatmap .p1b-roster-row .mini-heatmap { display:flex; }
 .bt-strength-card p, .bt-verified-list p { margin:var(--space-2) 0 0; color:var(--text-2); font-size:.875rem; }
 .bt-summary-title { display:flex; align-items:center; gap:var(--space-2); color:var(--success); }
 .bt-summary-title h3 { margin:0; color:var(--text-1); }
+.bt-score-word { margin-left:auto; padding:2px var(--space-2); border-radius:999px; background:var(--surface-3); color:var(--success); font-size:.75rem; font-weight:700; white-space:nowrap; }
 .bt-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); border-top:1px solid var(--border); }
 .bt-summary-grid .bt-summary-section { border:0; }
 .bt-summary-grid .bt-summary-section + .bt-summary-section { padding-left:var(--space-4); border-left:1px solid var(--border); }
@@ -1166,6 +1167,7 @@ button.bt-pitch-main { min-height:48px; padding:0; border:0; background:transpar
 .bt-pitch-row small { color:var(--text-3); overflow-wrap:anywhere; }
 .bt-evidence-chip { min-height:28px; display:inline-flex; align-items:center; border:1px solid var(--border); border-radius:999px; padding:2px 8px; background:transparent; color:var(--text-2); font-size:.6875rem; white-space:nowrap; }
 .bt-evidence-chip.failed { color:var(--danger); border-color:var(--danger); }
+.bt-pitch-row .bt-review-swing { min-height:36px; padding:6px 14px; white-space:nowrap; }
 .bt-outcome-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-2); }
 .bt-outcome-grid[hidden] { display:none !important; }
 .bt-outcome-grid button { min-height:56px; padding:var(--space-2); border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--surface-2); color:var(--text-1); font-weight:700; }
@@ -1217,6 +1219,8 @@ button.bt-pitch-main { min-height:48px; padding:0; border:0; background:transpar
 .bt-report-player p { margin:2px 0 0; color:var(--text-3); }
 .bt-report-title-row { display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-3); }
 .bt-report-title-row h2 { margin:var(--space-1) 0; }
+/* Card headlines lead their card: never smaller than the explanation beneath them. */
+.bt-public-report .bt-card h2 { margin:var(--space-1) 0 var(--space-2); color:var(--text-1); font:700 1.125rem/1.4 var(--font-body); }
 .bt-public-status { display:inline-flex; min-height:28px; align-items:center; padding:2px 9px; border:1px solid var(--border-strong); border-radius:999px; color:var(--text-2); font-size:.75rem; font-weight:700; }
 .bt-report-timeline li { position:relative; display:grid; grid-template-columns:90px minmax(0,1fr); gap:var(--space-2); padding:var(--space-2) 0 var(--space-2) var(--space-3); border-left:2px solid var(--border-strong); }
 .bt-report-timeline time { color:var(--text-3); font-size:.8125rem; }
@@ -1231,7 +1235,7 @@ button.bt-pitch-main { min-height:48px; padding:0; border:0; background:transpar
 
 @media (max-width:420px) {
   .bt-pitch-row { grid-template-columns:28px minmax(0,1fr) 48px 48px; }
-  .bt-pitch-row > .bt-status-chip,.bt-pitch-row > .bt-evidence-chip { grid-column:2; justify-self:start; }
+  .bt-pitch-row > .bt-status-chip,.bt-pitch-row > .bt-evidence-chip,.bt-pitch-row > .bt-review-swing { grid-column:2; justify-self:start; }
   .bt-compare-tabs button { font-size:clamp(12px,.75rem,13px); }
 }
 @media (prefers-reduced-motion:reduce) { .bt-skeleton-row { animation:none; } }
@@ -1276,6 +1280,7 @@ body:has(.p1b-finding) .wrap { padding-bottom:calc(var(--space-6) + env(safe-are
 @media (max-width:390px) { .p1b-decision-row .bt-button { padding-inline:var(--space-2); } }
 /* Compact public-demo chrome: one short row on desktop, at most two on mobile. */
 .bt-demo-bar{position:sticky;top:0;z-index:9999;display:flex;align-items:center;justify-content:center;gap:10px;min-height:32px;padding:3px 10px;background:#B4503A;color:#fff;font:600 12px/1.3 Inter,system-ui,sans-serif}
-.bt-demo-bar button,.bt-demo-bar a{border:1px solid rgba(255,255,255,.62);border-radius:6px;padding:2px 8px;background:transparent;color:#fff;font:inherit;text-decoration:none;cursor:pointer}
-.bt-demo-bar a{border-color:transparent;text-decoration:underline}
-@media(max-width:480px){.bt-demo-bar{flex-wrap:wrap;gap:2px 8px;padding:3px 8px}.bt-demo-bar>span{flex-basis:100%;text-align:center}}
+.bt-demo-bar button,.bt-demo-bar a{min-height:28px;min-width:0;border:1px solid rgba(255,255,255,.62);border-radius:6px;padding:2px 8px;background:transparent;color:#fff;font:inherit;line-height:1.2;text-decoration:none;cursor:pointer}
+.bt-demo-bar a{display:inline-flex;align-items:center;border-color:transparent;text-decoration:underline}
+/* One row on phones: the demo chrome must never crowd the product. Wraps only below ~300px. */
+@media(max-width:480px){.bt-demo-bar{flex-wrap:wrap;gap:2px 8px;padding:2px 8px}}

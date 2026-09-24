@@ -15,7 +15,7 @@ test("review queue and queue-mode review enforce one decision at a time", () => 
   assert.match(queue, /loadRosterWithProgress\(team\.id\)/);
   assert.doesNotMatch(queue, /activeTab: "queue", roster: \[\]/);
   assert.match(review, /findingSequence\(issues\)/);
-  assert.match(review, /Decide the finding above first/);
+  assert.match(review, /Decide the observation above first/);
   assert.match(review, /Next swing/);
   assert.doesNotMatch(review, /all\.slice\(0, 5\)/);
 });
@@ -51,8 +51,10 @@ test("Compare keeps Video and Frames, conditionally exposes data-backed tabs, an
 
 test("public report is coach-confirmed, summary-first and has the approved empty strengths copy", () => {
   const report = read("coach/report.html"); const shape = read("supabase/functions/get-player-report/shape.ts");
-  assert.match(report, /Current focus/); assert.match(report, /Your drill/); assert.match(report, /What’s going well/); assert.match(report, /Next step/);
-  assert.match(report, /Progress will appear once a development priority is tracked across later swings/);
+  assert.match(report, /Current Priority/); assert.match(report, /Drill<\/span>/); assert.match(report, /What’s going well/); assert.match(report, /Next step/);
+  assert.match(report, /No progress claim yet/);
+  assert.match(report, /\{3:"On Target",2:"Developing",1:"Needs Work"\}/);
+  assert.doesNotMatch(report, /Solid|Working on it|Current focus/);
   assert.match(report, /Strengths will appear here as your coach reviews more swings\./);
   assert.doesNotMatch(report, /reviewedBy|bg-score-|confidence|analysis_quality/);
   assert.match(shape, /confirmedScores/);

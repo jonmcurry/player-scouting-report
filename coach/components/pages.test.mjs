@@ -184,31 +184,29 @@ test("public copy: no 'Direct video measurement' labels, no unreviewed no-action
   }
   const review = read("review.html");
   assert.doesNotMatch(review, /emptyState\("No meaningful mechanical issue/);
-  assert.match(review, /No finding was confirmed from this swing/);
+  assert.match(review, /No reviewed observation from this swing\./);
   assert.match(review, /This swing has not been analyzed/);
   assert.match(review, /not a judgment that the swing has no issues/);
   const report = read("report.html");
   assert.doesNotMatch(report, /Your coach will add a drill/);
-  assert.match(report, /HitterLoop can recommend a drill for your coach to choose/);
-  assert.match(read("compare.html"), /No reliable measurements for these swings/);
-  assert.match(read("components/swingMetricsPanel.js"), /No reliable measurements are published for this swing/);
+  assert.match(report, /A Drill comes after your coach confirms a Priority/);
 });
 
 test("Overview leads with development, evidence rows, and one actionable sparse-state story", () => {
   const player = read("player.html");
   assert.ok(player.indexOf('id="developmentSummary"') < player.indexOf('id="swingEvidenceList"'));
   assert.match(player, /What’s working/);
-  assert.match(player, /No development priority confirmed yet/);
+  assert.match(player, /No Priority confirmed yet\./);
   assert.match(player, /summary\.nextStep/);
   assert.match(read("components/playerDevelopmentSummary.js"), /Capture another swing with the full body and bat visible through contact/);
-  assert.match(player, /No drill yet/);
-  assert.match(player, /Progress will appear after a priority is tracked across later swings/);
+  assert.match(player, /No Drill yet\./);
+  assert.match(player, /No progress claim yet/);
   assert.match(player, />Review<.*>Compare</s);
 });
 
 test("Development uses one unified empty state while preserving real priority rendering", () => {
   const development = read("development.html");
-  assert.match(development, /No development priority confirmed yet/);
+  assert.match(development, /No Priority confirmed yet/);
   assert.match(development, /What we know/);
   assert.match(development, /What still needs better evidence/);
   assert.match(development, /Review swing evidence/);
@@ -229,7 +227,7 @@ test("Checklist hides scoring for insufficient evidence until deliberate manual 
   const player = read("player.html");
   assert.match(player, /Current footage does not support a reliable score/);
   assert.match(player, /Score manually anyway/);
-  assert.match(player, /stepper-mount" \$\{reviewedNoScore \? "hidden"/);
+  assert.match(player, /stepper-mount" \$\{gated \? "hidden"/);
   assert.match(player, /data-manual-score/);
   assert.doesNotMatch(player, /View 3D Skeleton/);
 });
@@ -238,4 +236,70 @@ test("at-bat presentation organizes swing evidence without foregrounding unknown
   const atbat = read("atbat.html");
   assert.match(atbat, /<strong>Swing evidence<\/strong>/);
   assert.doesNotMatch(atbat, /Outcome not recorded|Count unknown| · derived/);
+});
+
+test("no public 3D anywhere reachable: no skeleton viewer, 3D quality row, or reconstructed metric", () => {
+  const pages = ["team.html", "player.html", "atbat.html", "review.html", "development.html", "compare.html", "session.html", "queue.html", "report.html"];
+  for (const page of pages) {
+    const src = read(page);
+    assert.doesNotMatch(src, /View 3D Skeleton|Explain in 3D|3D reconstruction|[Rr]econstructed estimate/, page);
+    assert.doesNotMatch(src, /renderSkeletonComparison\(|openCompModal\(|canRenderExperimental3d/, `${page} renders no 3D viewer`);
+  }
+  // The game log's per-clip block now links to Review instead of a 3D viewer + metrics panel.
+  const player = read("player.html");
+  assert.doesNotMatch(player, /renderSwingMetricsPanel|loadClipSkeletonData/);
+  assert.match(player, /Review swing<\/a>/);
+  assert.doesNotMatch(read("components/swingMetricsPanel.js"), /3D reconstructed estimate|METRIC_SOURCE_3D/);
+  assert.doesNotMatch(read("components/developmentLogic.js"), /METRIC_SOURCE_3D/);
+});
+
+test("Overview strengths use the real checkpoint names and score words, and the page script is not broken by nesting", () => {
+  const player = read("player.html");
+  // loadSwingEvidence was once nested inside renderStats by a bad edit, so the page threw on load.
+  assert.match(player, /\n  async function loadSwingEvidence\(\) \{/);
+  assert.match(player, /\n  async function renderStats\(\) \{/);
+  assert.ok(player.indexOf("async function loadSwingEvidence") < player.indexOf("async function renderStats"));
+  assert.match(player, /bt-score-word/);
+  assert.match(player, /Current Priority/);
+  assert.doesNotMatch(player, /Current focus|game swings? reviewed/);
+  assert.doesNotMatch(read("components/playerDevelopmentSummary.js"), /Athletic setup|Visible load/);
+});
+
+test("Checklist: unscored checkpoints need a deliberate action; manual override is labelled", () => {
+  const player = read("player.html");
+  assert.match(player, /const gated = reviewedNoScore \|\| unscored;/);
+  assert.match(player, /Not scored yet\./);
+  assert.match(player, /data-manual-score>Add a score</);
+  assert.match(player, /Manual score - not supported by the current footage evidence\./);
+});
+
+test("Team: no all-clear card when nothing is pending; roster rows lead with development state", () => {
+  assert.match(read("components/teamDashboard.js"), /el\.innerHTML = attention\.reviewCount \|\| attention\.dueCount \? today : "";/);
+  const team = read("team.html");
+  assert.match(team, /"No Priority yet"/);
+  assert.match(team, /"Next: review swing evidence"/);
+});
+
+test("At-bat: a recorded swing's Review link is visible in its row; unknown swing/take is not reported as 0 swings", () => {
+  const atbat = read("atbat.html");
+  assert.match(atbat, /bt-review-swing" href="\$\{ctx\.url\("review", \{ clip: ready\.id \}\)\}">Review swing<\/a>/);
+  assert.match(atbat, /pitches\.every\(\(pitch\) => pitch\.swung != null\)/);
+});
+
+test("secondary Development/Practice history only renders when real history exists", () => {
+  const development = read("development.html");
+  for (const id of ["priorityHistory", "developmentHistory", "insightsDrawer"]) assert.match(development, new RegExp(`id="${id}" hidden`), id);
+  assert.doesNotMatch(development, /No development history yet|No earlier priorities/);
+  assert.doesNotMatch(read("components/practicePage.js"), /Practice history will appear here/);
+});
+
+test("every page's inline module script parses (catches template/quote breakage string checks miss)", () => {
+  const AsyncFunction = (async () => {}).constructor;
+  for (const page of fs.readdirSync(coach).filter((f) => f.endsWith(".html"))) {
+    const scripts = [...read(page).matchAll(/<script type="module">([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+    scripts.forEach((src, i) => {
+      const body = src.replace(/^\s*import\s[\s\S]*?from\s+["'][^"']+["'];?\s*$/gm, "").replace(/^\s*import\s+["'][^"']+["'];?\s*$/gm, "");
+      assert.doesNotThrow(() => new AsyncFunction(body), `${page} script ${i} must parse`);
+    });
+  }
 });

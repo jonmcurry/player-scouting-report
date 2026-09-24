@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_CAPTURE_GUIDANCE,
-  canRenderExperimental3d,
   derivePlayerDevelopmentSummary,
   hasPublishedMetrics,
   reviewFindingState,
@@ -22,7 +21,8 @@ test("player summary exposes only reviewed strengths and keeps sparse state acti
       { score: null, review_status: "rejected", notes: "Rejected", checkpoints: { slug: "extension", label: "Extension" } },
     ],
   });
-  assert.deepEqual(summary.strengths.map((row) => row.label), ["Athletic setup", "Visible load"]);
+  assert.deepEqual(summary.strengths.map((row) => row.label), ["Stance & setup", "Load"], "the checkpoint names, never an invented characterization");
+  assert.deepEqual(summary.strengths.map((row) => row.scoreWord), ["On Target", "On Target"]);
   assert.equal(summary.currentPriority, null);
   assert.equal(summary.recommendedDrill, null);
   assert.equal(summary.needsBetterEvidence.length, 7);
@@ -45,10 +45,7 @@ test("review states distinguish unanalyzed, analyzed-empty, and real findings", 
   assert.equal(reviewFindingState({ hasAnalysisRun: true, issues: [{ review_status: "draft" }] }), "findings");
 });
 
-test("experimental 3D fails closed and metrics require published numeric values", () => {
-  assert.equal(canRenderExperimental3d({ reconstruction: "limited" }), false);
-  assert.equal(canRenderExperimental3d({ reconstruction: "poor" }), false);
-  assert.equal(canRenderExperimental3d({ reconstruction: "good" }), true);
+test("metrics require published numeric values", () => {
   assert.equal(hasPublishedMetrics({ analysis_quality: {}, movement_flags: {} }), false);
   assert.equal(hasPublishedMetrics({ attack_angle_at_contact_deg: 12 }), true);
 });

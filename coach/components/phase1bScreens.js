@@ -12,7 +12,7 @@ export function teamAttentionModel({ needsReview = [], dueFollowUps = [] } = {})
 
 export function nextActionModel({ drafts = [], duePriority = null, priority = null, assignment = null } = {}) {
   if (drafts.length) return {
-    kind: "review", title: `${drafts.length} finding${drafts.length === 1 ? "" : "s"} to review`,
+    kind: "review", title: `${drafts.length} observation${drafts.length === 1 ? "" : "s"} to review`,
     detail: "Coach review is the next step.", label: "Review swing", clipId: drafts[0].video_clip_id,
   };
   if (duePriority) return { kind: "follow-up", title: `Check ${duePriority.title}`, detail: "Follow-up due", label: "Update progress" };
@@ -41,6 +41,6 @@ export function reviewSummary(issues = []) {
   return {
     total: issues.length,
     approved,
-    label: `${issues.length} finding${issues.length === 1 ? "" : "s"}${status}`,
+    label: `${issues.length} observation${issues.length === 1 ? "" : "s"}${status}`,
   };
 }

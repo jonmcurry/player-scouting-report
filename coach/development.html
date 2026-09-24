@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Player Development</title>
-<link rel="stylesheet" href="./coach.css?v=28f2e5405e">
+<link rel="stylesheet" href="./coach.css?v=38d03ad25c">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -21,12 +21,12 @@
       <button class="bt-button bt-button-tertiary tap-target" id="addPriorityBtn">Add priority</button></div>
     <div id="priorities"></div>
 
-    <section id="findingsSection"><h2 class="p2a-section-label">Findings to review</h2><div id="aiSuggestionsWrap"></div></section>
+    <section id="findingsSection"><h2 class="p2a-section-label">Observations to review</h2><div id="aiSuggestionsWrap"></div></section>
 
-    <details class="bt-disclosure" id="priorityHistory"><summary><span>Priority history</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body" id="priorityHistoryBody"></div></details>
-    <details class="bt-disclosure"><summary><span>Development history</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><div id="timelineWrap"></div><button class="bt-button bt-button-tertiary tap-target" id="moreTimeline" hidden>Show earlier</button></div></details>
+    <details class="bt-disclosure" id="priorityHistory" hidden><summary><span>Priority history</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body" id="priorityHistoryBody"></div></details>
+    <details class="bt-disclosure" id="developmentHistory" hidden><summary><span>Development history</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><div id="timelineWrap"></div><button class="bt-button bt-button-tertiary tap-target" id="moreTimeline" hidden>Show earlier</button></div></details>
 
-    <details class="bt-disclosure p2a-insights" id="insightsDrawer"><summary><span>Insights</span><span class="bt-disclosure-chevron">⌄</span></summary>
+    <details class="bt-disclosure p2a-insights" id="insightsDrawer" hidden><summary><span>Insights</span><span class="bt-disclosure-chevron">⌄</span></summary>
       <div class="bt-disclosure-body"><h3>Game vs practice</h3><div id="mix"></div>
         <details class="bt-disclosure" id="trendsDrawer"><summary><span>Measured trends over time</span></summary>
           <div class="bt-disclosure-body" id="trendsBody"><p class="bt-supporting">Loading…</p></div></details>
@@ -133,14 +133,14 @@
     const nf = developmentFocusModel({ priorities: state.priorities, progressById: progress, dueIds, assignments: state.assignments });
     const summary = derivePlayerDevelopmentSummary({ checklist: state.checklist, priorities: state.priorities, assignments: state.assignments, draftFindings: state.aiIssues });
     document.getElementById("nextFocus").innerHTML = nf
-      ? `<section class="bt-card p2a-next-focus" data-focus-id="${nf.priority.id}"><span class="bt-eyebrow">Next focus</span>
+      ? `<section class="bt-card p2a-next-focus" data-focus-id="${nf.priority.id}"><span class="bt-eyebrow">Current Priority</span>
            <h1>${escapeHtml(nf.priority.title)}</h1>
            <p>${escapeHtml(nf.priority.description || "Add a coaching goal when you update this priority.")}</p>
            <div class="p2a-focus-meta">${statusChip(progressOf(nf.priority).status || "active", { domain: progressOf(nf.priority).status ? "progress" : "priority", label: progressOf(nf.priority).status ? null : nf.reason })}
              <span>${icon("target", { size: 18 })}${escapeHtml(nf.assignment?.drill_library?.name || "No drill assigned")}</span></div>
            <div class="p2a-hero-actions">${nf.assignment ? `<a class="bt-button bt-button-primary" href="${ctx.url("session", { start: 1, priority: nf.priority.id })}">Start practice</a>` : '<button class="bt-button bt-button-secondary" data-focus-action="drill">Choose a drill</button>'}
              <button class="bt-button bt-button-tertiary" data-focus-action="progress">Update progress</button></div></section>`
-      : `<section class="bt-card bt-unified-development-empty"><span class="bt-eyebrow">Development</span><h1>No development priority confirmed yet</h1><h2>What we know</h2>${summary.strengths.length ? `<ul class="bt-strengths">${summary.strengths.map((row) => `<li>${icon("check", { size: 18 })}<span>${escapeHtml(row.label)}</span></li>`).join("")}</ul>` : '<p class="bt-supporting">No strengths have been coach-verified yet.</p>'}<h2>What still needs better evidence</h2><p>${summary.needsBetterEvidence.length} checkpoint${summary.needsBetterEvidence.length === 1 ? "" : "s"}</p><h2>Next step</h2><p>${escapeHtml(summary.nextStep || DEFAULT_CAPTURE_GUIDANCE)}</p><a class="bt-button bt-button-primary" href="${ctx.url("player")}">Review swing evidence</a></section>`;
+      : `<section class="bt-card bt-unified-development-empty"><span class="bt-eyebrow">Development</span><h1>No Priority confirmed yet</h1><h2>What we know</h2>${summary.strengths.length ? `<ul class="bt-strengths">${summary.strengths.map((row) => `<li>${icon("check", { size: 18 })}<span>${escapeHtml(row.label)}</span></li>`).join("")}</ul>` : '<p class="bt-supporting">No strengths have been coach-verified yet.</p>'}<h2>What still needs better evidence</h2><p>${summary.needsBetterEvidence.length} checkpoint${summary.needsBetterEvidence.length === 1 ? "" : "s"}</p><h2>Next step</h2><p>${escapeHtml(summary.nextStep || DEFAULT_CAPTURE_GUIDANCE)}</p><a class="bt-button bt-button-primary" href="${ctx.url("player")}">Review swing evidence</a></section>`;
     document.querySelector("[data-focus-action=progress]")?.addEventListener("click", () => openObservationSheet(ctx, nf.priority, {}, refresh));
     document.querySelector("[data-focus-action=drill]")?.addEventListener("click", () => openAssignDrillSheet(ctx, nf.priority, library, state.asgBy.get(nf.priority.id) ?? [], refresh));
   }
@@ -185,7 +185,9 @@
     const el = document.getElementById("priorities");
     document.getElementById("priorityHeading").hidden = !open.length;
     el.innerHTML = open.map(priorityCard).join("");
-    document.getElementById("priorityHistoryBody").innerHTML = closed.length ? closed.map((p) => `<div class="dev-row between"><b>${escapeHtml(p.title)}</b><span class="hint">resolved ${fmtDate(p.resolved_at)}</span></div>`).join("") : '<p class="bt-supporting">No earlier priorities.</p>';
+    // Secondary history only appears when real history exists - never as another empty state.
+    document.getElementById("priorityHistory").hidden = !closed.length;
+    document.getElementById("priorityHistoryBody").innerHTML = closed.length ? closed.map((p) => `<div class="dev-row between"><b>${escapeHtml(p.title)}</b><span class="hint">resolved ${fmtDate(p.resolved_at)}</span></div>`).join("") : "";
     el.onclick = (e) => {
       const btn = e.target.closest("[data-act]");
       const card = e.target.closest("[data-pid]");
@@ -222,20 +224,20 @@
       <div class="bt-list-row" data-iid="${i.id}">${icon("sparkles", { size: 20 })}<span class="bt-list-row-copy">
         <span class="bt-list-row-title">${escapeHtml(i.issue)}</span><span class="bt-list-row-supporting">${i.review_status === "draft" ? "Needs coach review" : "Approved · ready to track"}${i.confidence ? ` · ${escapeHtml(i.confidence)} confidence` : ""}</span></span>
         ${i.review_status === "draft" && i.video_clip_id ? `<a class="bt-button bt-button-secondary" href="${ctx.url("review", { clip: i.video_clip_id, ...(i.phase ? { phase: i.phase } : {}) })}">Review swing</a>` : i.review_status !== "draft" && i.suggest_priority && !i.context_explains_it ? '<button class="bt-button bt-button-secondary" data-a="promote">Track</button>' : ""}
-        <button class="bt-icon-button" aria-label="More finding actions" data-a="menu">${icon("ellipsis-vertical", { size: 22 })}</button>
+        <button class="bt-icon-button" aria-label="More observation actions" data-a="menu">${icon("ellipsis-vertical", { size: 22 })}</button>
       </div>`).join("") + `</div>`;
     wrap.onclick = async (e) => {
       const b = e.target.closest("[data-a]"); const card = e.target.closest("[data-iid]");
       if (!b || !card) return;
       const issue = state.aiIssues.find((x) => x.id === card.dataset.iid);
       if (b.dataset.a === "promote") openPromoteSheet(ctx, issue, refresh);
-      if (b.dataset.a === "menu") openOverflowMenu({ title: "Finding", anchor: b, items: [
+      if (b.dataset.a === "menu") openOverflowMenu({ title: "Observation", anchor: b, items: [
         ...(issue.review_status !== "draft" && issue.suggest_priority && !issue.context_explains_it ? [{ label: "Track as priority", icon: "trending-up", onSelect: () => openPromoteSheet(ctx, issue, refresh) }] : []),
         { label: "Dismiss · not an issue", icon: "x", onSelect: async () => {
           const previous = { review_status: issue.review_status, reviewed_by: issue.reviewed_by };
           try {
             await reviewIssue(ctx, issue, "reject"); await refresh();
-            showSnackbar("Finding dismissed", { actionLabel: "Undo", onAction: async () => { await supabase.from("issues").update(previous).eq("id", issue.id); await refresh(); } });
+            showSnackbar("Observation dismissed", { actionLabel: "Undo", onAction: async () => { await supabase.from("issues").update(previous).eq("id", issue.id); await refresh(); } });
           } catch (err) { toast(err.message); }
         } },
       ] });
@@ -275,8 +277,9 @@
     const relevant = events.filter((event) => developmentKinds.has(event.kind));
     const shown = relevant.slice(0, timelineLimit);
     const wrap = document.getElementById("timelineWrap");
+    document.getElementById("developmentHistory").hidden = !shown.length;
     if (!shown.length) {
-      wrap.innerHTML = '<p class="bt-supporting">No development history yet.</p>';
+      wrap.innerHTML = "";
       document.getElementById("moreTimeline").hidden = true;
       return;
     }
@@ -293,6 +296,8 @@
       supabase.from("game_log_entries").select("id", { count: "exact", head: true }).eq("player_id", ctx.player.id).eq("session_type", "game").gte("date", since),
       supabase.from("practice_sessions").select("id", { count: "exact", head: true }).eq("player_id", ctx.player.id).gte("session_date", since),
     ]);
+    // A games-only count is not a development insight; show Insights once practice exists.
+    document.getElementById("insightsDrawer").hidden = !p.count;
     document.getElementById("mix").innerHTML = `
       <div class="stats-row" style="grid-template-columns:1fr 1fr;">
         <div class="stat-tile"><span class="stat-label">Games (30 days)</span><div class="stat-value">${g.count ?? 0} <span class="hint">at-bats</span></div></div>

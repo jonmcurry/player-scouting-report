@@ -65,7 +65,9 @@ export async function renderTeamDashboard(el, teamId, teamSlug, rosterById = new
   for (const item of data.swings) activity.push({ date: item.created_at, html: listRow({ href: `./review.html?clip=${item.id}&team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(item.player.slug)}`, title: `${item.player.name} · Game swing`, supporting: `${fmtDate(item.game_log_entries.date)}${item.at_bat_pitches?.pitch_number ? ` · Pitch ${item.at_bat_pitches.pitch_number}` : ""}`, trailing: icon("chevron-right", { size: 20 }) }) });
   activity.sort((a, b) => new Date(b.date) - new Date(a.date));
   const recent = activity.length ? activity.slice(0, RECENT).map((x) => x.html).join("") : emptyState("No recent activity", "Practice and game reviews will appear here.");
-  el.innerHTML = today;
+  // Nothing to review and nothing due: no "all caught up" card - the roster row carries each
+  // player's next development step, and a big all-clear would read as "nothing to do".
+  el.innerHTML = attention.reviewCount || attention.dueCount ? today : "";
   const recentMount = document.getElementById("teamRecent");
   if (recentMount) recentMount.innerHTML = disclosure("Recent activity", `<div class="bt-list p1b-compact-list">${recent}</div>`);
   return data;

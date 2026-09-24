@@ -62,7 +62,7 @@ test("Phase 2A pages use guided hierarchy, shared sheets and no native dialogs",
   const practice = read("session.html");
   const practicePage = read("components/practicePage.js");
   assert.ok(development.indexOf('id="nextFocus"') < development.indexOf('id="priorities"'));
-  assert.match(development, /Findings to review/);
+  assert.match(development, /Observations to review/);
   assert.doesNotMatch(development, /<h2>Game transfer<\/h2>/);
   assert.match(practice, /id="practiceStepper"/);
   assert.match(practicePage, /Compare baseline/);

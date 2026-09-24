@@ -503,12 +503,12 @@ export function describeSwing(s) {
 /** The 2D values are image-plane estimates from one uncalibrated camera, never
  * direct measurements - each row says what the number actually is. */
 export const METRIC_SOURCE_2D = "2D video estimate · not calibrated";
-export const METRIC_SOURCE_3D = "3D reconstructed estimate";
 
-/** Robust-only metric rows for a metric comparison. A reconstructed (3D) value
- * is only shown when the clip's 3D reconstruction was rated at least "limited".
+/** Metric rows for a comparison: 2D video estimates only. Single-camera 3D
+ * reconstructions (joint angles) are never shown to coaches - they can look
+ * visibly wrong even when the clip's own quality label says "good".
  * Returns [{ label, a, b, unit, source, note }] with nulls omitted. */
-export function metricComparison(metricsA, metricsB, qualityA, qualityB) {
+export function metricComparison(metricsA, metricsB) {
   const direct = [
     ["Bat speed (2D, body-relative)", "max_bat_speed_full_rate_value", "max_bat_speed_value", "shoulder-widths/s",
       "Image-plane speed scaled to body size - not mph, and not comparable across camera positions."],
@@ -516,27 +516,12 @@ export function metricComparison(metricsA, metricsB, qualityA, qualityB) {
     ["Stride (2D, whole clip)", "stride_length_hip_widths", null, "hip-widths",
       "Front-ankle travel in the image from the clip's first tracked frame - not a calibrated stride length."],
   ];
-  const estimated = [
-    ["Hip-shoulder separation", "hip_shoulder_separation_at_contact_deg", "°"],
-    ["Torso tilt", "torso_tilt_at_contact_deg", "°"],
-    ["Front knee angle", "front_knee_angle_at_contact_deg", "°"],
-  ];
   const rows = [];
   const pick = (m, k1, k2) => (m ? m[k1] ?? (k2 ? m[k2] : null) ?? null : null);
   for (const [label, k1, k2, unit, note] of direct) {
     const a = pick(metricsA, k1, k2);
     const b = pick(metricsB, k1, k2);
     if (a != null || b != null) rows.push({ label, a, b, unit, source: METRIC_SOURCE_2D, note });
-  }
-  const okQ = (q) => q && q.reconstruction && q.reconstruction !== "poor";
-  for (const [label, key, unit] of estimated) {
-    const usable = okQ(qualityA) && okQ(qualityB);
-    const a = usable ? pick(metricsA, key) : null;
-    const b = usable ? pick(metricsB, key) : null;
-    if (a != null || b != null) rows.push({ label, a, b, unit, source: METRIC_SOURCE_3D, note: "Estimate from monocular video; not calibrated." });
-    else if (!usable && (pick(metricsA, key) != null || pick(metricsB, key) != null)) {
-      rows.push({ label, a: null, b: null, unit, source: METRIC_SOURCE_3D, note: "Hidden: 3D reconstruction quality is too poor to show this number." });
-    }
   }
   return rows;
 }

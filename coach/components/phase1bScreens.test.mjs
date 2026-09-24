@@ -28,20 +28,20 @@ test("Legacy next-action model remains deterministic while Player leads with dev
   assert.ok(html.indexOf('id="developmentSummary"') < html.indexOf('id="swingEvidenceList"'));
   assert.ok(html.indexOf('id="swingEvidenceList"') < html.indexOf('id="technicalDetails"'));
   assert.match(html, /What’s working/);
-  assert.match(html, /No development priority confirmed yet/);
-  assert.match(html, /No drill yet/);
+  assert.match(html, /No Priority confirmed yet\./);
+  assert.match(html, /No Drill yet\./);
 });
 
 test("Review findings expose approval before priority tracking", () => {
   assert.deepEqual(findingActionState({ review_status: "draft" }, false), { reviewed: false, showApprove: true, showEdit: true, showReject: true, showTrack: false, showAssignDrill: false });
   assert.equal(findingActionState({ review_status: "approved" }, false).showTrack, true);
   assert.equal(findingActionState({ review_status: "approved" }, true).showAssignDrill, true);
-  assert.equal(reviewSummary([{ review_status: "draft" }, { review_status: "approved" }]).label, "2 findings · 1 approved");
+  assert.equal(reviewSummary([{ review_status: "draft" }, { review_status: "approved" }]).label, "2 observations · 1 approved");
   const html = read("review.html");
   assert.match(html, /Advanced analysis/);
   assert.doesNotMatch(html, /<nav class="bottom-nav"/);
   assert.match(html, /renderDrillInAppBar/);
-  assert.match(html, /showSnackbar\("Finding rejected"/);
+  assert.match(html, /showSnackbar\("Observation rejected"/);
 });
 
 test("Phase 1B screens add no native confirm or alert calls", () => {
@@ -59,19 +59,24 @@ test("Review summary: zero findings are never labelled a draft; only real unrevi
   // Unanalyzed swing (no analysis run) and analyzed swing with no draft finding both have zero issues.
   for (const issues of [[], undefined]) {
     const label = reviewSummary(issues).label;
-    assert.equal(label, "0 findings");
+    assert.equal(label, "0 observations");
     assert.doesNotMatch(label, /Draft from analysis|Not reviewed/);
   }
   const review = read("review.html");
-  assert.match(review, /No finding was confirmed from this swing\./, "analyzed, no draft finding");
+  assert.match(review, /No reviewed observation from this swing\./, "analyzed, no draft observation");
   assert.match(review, /This swing has not been analyzed\./, "unanalyzed heading");
-  assert.match(review, /Findings appear here once analysis finishes\./, "unanalyzed explanation");
-  assert.match(review, /Coach-verified across reviewed swings/);
-  assert.match(review, /not independent judgments of this single swing/);
+  assert.match(review, /"Not analyzed"/, "unanalyzed status never reads like pending analysis");
+  assert.doesNotMatch(review, /Awaiting analysis|Findings appear here once analysis finishes/);
+  assert.match(review, /Coach-reviewed strengths/);
+  assert.match(review, /not an independent check of this clip/);
   assert.doesNotMatch(review, /Experimental 3D reconstruction|Explain in 3D/);
-  assert.match(review, /No reliable measurements are published for this swing/);
+  // Metrics fail closed: no published values means no Measurements drawer at all, not an empty card.
+  assert.match(review, /id="metricsDrawer" hidden/);
+  assert.match(review, /if \(!hasPublishedMetrics\(row\)\) \{ metricsDrawer\.remove\(\); return; \}/);
+  assert.doesNotMatch(review, /No reliable measurements are published/);
+  assert.doesNotMatch(review, /\["3D reconstruction", q\.reconstruction\]/, "no 3D quality row");
   // At least one actual unreviewed AI draft finding.
-  assert.equal(reviewSummary([{ review_status: "draft" }]).label, "1 finding · Draft from analysis · Not reviewed");
-  assert.equal(reviewSummary([{ review_status: "draft" }, { review_status: "draft" }]).label, "2 findings · Draft from analysis · Not reviewed");
-  assert.equal(reviewSummary([{ review_status: "rejected" }]).label, "1 finding", "a rejected finding is not an unreviewed draft");
+  assert.equal(reviewSummary([{ review_status: "draft" }]).label, "1 observation · Draft from analysis · Not reviewed");
+  assert.equal(reviewSummary([{ review_status: "draft" }, { review_status: "draft" }]).label, "2 observations · Draft from analysis · Not reviewed");
+  assert.equal(reviewSummary([{ review_status: "rejected" }]).label, "1 observation", "a rejected observation is not an unreviewed draft");
 });

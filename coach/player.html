@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=28f2e5405e">
+<link rel="stylesheet" href="./coach.css?v=38d03ad25c">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -71,9 +71,7 @@
   import { renderStepper } from "./components/stepper.js";
   import { renderTrendChart } from "./components/trendChart.js";
   import { checklistState, isPendingDraft, showsNote, stateLabel, reviewPayload, verifiedHistory } from "./components/checklistReview.js";
-  import { openCompModal } from "./components/compModal.js";
-  import { loadClipSkeletonData, loadExtensionScore, buildExtensionCorrectedFrames, renderSkeletonComparison } from "./components/skeletonComparison.js";
-  import { loadSwingMetrics, renderSwingMetricsPanel } from "./components/swingMetricsPanel.js";
+  import { loadExtensionScore } from "./components/skeletonComparison.js";
   import { uploadRawClip } from "./components/videoUpload.js";
   import { getVideoUrl, videoTimeFor } from "./components/devUi.js";
   import { renderPlayerAppBar, renderBottomNav, loadRosterWithProgress, setLastPlayerSlug } from "./components/appShell.js";
@@ -90,16 +88,6 @@
   let coachUserId = null;
   let playerId = null;
   let teamId = null;
-  // Reference-comp context for "Compare against Reference Comp" (Tier-1
-  // live skeleton comparison + Tier-2 static frame snapshot, see
-  // compModal.js) - reflects whichever clip most recently rendered
-  // successfully, whether from initial page load or an explicit tab
-  // switch. Known, accepted limitation: a background poll reloading a
-  // DIFFERENT, unrelated game-log entry's already-ready clip can still
-  // silently reassign this - fixing that fully would need a per-checkpoint-
-  // card reference rather than one shared global, a bigger change not done
-  // this pass.
-  let firstClipContext = null;
   // extensionScore is per-PLAYER, not per-clip - computed once per
   // loadGameLog() call and reused by every clip's render (including tab
   // switches), instead of re-querying it per clip or per tab click.
@@ -333,7 +321,6 @@
     `;
   }
 
-  async function renderStats() {
   async function loadSwingEvidence() {
     const { data: clips, error } = await supabase
       .from("video_clips")
@@ -359,10 +346,10 @@
       const values = reviewByClip.get(finding.video_clip_id) ?? [];
       values.push(finding.review_status); reviewByClip.set(finding.video_clip_id, values);
     }
-    document.getElementById("reviewedSwingCount").textContent = `${ready.length} game swing${ready.length === 1 ? "" : "s"} reviewed`;
+    document.getElementById("reviewedSwingCount").textContent = `${ready.length} game swing${ready.length === 1 ? "" : "s"} on file`;
     host.innerHTML = ready.length ? ready.map((row) => {
       const statuses = reviewByClip.get(row.id) ?? [];
-      const reviewLabel = statuses.includes("draft") ? "Finding needs review" : statuses.length ? "Findings reviewed" : analyzed.has(row.id) ? "Analyzed · no finding confirmed" : "Not analyzed";
+      const reviewLabel = statuses.includes("draft") ? "Observation needs review" : statuses.length ? "Observations reviewed" : analyzed.has(row.id) ? "Analyzed · no reviewed observation" : "Not analyzed";
       const entry = row.game_log_entries;
       const pitch = row.at_bat_pitches?.pitch_number;
       const query = `team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}`;
@@ -370,7 +357,8 @@
     }).join("") : emptyState("No swing evidence yet", "Add a game swing when video evidence is available.");
   }
 
-  // session_type='game' - "Logged ABs"/"Early Read" status are real-game
+  async function renderStats() {
+    // session_type='game' - "Logged ABs"/"Early Read" status are real-game
     // performance concepts; a practice rep isn't an at-bat and shouldn't
     // count toward either (see 00015_practice_sessions.sql).
     const { count: abCount, error: abCountError } = await supabase
@@ -502,6 +490,11 @@
       const state = row.id ? checklistState(row) : null;
       const unconfirmed = !!row.id && isPendingDraft(row);
       const reviewedNoScore = state === "insufficient_evidence" || state === "rejected";
+      // Scoring controls appear only where a score exists or an AI draft awaits confirmation.
+      // Everything else needs a deliberate action first, so the list never implies that all
+      // 11 checkpoints are waiting to be scored.
+      const unscored = !row.id;
+      const gated = reviewedNoScore || unscored;
 
       const card = document.createElement("div");
       card.className = `checkpoint-card${unconfirmed ? " unconfirmed" : ""}${reviewedNoScore ? " reviewed-no-score" : ""}`;
@@ -515,7 +508,9 @@
         </div>
         ${state === "insufficient_evidence" ? '<p class="bt-supporting">Current footage does not support a reliable score.</p><button type="button" class="bt-button bt-button-tertiary" data-manual-score>Score manually anyway</button>' : ""}
         ${state === "rejected" ? '<p class="bt-supporting">The earlier draft was rejected and is not a current score.</p><button type="button" class="bt-button bt-button-tertiary" data-manual-score>Score manually</button>' : ""}
-        <div class="stepper-mount" ${reviewedNoScore ? "hidden" : ""}></div>
+        ${unscored ? '<p class="bt-supporting">Not scored yet.</p><button type="button" class="bt-button bt-button-tertiary" data-manual-score>Add a score</button>' : ""}
+        ${gated ? '<p class="bt-caption cp-manual-note" hidden>Manual score - not supported by the current footage evidence.</p>' : ""}
+        <div class="stepper-mount" ${gated ? "hidden" : ""}></div>
         ${showsNote(row) ? `<p class="cp-notes">${escapeHtml(row.notes ?? "")}</p>` : ""}
         ${unconfirmed ? `<div class="cp-review-actions"><button type="button" class="link-btn" data-review="insufficient">Insufficient evidence</button><button type="button" class="link-btn" data-review="reject">Reject draft</button></div>` : ""}
         <div class="cp-actions"><span class="cp-meta">${row.reviewed_by ? `Reviewed by ${escapeHtml(row.reviewed_by)}` : ""}</span></div>
@@ -528,9 +523,10 @@
         loadChecklist();
         refreshConfirmedPill();
       });
-      if (!reviewedNoScore) mountStepper();
+      if (!gated) mountStepper();
       card.querySelector("[data-manual-score]")?.addEventListener("click", (event) => {
         event.currentTarget.remove();
+        if (reviewedNoScore) card.querySelector(".cp-manual-note").hidden = false;
         mount.hidden = false;
         mountStepper();
       });
@@ -568,13 +564,13 @@
       checklist: checklist ?? [], priorities: priorities ?? [], assignments: assignments ?? [], draftFindings: drafts ?? [], captureGuidance: player.what_to_check_next,
     });
     const strengthHtml = summary.strengths.length
-      ? `<div class="bt-strength-grid">${summary.strengths.map((strength) => `<article class="bt-strength-card"><div class="bt-summary-title">${icon("check", { size: 18 })}<h3>${escapeHtml(strength.label)}</h3></div>${strength.note ? `<p>${escapeHtml(strength.note)}</p>` : ""}</article>`).join("")}</div>`
+      ? `<div class="bt-strength-grid">${summary.strengths.map((strength) => `<article class="bt-strength-card"><div class="bt-summary-title">${icon("check", { size: 18 })}<h3>${escapeHtml(strength.label)}</h3><span class="bt-score-word">${escapeHtml(strength.scoreWord ?? "")}</span></div>${strength.note ? `<p>${escapeHtml(strength.note)}</p>` : ""}</article>`).join("")}</div>`
       : `<p class="bt-supporting">No strengths have been coach-verified yet.</p>`;
     const focusHtml = summary.currentPriority
       ? `<h3>${escapeHtml(summary.currentPriority.title)}</h3><p>${escapeHtml(summary.currentPriority.description || "Current coach-confirmed development priority.")}</p><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Open development plan</a>`
-      : `<h3>No development priority confirmed yet.</h3><p>The current footage supports ${summary.strengths.length ? summary.strengths.map((row) => escapeHtml(row.label.toLowerCase())).join(" and ") : "the reviewed strengths"}, but more reliable evidence is needed before choosing the next thing to work on.</p>`;
+      : `<h3>No Priority confirmed yet.</h3><p>${summary.strengths.length ? `The coach has verified ${summary.strengths.map((row) => escapeHtml(row.label)).join(" and ")}. ` : ""}More reliable swing evidence is needed before choosing what to work on next.</p>`;
     const nextHtml = summary.draftFindingCount
-      ? `<h3>${summary.draftFindingCount} finding${summary.draftFindingCount === 1 ? "" : "s"} awaiting coach review</h3><p>Review the swing evidence before setting a development priority.</p><a class="bt-button bt-button-primary" href="./review.html?clip=${encodeURIComponent(drafts[0].video_clip_id)}&${devQuery}">Review swing</a>`
+      ? `<h3>${summary.draftFindingCount} observation${summary.draftFindingCount === 1 ? "" : "s"} awaiting coach review</h3><p>Review the swing evidence before confirming a Priority.</p><a class="bt-button bt-button-primary" href="./review.html?clip=${encodeURIComponent(drafts[0].video_clip_id)}&${devQuery}">Review swing</a>`
       : summary.nextStep
         ? `<h3>${escapeHtml(summary.nextStep)}</h3><p>Better footage can support a confident coaching decision without guessing at a mechanical issue.</p>`
         : `<h3>Continue the current development plan.</h3><p>Use the confirmed priority and reviewed evidence to guide the next session.</p>`;
@@ -582,15 +578,15 @@
     const planHtml = drill
       ? `<h3>${escapeHtml(drill.name || "Assigned drill")}</h3>${drill.purpose ? `<p>${escapeHtml(drill.purpose)}</p>` : ""}${drill.instructions ? `<details class="p1b-inline-disclosure"><summary>How to run it</summary><p>${escapeHtml(drill.instructions)}</p></details>` : ""}`
       : summary.currentPriority
-        ? `<h3>No drill selected yet.</h3><p>HitterLoop can recommend a drill for the coach to choose for this confirmed priority.</p><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Choose a drill</a>`
-        : `<h3>No drill yet.</h3><p>Once the coach confirms a development priority, HitterLoop can recommend a drill for the coach to choose.</p>`;
+        ? `<h3>No Drill selected yet.</h3><p>HitterLoop can recommend a Drill for the coach to choose for this Priority.</p><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Choose a Drill</a>`
+        : `<h3>No Drill yet.</h3><p>A Drill is chosen after a Priority is confirmed. HitterLoop can then recommend one for the coach to choose.</p>`;
     document.getElementById("technicalSummary").textContent = `${summary.strengths.length} verified checkpoints · ${summary.needsBetterEvidence.length} need better evidence`;
     document.getElementById("developmentSummary").innerHTML = `<div class="bt-development-hero">
       <div class="bt-development-heading"><div><span class="bt-eyebrow">Player development summary</span><h1 id="developmentSummaryTitle">${escapeHtml(player.name)}</h1><p>${escapeHtml(player.teams.name)}</p></div><p class="bt-review-count" id="reviewedSwingCount">Reviewing swing evidence…</p></div>
       <section class="bt-summary-section bt-summary-strengths"><span class="bt-eyebrow">What’s working</span><h2>Coach-verified strengths</h2>${strengthHtml}</section>
-      <div class="bt-summary-grid"><section class="bt-summary-section"><span class="bt-eyebrow">Current focus</span>${focusHtml}</section><section class="bt-summary-section"><span class="bt-eyebrow">Next step</span>${nextHtml}</section></div>
+      <div class="bt-summary-grid"><section class="bt-summary-section"><span class="bt-eyebrow">Current Priority</span>${focusHtml}</section><section class="bt-summary-section"><span class="bt-eyebrow">Next step</span>${nextHtml}</section></div>
       <section class="bt-summary-section bt-summary-plan"><span class="bt-eyebrow">Development plan</span>${planHtml}</section>
-      <section class="bt-summary-section bt-summary-progress"><span class="bt-eyebrow">Progress</span><p>${summary.currentPriority ? "Progress appears here as later swings are evaluated against this priority." : "Progress will appear after a priority is tracked across later swings."}</p></section>
+      <section class="bt-summary-section bt-summary-progress"><span class="bt-eyebrow">Progress</span><p>${summary.currentPriority ? "Progress appears here as later swings are checked against this Priority." : "No progress claim yet - there is no tracked Priority to measure against."}</p></section>
     </div>`;
   }
 
@@ -883,58 +879,15 @@
 
     if (clip.status !== "ready") return;
 
-    const pose3dData = await loadClipSkeletonData(clip.id);
-    if (!pose3dData || pose3dData.frames.length === 0) {
-      clipMount.innerHTML = `
-        <p class="hint">⚠ No 3D swing data available for this clip.</p>
-        <button class="tap-target btn-danger" style="margin-top:8px;" data-delete-clip="${clip.id}" data-game-log-entry="${gameLogEntryId}">Delete Pitch</button>
-      `;
-      return;
-    }
-
-    const { data: phaseRows } = await supabase
-      .from("swing_phases")
-      .select("frame, time_s, confidence, reconstruction_reliable, swing_phase_types!inner(slug, label, sort_order)")
-      .eq("video_clip_id", clip.id)
-      .order("sort_order", { referencedTable: "swing_phase_types" });
-
-    const phases = (phaseRows ?? []).map((r) => ({
-      slug: r.swing_phase_types.slug,
-      label: r.swing_phase_types.label,
-      timeS: r.time_s,
-      confidence: r.confidence,
-      reconstructionReliable: r.reconstruction_reliable,
-    }));
-
-    const correctedFrames = buildExtensionCorrectedFrames(pose3dData.frames, pose3dData.lead_side, extensionScore);
-    const note = !pose3dData.lead_side
-      ? "Front-leg side unknown for this clip - showing her real swing only."
-      : correctedFrames
-        ? null
-        : "Extension is already at target, or unscored - showing her real swing only.";
-
-    const canvasContainer = document.createElement("div");
-    clipMount.appendChild(canvasContainer);
-    // Shared resolver: production signs the original upload; demo mode serves
-    // only a curated static clip (never calls get-video-url) plus its offset.
-    const videoUrl = await getVideoUrl(clip.id);
-    renderSkeletonComparison(canvasContainer, { realFrames: pose3dData.frames, correctedFrames, phases, note, videoUrl, videoOffsetS: videoUrl ? videoTimeFor(clip.id, 0) : 0 });
-
-    const metricsRow = await loadSwingMetrics(clip.id);
-    if (metricsRow) {
-      const metricsMount = document.createElement("div");
-      clipMount.appendChild(metricsMount);
-      renderSwingMetricsPanel(metricsMount, metricsRow);
-    }
-
-    const actionRow = document.createElement("div");
-    actionRow.style.cssText = "display:flex;justify-content:flex-end;margin-top:8px;";
-    actionRow.innerHTML = `<button class="tap-target btn-danger" data-delete-clip="${clip.id}" data-game-log-entry="${gameLogEntryId}">🗑 Delete Pitch</button>`;
-    clipMount.appendChild(actionRow);
-
-    // Reflects whichever clip most recently rendered - see this variable's
-    // declaration near the top of this script for the known limitation.
-    firstClipContext = { realFrames: pose3dData.frames, phases, leadSide: pose3dData.lead_side, extensionScore };
+    // The original video is the evidence: open it in Review. The single-camera 3D model and
+    // raw swing metrics are not shown to coaches here - a reconstruction can look visibly wrong even
+    // when its own quality label says "good", and uncalibrated metrics read as lab measurements.
+    clipMount.innerHTML = `
+      <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:8px;">
+        <a class="bt-button bt-button-secondary" href="./review.html?clip=${encodeURIComponent(clip.id)}&team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}">Review swing</a>
+        <button class="tap-target btn-danger" data-delete-clip="${clip.id}" data-game-log-entry="${gameLogEntryId}">Delete Pitch</button>
+      </div>
+    `;
   }
 
   /** One delegated listener per container, attached once each - #gameLogList/

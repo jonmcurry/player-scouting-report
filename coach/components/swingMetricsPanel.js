@@ -6,7 +6,7 @@
 // actually queried before this - only phase timestamps + a confidence
 // badge). One concern per file, matching pitchZonePicker.js/stepper.js.
 import { supabase } from "../shared.js";
-import { METRIC_SOURCE_2D, METRIC_SOURCE_3D } from "./developmentLogic.js";
+import { METRIC_SOURCE_2D } from "./developmentLogic.js";
 
 export async function loadSwingMetrics(videoClipId) {
   const { data } = await supabase
@@ -57,12 +57,7 @@ export function renderSwingMetricsPanel(container, metricsRow) {
   const tiles = [
     statTile("Bat Speed (2D)", batSpeed, "shoulder-widths/s, body-relative (not mph)", batSpeedSource),
     statTile("Attack Angle (2D)", metricsRow.attack_angle_at_contact_deg, "° in the image", METRIC_SOURCE_2D),
-    statTile("Hip-Shoulder Sep", metricsRow.hip_shoulder_separation_at_contact_deg, "°", METRIC_SOURCE_3D),
-    statTile("Torso Tilt", metricsRow.torso_tilt_at_contact_deg, "°", METRIC_SOURCE_3D),
-    statTile("Pelvis Tilt", metricsRow.pelvis_tilt_at_contact_deg, "°", METRIC_SOURCE_3D),
     statTile("Stride (2D)", metricsRow.stride_length_hip_widths, "hip-widths, whole clip", METRIC_SOURCE_2D),
-    statTile("Lead Elbow", metricsRow.lead_elbow_angle_at_contact_deg, "°", METRIC_SOURCE_3D),
-    statTile("Front Knee", metricsRow.front_knee_angle_at_contact_deg, "°", METRIC_SOURCE_3D),
   ].join("");
 
   const flags = metricsRow.movement_flags ?? {};
@@ -79,7 +74,7 @@ export function renderSwingMetricsPanel(container, metricsRow) {
         ${tiles ? `<div class="stats-row" style="grid-template-columns:repeat(auto-fit, minmax(110px, 1fr));">
           ${tiles}
         </div>
-        <p class="hint">Every value is an estimate from one uncalibrated camera: 2D values are measured in the image, 3D values are monocular reconstructions. Use the original video as the source of truth.</p>` : `<p class="hint">No reliable measurements are published for this swing. Use the original video as the source of truth.</p>`}
+        <p class="hint">Every value is an estimate measured in the image from one uncalibrated camera. Use the original video as the source of truth.</p>` : `<p class="hint">No reliable measurements are published for this swing. Use the original video as the source of truth.</p>`}
         ${flagRows ? `<h3 style="margin-bottom:4px;">Movement Patterns</h3>${flagRows}` : ""}
       </div>
     </details>

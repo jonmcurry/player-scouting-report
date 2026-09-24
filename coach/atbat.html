@@ -1,6 +1,6 @@
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>HitterLoop — At-Bat</title><link rel="stylesheet" href="./coach.css?v=28f2e5405e"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
+<title>HitterLoop — At-Bat</title><link rel="stylesheet" href="./coach.css?v=38d03ad25c"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
 </head><body>
 <header class="app-bar" id="appBar"></header><main class="wrap bt-atbat-page">
 <div id="countStrip" class="bt-count-strip">Loading at-bat…</div><div id="pitches"></div><div id="facts"></div></main>
@@ -45,6 +45,9 @@ function clipState(list, pitchId) {
   if (local?.state === "failed") return `<button class="bt-evidence-chip failed" data-action="retry">Failed · Retry</button>`;
   if (local?.state === "failed_lost") return `<button class="bt-evidence-chip failed upload-control" data-action="camera">Re-record to try again</button>`;
   if (!list.length) return '<span class="bt-evidence-chip">No video</span>';
+  // A recorded swing is the point of this screen: its Review link is visible in the row, not only in the menu.
+  const ready = list.find((clip) => clip.status === "ready");
+  if (ready) return `<a class="bt-button bt-button-secondary bt-review-swing" href="${ctx.url("review", { clip: ready.id })}">Review swing</a>`;
   if (list.length > 1) return `<span class="bt-evidence-chip">${list.length} clips</span>`;
   const clip = list[0]; return statusChip(clip.status, { domain: "processing", label: clip.status === "pending" ? "Waiting to process" : undefined });
 }
@@ -59,7 +62,7 @@ function render() {
   }).join("");
   host.setAttribute("role", "list"); host.onclick = onPitchClick;
   const summary = L.summarizeAtBat(entry, pitches, clips);
-  document.getElementById("facts").innerHTML = `<details class="bt-disclosure" id="factsDisclosure"><summary><span>At-bat summary</span><span class="bt-caption">${summary.pitchCount} pitches · ${summary.swings} swings</span></summary><div class="bt-disclosure-body"><p>${escapeHtml(L.atBatFactsSummary(summary))}</p>${button("Save summary", { variant: "secondary", attrs: 'id="saveSummary"' })}</div></details>`;
+  document.getElementById("facts").innerHTML = `<details class="bt-disclosure" id="factsDisclosure"><summary><span>At-bat summary</span><span class="bt-caption">${summary.pitchCount} pitch${summary.pitchCount === 1 ? "" : "es"}${pitches.every((pitch) => pitch.swung != null) ? ` · ${summary.swings} swing${summary.swings === 1 ? "" : "s"}` : ""}</span></summary><div class="bt-disclosure-body"><p>${escapeHtml(L.atBatFactsSummary(summary))}</p>${button("Save summary", { variant: "secondary", attrs: 'id="saveSummary"' })}</div></details>`;
   document.getElementById("saveSummary")?.addEventListener("click", saveSummary);
   document.getElementById("pitchActions").innerHTML = end
     ? `<div class="bt-sticky-action-bar"><a class="bt-button bt-button-primary" href="${ctx.url("player")}">Done</a>${button(`Record pitch ${next}`, { variant: "tertiary", className: "upload-control", attrs: 'id="recordPitch"' })}${button("Log without video", { variant: "tertiary", attrs: 'id="logPitch"' })}</div>`

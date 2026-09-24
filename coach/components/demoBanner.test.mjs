@@ -96,10 +96,11 @@ test("shared.js: demo banner is injected unconditionally at module load (so it a
   assert.match(src, /rpc\(["']reset_demo_session["']\)/, "the banner's Reset action must call reset_demo_session()");
 });
 
-test("demo banner stays compact on desktop and at most two rows on mobile", () => {
+test("demo banner is one compact row on desktop and on phones", () => {
   const css = read("coach.css");
   assert.match(css, /\.bt-demo-bar\{[^}]*min-height:32px[^}]*padding:3px 10px/);
-  assert.match(css, /@media\(max-width:480px\)[\s\S]*\.bt-demo-bar>span\{flex-basis:100%/);
+  assert.doesNotMatch(css, /\.bt-demo-bar>span\{flex-basis:100%/, "the label must not be forced onto its own row on phones");
+  assert.match(css, /\.bt-demo-bar button,\.bt-demo-bar a\{min-height:28px/, "Reset/Exit must not inherit the 44px app tap-target height");
 });
 
 test("shared.js: the Supabase client is constructed with db.schema bound to the centralized dataNamespace, never a hardcoded schema", () => {
