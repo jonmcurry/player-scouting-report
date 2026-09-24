@@ -1,22 +1,35 @@
 # Promoting curated real footage into the public demo
 
-**Status (2026-09-23):** the public demo is being converted to a single real
-player (Emily). Everything below is **local only**. Nothing has been
-deployed to the cloud, imported into the cloud, or published to the website.
-Real footage now flows end to end on the local stack:
+**Status (2026-09-24): LIVE.** `emily@2026-09-24.2` is the canonical public
+demo fixture at https://joncurry.co/hitterloop/demo/ (activated 15:34 UTC).
+Publication consent is recorded locally, in the gitignored manifest. The
+rollout below was executed as follows:
 
-- Six of Emily's real clips were processed by the normal upload-queue
-  pipeline.
-- They were exported in the explicit *local-validation* mode, which is
-  unconsented and has unconfirmed facts.
-- The fixture was published to the LOCAL demo only.
-- A true anonymous visitor in a real browser (Microsoft Edge) sees an
-  Emily-only team, with Review and Compare playing the real 720p clips.
+- **Cloud project `rjnpaqsqslvzkwwwqmze`:** migrations 00036-00040 applied.
+  - No rows needed conversion: `public` had no checklist rows, and 264 reviewed demo rows became `verified`.
+  - Every demo/public function, constraint and policy matches the local stack once CRs are stripped. The only extra object is the platform's `rls_auto_enable`.
+- **Edge Functions:** `get-player-report` v1 and `get-demo-player-report` v2 deployed.
+- **Fixture:** stored inactive, verified with a rolled-back clone, then published atomically.
+- **Old sessions:** 6 fictional-era sessions retired. The fictional seed stays as the rollback target.
+- **Website:** `personal` commits `9cdfbc8` and `1458d6a` deployed (Cloudflare version `83822f72`).
+  - The live media match the approved sha256 byte for byte.
+  - The fixture import went through `supabase db query --linked`, calling the same `load_real_fixture` / `publish_demo_canonical` RPCs after the CLI's own `readAndCheckFixture` pre-check. This avoided writing a service-role key to disk.
 
-Go-live is **blocked on human decisions**: publication consent (including
-the other people visible in every clip), the public name and team,
-unconfirmed game and pitch facts, and whether and how to run AI drafts. See
-`demo-export/EMILY_REVIEW_WORKSHEET.md` (local, gitignored).
+**Rollback:**
+- **Pointer:**
+  - `select demo.publish_demo_canonical(null, null);` returns to fictional.
+  - `select demo.publish_demo_canonical('<id>', '<version>');` returns to any stored version.
+  - Then run `select demo.retire_noncanonical_sessions();` (fixture pointers only).
+  - The Emily fixture stays stored (it can't be deleted while published, and must never be deleted as evidence).
+  - Both directions were tested live inside a rolled-back transaction.
+- **Website:** `npx wrangler rollback addccda9-2cb1-40ee-b756-57ea146f12e0` (the pre-Emily version), in the `personal` repo.
+- **Do not revert 00040 blindly.** Once real coach data uses the `insufficient_evidence` / `rejected` states, dropping the column loses those human decisions. Fix forward instead.
+
+**Known issues found live (not fixed):**
+- **Metrics tab:** Compare > Metrics shows raw pose metrics labelled "Direct video measurement" with no unit. These include known artifacts: clip-004 attack angle 85.5°, clip-005 bat speed 137.8 (body-relative shoulder-widths/s, not mph), and clip-001 stride 4.9 hip-widths. Hiding them needs a new fixture version, which is a human decision.
+- **Range requests:** the Cloudflare asset layer ignores `Range` and always returns 200 with the full file. Edge plays the clips; iOS Safari playback is unverified.
+- **Bare `*.html` URLs:** the service worker precaches `./team.html` and the other pages, and the host 307-redirects them to extensionless URLs. So a bare `*.html` navigation with no query string fails once the worker is installed. The app's own links always carry a query string.
+- **Project page copy:** `content/projects/hitterloop.mdx` in the website repo still describes a "fictional dataset".
 
 > **Media (2026-09-24):** real clips are published only as
 > privacy-treated video (bystanders anonymized) with a human approval bound
@@ -24,12 +37,11 @@ unconfirmed game and pitch facts, and whether and how to run AI drafts. See
 > The exporter's default `mediaPolicy` is `"privacy-treated"`, and rollout
 > step 3's website `--media` sync refuses anything else.
 
-> **Release candidate state (2026-09-23, local only):**
+> **Released state (prepared 2026-09-23, live 2026-09-24):**
 > - **Public values:** "Emily" / `emily`, team "10U Softball", reviewer "Coach". Opponents, results, counts, outcomes and swing fields are declared unverified (`publishAsUnknown`) and published as unknown.
 > - **Checklist:** two coach-verified checkpoints (Stance & setup = 3, Load = 3); the rest are reviewed insufficient evidence (published as such) or rejected (never published). This uses the checklist review states from migration `00040`.
 > - **No coaching conclusions:** 0 findings, priorities, drills, practices or progress claims.
 > - **Clips:** `ab1_1` is approved video but unanalyzed.
-> - **Blocked:** publication stays blocked on the three consent fields in `demo-curation.emily.json`.
 >
 > Emily is not anonymous: her face, build, equipment and #10 remain visible.
 
@@ -112,7 +124,7 @@ file is cut to exactly its analysis window, offset 0.
   (`<fixtureId>-<fixtureVersion>-clip-NNN.mp4`), so a new version never
   overwrites or is served from the cache of old files.
 
-## Rollout sequence (prepared, not executed; each step needs your approval)
+## Rollout sequence (executed 2026-09-24; see the status above)
 
 Preconditions: the worksheet is complete, the manifest passes (`npm run
 export-demo-fixture -- --manifest demo-curation.emily.json`, with no
