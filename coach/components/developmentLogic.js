@@ -500,35 +500,42 @@ export function describeSwing(s) {
   return `${s.date} — ${where}`;
 }
 
+/** The 2D values are image-plane estimates from one uncalibrated camera, never
+ * direct measurements - each row says what the number actually is. */
+export const METRIC_SOURCE_2D = "2D video estimate · not calibrated";
+export const METRIC_SOURCE_3D = "3D reconstructed estimate";
+
 /** Robust-only metric rows for a metric comparison. A reconstructed (3D) value
  * is only shown when the clip's 3D reconstruction was rated at least "limited".
  * Returns [{ label, a, b, unit, source, note }] with nulls omitted. */
 export function metricComparison(metricsA, metricsB, qualityA, qualityB) {
   const direct = [
-    ["Max bat speed", "max_bat_speed_full_rate_value", "max_bat_speed_value", "shoulder-widths/s"],
-    ["Attack angle", "attack_angle_at_contact_deg", null, "deg"],
-    ["Stride length", "stride_length_hip_widths", null, "hip-widths"],
+    ["Bat speed (2D, body-relative)", "max_bat_speed_full_rate_value", "max_bat_speed_value", "shoulder-widths/s",
+      "Image-plane speed scaled to body size - not mph, and not comparable across camera positions."],
+    ["Attack angle (2D)", "attack_angle_at_contact_deg", null, "°", "Bat angle in the image at contact; depends on the camera angle."],
+    ["Stride (2D, whole clip)", "stride_length_hip_widths", null, "hip-widths",
+      "Front-ankle travel in the image from the clip's first tracked frame - not a calibrated stride length."],
   ];
   const estimated = [
-    ["Hip-shoulder separation", "hip_shoulder_separation_at_contact_deg", "deg"],
-    ["Torso tilt", "torso_tilt_at_contact_deg", "deg"],
-    ["Front knee angle", "front_knee_angle_at_contact_deg", "deg"],
+    ["Hip-shoulder separation", "hip_shoulder_separation_at_contact_deg", "°"],
+    ["Torso tilt", "torso_tilt_at_contact_deg", "°"],
+    ["Front knee angle", "front_knee_angle_at_contact_deg", "°"],
   ];
   const rows = [];
   const pick = (m, k1, k2) => (m ? m[k1] ?? (k2 ? m[k2] : null) ?? null : null);
-  for (const [label, k1, k2, unit] of direct) {
+  for (const [label, k1, k2, unit, note] of direct) {
     const a = pick(metricsA, k1, k2);
     const b = pick(metricsB, k1, k2);
-    if (a != null || b != null) rows.push({ label, a, b, unit, source: "Direct video measurement" });
+    if (a != null || b != null) rows.push({ label, a, b, unit, source: METRIC_SOURCE_2D, note });
   }
   const okQ = (q) => q && q.reconstruction && q.reconstruction !== "poor";
   for (const [label, key, unit] of estimated) {
     const usable = okQ(qualityA) && okQ(qualityB);
     const a = usable ? pick(metricsA, key) : null;
     const b = usable ? pick(metricsB, key) : null;
-    if (a != null || b != null) rows.push({ label, a, b, unit, source: "3D reconstructed estimate", note: "Estimate from monocular video; not calibrated." });
+    if (a != null || b != null) rows.push({ label, a, b, unit, source: METRIC_SOURCE_3D, note: "Estimate from monocular video; not calibrated." });
     else if (!usable && (pick(metricsA, key) != null || pick(metricsB, key) != null)) {
-      rows.push({ label, a: null, b: null, unit, source: "3D reconstructed estimate", note: "Hidden: 3D reconstruction quality is too poor to show this number." });
+      rows.push({ label, a: null, b: null, unit, source: METRIC_SOURCE_3D, note: "Hidden: 3D reconstruction quality is too poor to show this number." });
     }
   }
   return rows;
@@ -705,13 +712,13 @@ export function deriveQualityFromPhases(phases, hasPose3d) {
 // Longitudinal metric trends (robust metrics only)
 // ---------------------------------------------------------------------------
 
-/** Metrics that are direct video measurements (or plain coverage figures) - safe to chart over time.
+/** 2D video estimates (or plain coverage figures) - charted over time only when the clip's own quality allows.
  * Reconstructed 3D angles (hip-shoulder separation, torso tilt, knee angle) are deliberately NOT here:
  * they are monocular estimates and a noisy series of them reads as false precision. */
 export const TREND_METRICS = [
   { key: "swing_duration_s", label: "Load → contact time", unit: "s", needs: "contact" },
-  { key: "max_bat_speed", label: "Max bat speed", unit: "shoulder-widths/s", needs: "bat" },
-  { key: "stride_length_hip_widths", label: "Stride length", unit: "hip-widths", needs: "pose" },
+  { key: "max_bat_speed", label: "Bat speed (2D, body-relative)", unit: "shoulder-widths/s", needs: "bat" },
+  { key: "stride_length_hip_widths", label: "Stride (2D, whole clip)", unit: "hip-widths", needs: "pose" },
   { key: "pose_coverage", label: "Pose tracking coverage", unit: "%", pct: true },
   { key: "bat_coverage", label: "Bat tracking coverage", unit: "%", pct: true },
 ];
@@ -722,7 +729,7 @@ export const TREND_METRICS = [
 export function robustMetricTrends(rows) {
   const ok = (r, need) => {
     const q = analysisQualityLabels(r.quality);
-    if (!q) return true; // pre-quality clip: accept the direct measurement, coverage rows just won't exist
+    if (!q) return true; // pre-quality clip: accept the 2D estimate, coverage rows just won't exist
     if (need === "bat") return q.bat !== "poor";
     if (need === "pose") return q.pose !== "poor";
     if (need === "contact") return q.contact !== "poor";

@@ -180,7 +180,21 @@ test("metric comparison hides reconstructed values when 3D quality is poor", () 
   const hidden = poor.find((r) => r.label === "Hip-shoulder separation");
   assert.equal(hidden.a, null);
   assert.match(hidden.note, /Hidden/);
-  assert.equal(poor.find((r) => r.label === "Max bat speed").a, 10); // direct measurement still shown
+  assert.equal(poor.find((r) => r.label === "Bat speed (2D, body-relative)").a, 10); // 2D estimate still shown
+});
+
+test("metric comparison never labels an uncalibrated value a direct measurement, and every row carries a unit", () => {
+  const A = { max_bat_speed_value: 10, attack_angle_at_contact_deg: -8, stride_length_hip_widths: 1.5, torso_tilt_at_contact_deg: 20 };
+  const rows = L.metricComparison(A, A, { reconstruction: "good" }, { reconstruction: "good" });
+  assert.equal(rows.length, 4);
+  for (const r of rows) {
+    assert.doesNotMatch(r.source, /direct/i, r.label);
+    assert.ok(r.unit, `${r.label} has a unit`);
+  }
+  const bat = rows.find((r) => r.label.startsWith("Bat speed"));
+  assert.equal(bat.source, L.METRIC_SOURCE_2D);
+  assert.match(bat.note, /not mph/);
+  assert.deepEqual(L.metricComparison({ max_bat_speed_value: null }, {}, null, null), [], "withheld metrics produce no rows");
 });
 
 test("swing filters: two-strike swings, practice groups, reviewed state, no fabricated metadata", () => {

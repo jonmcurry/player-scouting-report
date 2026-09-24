@@ -628,3 +628,50 @@ test("publishAsUnknown: declared-unverified fields export as null with a warning
   const both = parseCurationManifest({ ...manifest(), clips: [{ ...manifest().clips[0], overrides: { gameLogEntry: { opponent: "X" } }, publishAsUnknown: { gameLogEntry: ["opponent"] } }] });
   assert.ok(both.problems.some((p) => p.message.includes("both overridden and declared unknown")));
 });
+
+test("publishAsUnknown: withheld swing metrics and the AI no-action note export as unknown, prior values not logged", () => {
+  const snap = snapshot();
+  snap.rows.analysis_runs[0]!.no_action_needed = true;
+  snap.rows.analysis_runs[0]!.no_action_reason = "Unreviewed AI note";
+  const m = manifest();
+  (m.clips[0] as { publishAsUnknown?: unknown }).publishAsUnknown = {
+    videoClipMetrics: ["max_bat_speed_value", "max_bat_speed_unit", "attack_angle_at_contact_deg", "movement_flags"],
+    analysisRun: ["no_action_needed", "no_action_reason"],
+  };
+  const { fixture, findings } = buildFixture(snap, m, { mediaMode: "planned" });
+  assert.ok(!errors(findings).length, JSON.stringify(errors(findings)));
+  const c1 = fixture.tables.video_clips[0]!.id;
+  const met = fixture.tables.video_clip_metrics.find((r) => r.video_clip_id === c1)!;
+  assert.equal(met.max_bat_speed_value, null);
+  assert.equal(met.max_bat_speed_unit, null);
+  assert.equal(met.attack_angle_at_contact_deg, null);
+  assert.deepEqual(met.movement_flags, {});
+  assert.notEqual(met.hip_shoulder_separation_at_contact_deg, undefined, "fields not listed are untouched");
+  const other = fixture.tables.video_clip_metrics.find((r) => r.video_clip_id !== c1)!;
+  assert.equal(other.attack_angle_at_contact_deg, 8.5, "withholding is per clip");
+  const run = fixture.tables.analysis_runs[0]!;
+  assert.equal(run.no_action_reason, null);
+  assert.equal(run.no_action_needed, false, "the run is kept, published as finished with no draft finding - the AI's no-action conclusion is withheld");
+  assert.ok(!validateFixture(fixture).some((f) => f.code === "NO_ACTION_REASON_REQUIRED"));
+  const reasonOnly = structuredClone(fixture);
+  reasonOnly.tables.analysis_runs[0]!.no_action_needed = true;
+  assert.ok(validateFixture(reasonOnly).some((f) => f.code === "NO_ACTION_REASON_REQUIRED"), "the validator catches what the database constraint would reject");
+  const half = parseCurationManifest({ ...manifest(), clips: [{ ...manifest().clips[0], publishAsUnknown: { analysisRun: ["no_action_reason"] } }] });
+  assert.ok(half.problems.some((p) => p.message.includes("together")));
+  const log = JSON.stringify(fixture.curation.overrides);
+  assert.ok(!log.includes("Unreviewed AI note") && !log.includes("41.2"), "prior values are withheld from the override log");
+  assert.ok(findings.some((f) => f.code === "HUMAN_METADATA_DECLARED_UNKNOWN" && f.table === "video_clip_metrics"));
+
+  const bad = parseCurationManifest({ ...manifest(), clips: [{ ...manifest().clips[0], publishAsUnknown: { videoClipMetrics: ["analysis_quality"] } }] });
+  assert.ok(bad.problems.some((p) => p.path.endsWith("publishAsUnknown")), "analysis_quality is not withholdable");
+  const badGroup = parseCurationManifest({ ...manifest(), clips: [{ ...manifest().clips[0], publishAsUnknown: { issues: ["x"] } }] });
+  assert.ok(badGroup.problems.some((p) => p.path.endsWith("publishAsUnknown")), "unknown groups are refused");
+});
+
+test("mediaFileVersion: a new fixture version can keep an earlier version's public media filenames", () => {
+  const { fixture } = buildFixture(snapshot(), manifest({ fixtureVersion: "2026-09-24.3", mediaFileVersion: "2026-09-24.2" }), { mediaMode: "planned" });
+  const paths = fixture.tables.video_clips.map((c) => c.demo_media_path).filter(Boolean) as string[];
+  assert.ok(paths.length && paths.every((p) => p.includes("-2026-09-24.2-clip-")), paths.join(","));
+  assert.equal(fixture.fixtureVersion, "2026-09-24.3");
+  assert.ok(parseCurationManifest({ ...manifest(), mediaFileVersion: "../x" }).problems.some((p) => p.path === "mediaFileVersion"));
+});

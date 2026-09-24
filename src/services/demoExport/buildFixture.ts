@@ -436,7 +436,7 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
   for (const { mc, clip, index } of [...selected].sort((a, b) => a.index - b.index)) {
     const sourceClipId = s(clip.id);
     const fxClip = ids.idFor("video_clips", sourceClipId);
-    const publicFilename = opts.mediaMode === "planned" ? `${manifest.fixtureId}-${mediaVersionTag(manifest.fixtureVersion)}-clip-${String(index + 1).padStart(3, "0")}.mp4` : null;
+    const publicFilename = opts.mediaMode === "planned" ? `${manifest.fixtureId}-${mediaVersionTag(manifest.mediaFileVersion ?? manifest.fixtureVersion)}-clip-${String(index + 1).padStart(3, "0")}.mp4` : null;
     const ctx = opts.clipContext?.get(sourceClipId);
     const windowStart = mc.analysisWindowStartS ?? (ctx && !ctx.analysisWindowAmbiguous ? ctx.analysisWindowStartS : null);
     if (opts.mediaMode === "planned" && mc.analysisWindowStartS === undefined && ctx?.analysisWindowAmbiguous) {
@@ -464,6 +464,9 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
     });
 
     for (const m of metricsByClip.get(sourceClipId) ?? []) {
+      const withheld = mc.publishAsUnknown?.videoClipMetrics ?? [];
+      for (const col of withheld) applyOverride("video_clip_metrics", m, col, col === "movement_flags" ? {} : null, true);
+      if (withheld.length) warn("HUMAN_METADATA_DECLARED_UNKNOWN", `clip "${s(clip.clip_slug)}": ${withheld.length} swing metric field(s) withheld as unverified`, "video_clip_metrics", ids.idFor("video_clip_metrics", s(m.id)));
       out.video_clip_metrics.push(buildTargetRow("video_clip_metrics", m, { id: ids.idFor("video_clip_metrics", s(m.id)), video_clip_id: fxClip }));
     }
     for (const p of poseByClip.get(sourceClipId) ?? []) {
@@ -479,7 +482,9 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
     }
   }
 
+  const manifestClipBySource = new Map(selected.map(({ mc, clip }) => [s(clip.id), mc]));
   for (const r of R.analysis_runs.filter((x) => runIds.has(s(x.id))).sort(byCreated)) {
+    for (const col of manifestClipBySource.get(s(r.video_clip_id))?.publishAsUnknown?.analysisRun ?? []) applyOverride("analysis_runs", r, col, col === "no_action_needed" ? false : null, true);
     out.analysis_runs.push(buildTargetRow("analysis_runs", r, {
       id: ids.idFor("analysis_runs", s(r.id)), player_id: fxPlayer,
       video_clip_id: ids.lookup("video_clips", r.video_clip_id as string | null),

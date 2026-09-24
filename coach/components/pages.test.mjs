@@ -177,3 +177,18 @@ test("share links point at the report page even when the host serves extensionle
   assert.equal("/coach/player.html".replace(re, "report.html"), "/coach/report.html");
   assert.equal("/hitterloop/demo/player".replace(re, "report.html"), "/hitterloop/demo/report.html");
 });
+
+test("public copy: no 'Direct video measurement' labels, no unreviewed no-action headline, drill copy matches the workflow", () => {
+  for (const f of ["compare.html", "review.html", "components/swingMetricsPanel.js", "components/developmentLogic.js"]) {
+    assert.doesNotMatch(read(f), /Direct video measurement/, f);
+  }
+  const review = read("review.html");
+  assert.doesNotMatch(review, /emptyState\("No meaningful mechanical issue/);
+  assert.match(review, /No reviewed findings for this swing/);
+  assert.match(review, /Analysis draft note \(not reviewed\)/);
+  const report = read("report.html");
+  assert.doesNotMatch(report, /Your coach will add a drill/);
+  assert.match(report, /HitterLoop can recommend a drill for your coach to choose/);
+  assert.match(read("compare.html"), /No reliable measurements for these swings/);
+  assert.match(read("components/swingMetricsPanel.js"), /No reliable measurements are published for this swing/);
+});

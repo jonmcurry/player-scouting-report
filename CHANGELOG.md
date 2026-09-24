@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.25.0] - 2026-09-24
+
+### Added
+
+- Exporter `publishAsUnknown.videoClipMetrics` and `publishAsUnknown.analysisRun`. Swing metrics that can't be truthfully labelled, and an unreviewed AI "no action needed" conclusion, can be withheld per clip. The prior values are withheld from the override log.
+  - The two analysis-run fields must be withheld together, because the schema requires a reason whenever `no_action_needed` is true. The validator now catches that case (`NO_ACTION_REASON_REQUIRED`).
+- Exporter `mediaFileVersion`. A new fixture version can keep an earlier version's public media filenames, so byte-identical media keep the same URLs and the earlier version stays restorable.
+
+### Changed
+
+- Compare and Review no longer label any metric "Direct video measurement". Bat speed, attack angle and stride are 2D estimates from one uncalibrated camera, and now say so.
+  - Bat speed is shown as body-relative shoulder-widths/s, "not mph".
+  - Stride is described as whole-clip front-ankle travel.
+  - Every value shows its unit.
+- Compare's Metrics tab and Review's Swing Metrics panel now show an honest "No reliable measurements" state for processed swings that have no publishable values.
+- Review no longer headlines "No meaningful mechanical issue is supported by this swing." A swing with no findings now reads "No reviewed findings for this swing", with a note that this is not a judgment that the swing has no issues. An AI no-action reason, when present, is labelled "Analysis draft note (not reviewed)".
+- Report: "Your coach will add a drill here." now explains that HitterLoop can recommend a drill for the coach to choose once the coach confirms a development priority.
+
 ## [0.24.1] - 2026-09-24
 
 ### Fixed

@@ -189,6 +189,9 @@ export function validateFixture(fx: Fixture, opts: ValidateOptions = {}): Findin
     }
     if (status === "draft" && i.reviewed_by !== null) err("UNAPPROVED_FINDING", "a draft finding must not carry a reviewer", "issues", String(i.id));
   }
+  for (const r of rows("analysis_runs")) {
+    if (r.no_action_needed === true && !String(r.no_action_reason ?? "").trim()) err("NO_ACTION_REASON_REQUIRED", "an analysis run marked no_action_needed must carry its reason (the database rejects it otherwise)", "analysis_runs", String(r.id));
+  }
   for (const s of rows("checklist_scores")) {
     const id = String(s.id);
     if (!s.reviewed_by) err("UNAPPROVED_SCORE", "checklist score without a coach review (AI draft) must not be exported", "checklist_scores", id);

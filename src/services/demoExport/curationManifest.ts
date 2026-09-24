@@ -44,7 +44,18 @@ export interface CuratedClip {
    * null (recorded as an override) instead of failing as "missing". A truthful
    * "unknown", never a fabricated value. Limited to the fields below.
    */
-  publishAsUnknown?: { gameLogEntry?: ("opponent" | "result")[]; atBatPitch?: ("count_before_balls" | "count_before_strikes" | "pitch_outcome" | "swung")[] };
+  publishAsUnknown?: {
+    gameLogEntry?: ("opponent" | "result")[];
+    atBatPitch?: ("count_before_balls" | "count_before_strikes" | "pitch_outcome" | "swung")[];
+    /** Swing metrics that can't be truthfully labeled for a coach (uncalibrated, artifacts, unreliable contact frame). movement_flags publishes as {}. */
+    videoClipMetrics?: string[];
+    /**
+     * The analysis run's unreviewed AI "no action needed" conclusion. Both fields together: the
+     * schema requires a reason whenever no_action_needed is true, so the run is published as a
+     * finished run with no draft finding (no_action_needed false, reason null).
+     */
+    analysisRun?: ("no_action_needed" | "no_action_reason")[];
+  };
 }
 
 export interface CurationManifest {
@@ -75,6 +86,12 @@ export interface CurationManifest {
   forbiddenPublicTerms?: string[];
   fixtureId: string;
   fixtureVersion: string;
+  /**
+   * Version tag used in public media filenames (default: fixtureVersion). Set it to an earlier
+   * version's tag when a new fixture version republishes byte-identical media, so the live media
+   * URLs stay the same and the earlier version remains a working rollback target.
+   */
+  mediaFileVersion?: string;
   source: { teamSlug: string; playerSlug: string };
   publication?: { consentConfirmedBy: string; consentConfirmedAt: string; note?: string };
   /** The visitor's demo team, exactly as publication permission allows (e.g. the real team name, or a neutral label). */
@@ -107,7 +124,19 @@ function nonEmpty(v: unknown): v is string {
   return typeof v === "string" && v.trim().length > 0;
 }
 
-export const PUBLISH_UNKNOWN = { gameLogEntry: ["opponent", "result"], atBatPitch: ["count_before_balls", "count_before_strikes", "pitch_outcome", "swung"] };
+export const PUBLISH_UNKNOWN = {
+  gameLogEntry: ["opponent", "result"],
+  atBatPitch: ["count_before_balls", "count_before_strikes", "pitch_outcome", "swung"],
+  videoClipMetrics: [
+    "max_bat_speed_value", "max_bat_speed_unit", "max_bat_speed_search_window_s", "max_bat_speed_frame",
+    "max_bat_speed_full_rate_value", "max_bat_speed_full_rate_source_fps", "attack_angle_at_contact_deg",
+    "hip_shoulder_separation_at_contact_deg", "torso_tilt_at_contact_deg", "pelvis_tilt_at_contact_deg",
+    "lead_side", "lead_side_method", "lead_elbow_angle_at_contact_deg", "front_knee_angle_at_contact_deg",
+    "l_elbow_angle_at_contact_deg", "r_elbow_angle_at_contact_deg", "stride_length_hip_widths",
+    "stride_direction_deg", "stride_note", "movement_flags",
+  ],
+  analysisRun: ["no_action_needed", "no_action_reason"],
+};
 
 /** Structural validation. Returns problems instead of throwing so the CLI can report all of them at once. */
 export function parseCurationManifest(raw: unknown): { manifest: CurationManifest | null; problems: ManifestProblem[] } {
@@ -188,9 +217,12 @@ export function parseCurationManifest(raw: unknown): { manifest: CurationManifes
       if (c.publishAsUnknown !== undefined) {
         const u = c.publishAsUnknown;
         const okList = (v: unknown, allowed: string[]) => v === undefined || (Array.isArray(v) && v.every((x) => allowed.includes(String(x))));
-        if (!isObj(u) || !okList(u.gameLogEntry, PUBLISH_UNKNOWN.gameLogEntry) || !okList(u.atBatPitch, PUBLISH_UNKNOWN.atBatPitch)) {
-          add(`${at}.publishAsUnknown`, `only ${PUBLISH_UNKNOWN.gameLogEntry.join("/")} (gameLogEntry) and ${PUBLISH_UNKNOWN.atBatPitch.join("/")} (atBatPitch) may be declared unknown`);
+        const groups = Object.keys(PUBLISH_UNKNOWN) as (keyof typeof PUBLISH_UNKNOWN)[];
+        if (!isObj(u) || Object.keys(u).some((k) => !groups.includes(k as keyof typeof PUBLISH_UNKNOWN)) || !groups.every((g) => okList(u[g], PUBLISH_UNKNOWN[g]))) {
+          add(`${at}.publishAsUnknown`, `only ${groups.map((g) => `${g}: ${PUBLISH_UNKNOWN[g].join("/")}`).join("; ")} may be declared unknown`);
         } else {
+          const ar = (u.analysisRun as string[] | undefined) ?? [];
+          if (ar.length && !(ar.includes("no_action_needed") && ar.includes("no_action_reason"))) add(`${at}.publishAsUnknown`, "analysisRun must withhold no_action_needed and no_action_reason together");
           const ov = isObj(c.overrides) ? c.overrides : {};
           for (const [grp, cols] of Object.entries(u) as [string, string[]][]) {
             for (const col of cols ?? []) if (isObj(ov[grp]) && col in (ov[grp] as object)) add(`${at}.publishAsUnknown`, `${grp}.${col} is both overridden and declared unknown`);
@@ -204,6 +236,7 @@ export function parseCurationManifest(raw: unknown): { manifest: CurationManifes
   if (!(pr === "all" || pr === "none" || (Array.isArray(pr) && pr.every((x) => typeof x === "string" && UUID.test(x))))) {
     add("priorities", 'required: "all", "none", or a list of source priority uuids (priorities are coach conclusions - include them deliberately)');
   }
+  if (raw.mediaFileVersion !== undefined && !(nonEmpty(raw.mediaFileVersion) && /^[A-Za-z0-9][A-Za-z0-9._-]{0,40}$/.test(String(raw.mediaFileVersion)))) add("mediaFileVersion", "must be a version tag like 2026-09-24.2");
   if (raw.mediaPolicy !== undefined && !["privacy-treated", "raw-transcode"].includes(String(raw.mediaPolicy))) add("mediaPolicy", 'must be "privacy-treated" or "raw-transcode"');
   if (raw.mediaPolicy === "raw-transcode" && !localOnly) add("mediaPolicy", '"raw-transcode" (untreated footage) is only allowed for localValidationOnly manifests');
   if (Array.isArray(raw.clips)) raw.clips.forEach((c, i) => {

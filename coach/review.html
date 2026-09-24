@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Review Swing</title>
-<link rel="stylesheet" href="./coach.css?v=17705af952">
+<link rel="stylesheet" href="./coach.css?v=739613099f">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -192,9 +192,9 @@
     const el = document.getElementById("observations");
     if (!issues.length) {
       el.innerHTML = latestAnalysisRun?.no_action_needed
-        ? emptyState("No meaningful mechanical issue is supported by this swing.", latestAnalysisRun.no_action_reason || "The analysis legitimately returned no finding.")
+        ? emptyState("No reviewed findings for this swing", `No finding has been confirmed from this footage - that is not a judgment that the swing has no issues.${latestAnalysisRun.no_action_reason ? ` Analysis draft note (not reviewed): ${latestAnalysisRun.no_action_reason}` : ""}`)
         : latestAnalysisRun
-          ? emptyState("No findings for this swing", "The analysis finished without a draft observation.")
+          ? emptyState("No reviewed findings for this swing", "The analysis finished without a draft finding, and no coach has confirmed one - that is not a judgment that the swing has no issues.")
           : emptyState("Findings appear here once analysis finishes.", "You can still review the original video and track progress against an existing priority.");
       return;
     }
