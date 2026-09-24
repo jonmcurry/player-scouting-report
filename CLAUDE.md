@@ -86,3 +86,116 @@ cd android && .\gradlew.bat assembleDebug
   live somewhere else.
 - Skip this for changes that don't touch `coach/`/`mobile/` (e.g. the Python pose3d pipeline, root
   CLI scripts, database migrations with no frontend change) — there's nothing new to deploy.
+
+
+<!-- BEGIN HITTERLOOP MULTI-AGENT MANAGED BLOCK -->
+# Multi-Agent Orchestration & Division of Labor
+
+## Team Hierarchy
+- **Product Manager / Spec Synthesizer:** User. Final authority on product decisions.
+- **Senior Implementation Engineer:** Claude Code. Implements approved specs across the repo.
+- **Adversarial Reviewer & Tester:** Codex CLI. Reviews uncommitted diffs, tests, regressions, and edge cases.
+- **Visual QA & Product Review:** Antigravity CLI (gy) + Gemini. Reviews rendered UI, browser behavior, layout, and product coherence.
+
+## Core Workflow
+1. **Spec**
+   - Read the user's spec or a file under specs/.
+   - Resolve material ambiguity before coding.
+
+2. **Implement â€” Claude**
+   - Inspect git status and the existing diff before editing.
+   - Preserve unrelated work.
+   - Implement the smallest coherent change.
+   - Run focused and broad tests as appropriate.
+   - Do not claim visual UX success from tests alone.
+
+3. **Adversarial Review â€” Codex**
+   - Review the uncommitted diff and tests.
+   - Assume the implementer's completion report may be wrong.
+   - Look for logic errors, security/privacy issues, edge cases, regressions, missing tests, and unmet acceptance criteria.
+
+4. **Visual QA â€” AGY/Gemini**
+   - For UI work, inspect the rendered application in a real browser when available.
+   - Check mobile/desktop layout, console errors, contradictory controls, terminology, hierarchy, and user comprehension.
+   - If browser automation is unavailable, mark visual QA as pending.
+
+5. **User Sign-Off**
+   - Summarize implementation, Codex findings, AGY/Gemini QA, tests, and remaining risks.
+   - Do not commit, push, deploy, or change cloud state unless explicitly authorized in the current task.
+
+## HitterLoop Product Contract
+Core loop:
+
+**WATCH â†’ UNDERSTAND â†’ FOCUS â†’ TRAIN â†’ RECHECK**
+
+The original swing video is the source of truth.
+The coach is the final authority.
+
+Prioritize:
+- what is working;
+- what needs attention;
+- evidence;
+- next development step;
+- Priority;
+- Drill;
+- Practice;
+- Progress.
+
+De-emphasize:
+- batting result;
+- pitch location;
+- count;
+- game outcome metadata;
+- speculative metrics;
+- experimental 3D;
+- implementation/debug terminology.
+
+Truth rules:
+- never invent observations/findings;
+- never invent Priorities;
+- never invent Drills;
+- never invent progress;
+- never invent metrics;
+- insufficient evidence fails closed;
+- AI drafts are not coach conclusions.
+
+## Engineering Safety Rules
+Before editing:
+- inspect repo and branch;
+- inspect git status;
+- inspect existing uncommitted diff;
+- preserve unrelated user work.
+
+Never unless explicitly authorized:
+- git reset --hard;
+- discard local changes;
+- overwrite user work;
+- commit;
+- push;
+- deploy;
+- alter cloud data;
+- change canonical fixture pointers.
+
+## Review Gates
+
+### Codex gate
+Run:
+powershell -ExecutionPolicy Bypass -File .\scripts\Invoke-CodexReview.ps1
+
+### Visual QA gate
+For frontend work:
+powershell -ExecutionPolicy Bypass -File .\scripts\Invoke-AgyVisualQA.ps1
+
+If browser automation is unavailable, report:
+**MANUAL VISUAL QA REQUIRED**
+
+## Final Handoff
+Before asking for release approval, provide:
+- files changed;
+- tests run and results;
+- Codex review result;
+- AGY/Gemini visual QA result;
+- known limitations;
+- git status;
+- anything still unverified.
+<!-- END HITTERLOOP MULTI-AGENT MANAGED BLOCK -->

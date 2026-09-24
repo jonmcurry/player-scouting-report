@@ -79,3 +79,6 @@ demo-curation*.json
 
 # Local OCR tool venv for scripts/privacy/ocr_check.py (RapidOCR) - machine-specific.
 .venv_ocr/
+
+# Local multi-agent QA scratch files
+.agent-tmp/
