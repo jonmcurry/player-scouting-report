@@ -1017,12 +1017,71 @@ body.show-team-heatmap .p1b-roster-row .mini-heatmap { display:flex; }
 .p1b-phase-tick[data-confidence="low"] > span { background:var(--bg); border-color:var(--brand-text); }
 .p1b-source-note, .p1b-review-summary { margin:var(--space-2) 0 var(--space-3); }
 .p1b-review-summary { color:var(--text-3); font-size:.75rem; }
+.bt-development-hero { margin-top:var(--space-3); padding:clamp(20px,4vw,36px); border:1px solid var(--border-strong); border-radius:var(--radius-card); background:var(--surface-1); box-shadow:0 12px 36px rgba(0,0,0,.16); }
+.bt-development-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-4); padding-bottom:var(--space-4); border-bottom:1px solid var(--border); }
+.bt-development-heading h1 { margin:2px 0 0; font:700 clamp(1.75rem,4vw,2.5rem)/1.1 var(--font-display); }
+.bt-development-heading p { margin:var(--space-1) 0 0; color:var(--text-2); }
+.bt-review-count { flex:0 0 auto; padding:var(--space-2) var(--space-3); border-radius:999px; background:var(--surface-3); color:var(--text-1) !important; font-size:.8125rem; font-weight:700; }
+.bt-summary-section { padding:var(--space-4) 0; }
+.bt-summary-section + .bt-summary-section, .bt-summary-plan { border-top:1px solid var(--border); }
+.bt-summary-section h2, .bt-summary-section h3, .bt-swing-review h1, .bt-review-verified h2 { margin:var(--space-1) 0 var(--space-2); color:var(--text-1); }
+.bt-summary-section h2, .bt-swing-review h1 { font:700 1.25rem/1.55rem var(--font-display); }
+.bt-summary-section h3, .bt-review-verified h2 { font:700 1rem/1.4rem var(--font-body); }
+.bt-summary-section p { margin:var(--space-1) 0 var(--space-3); color:var(--text-2); }
+.bt-strength-grid, .bt-summary-grid { display:grid; gap:var(--space-3); }
+.bt-strength-grid { grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:var(--space-3); }
+.bt-strength-card { padding:var(--space-3); border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface-2); }
+.bt-strength-card p, .bt-verified-list p { margin:var(--space-2) 0 0; color:var(--text-2); font-size:.875rem; }
+.bt-summary-title { display:flex; align-items:center; gap:var(--space-2); color:var(--success); }
+.bt-summary-title h3 { margin:0; color:var(--text-1); }
+.bt-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); border-top:1px solid var(--border); }
+.bt-summary-grid .bt-summary-section { border:0; }
+.bt-summary-grid .bt-summary-section + .bt-summary-section { padding-left:var(--space-4); border-left:1px solid var(--border); }
+.bt-player-support-grid { display:grid; gap:var(--space-4); align-items:start; }
+.bt-swing-evidence { padding:var(--space-4); border:1px solid var(--border); border-radius:var(--radius-card); background:var(--surface-1); }
+.bt-swing-evidence .p1b-section-head { margin-top:0; }
+.bt-evidence-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:var(--space-3); padding:var(--space-3) 0; border-top:1px solid var(--border); }
+.bt-evidence-copy { min-width:0; display:grid; gap:3px; }
+.bt-evidence-copy strong { overflow-wrap:anywhere; }
+.bt-evidence-copy span { color:var(--text-3); font-size:.8125rem; }
+.bt-evidence-actions { display:flex; gap:var(--space-1); }
+.bt-evidence-actions .bt-button { min-height:40px; padding:var(--space-1) var(--space-2); }
+.bt-review-primary { display:grid; gap:var(--space-4); align-items:start; }
+.bt-review-media, .bt-review-coaching { min-width:0; }
+.bt-swing-review { margin-bottom:var(--space-3); }
+.bt-review-explanation { margin:calc(-1 * var(--space-1)) var(--space-3) var(--space-4); }
+.bt-review-verified { margin-top:var(--space-3); }
+.bt-review-verified > .bt-caption { display:block; margin:0 0 var(--space-3); }
+.bt-verified-list { display:grid; gap:var(--space-3); }
+.bt-verified-list article + article { padding-top:var(--space-3); border-top:1px solid var(--border); }
+.bt-evidence-needs { padding:0; overflow:hidden; }
+.bt-evidence-needs > summary { min-height:64px; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-3) var(--space-4); cursor:pointer; list-style:none; }
+.bt-evidence-needs > summary::-webkit-details-marker { display:none; }
+.bt-evidence-needs > summary > span:first-child { display:grid; gap:var(--space-1); }
+.bt-evidence-needs ul { columns:2; margin:0; padding-left:var(--space-4); color:var(--text-2); }
+.bt-evidence-needs li { break-inside:avoid; margin-bottom:var(--space-2); }
 .p1b-finding { padding:0; overflow:hidden; }
 .p1b-finding > summary { min-height:56px; display:flex; align-items:center; gap:var(--space-2); padding:var(--space-3) var(--space-4); cursor:pointer; list-style:none; }
 .p1b-finding > summary::-webkit-details-marker { display:none; }
 .p1b-finding-title { flex:1; min-width:0; font:600 1rem/1.375rem var(--font-body); }
 .p1b-finding-body { padding:0 var(--space-4) var(--space-4); }
 .p1b-finding-body > .bt-label { display:block; }
+
+@media (min-width: 900px) {
+  .bt-player-support-grid { grid-template-columns:minmax(0,1.5fr) minmax(260px,.75fr); }
+  .bt-review-primary { grid-template-columns:minmax(0,1.25fr) minmax(340px,.85fr); }
+  .bt-review-media { position:sticky; top:72px; }
+}
+
+@media (max-width: 620px) {
+  .bt-development-heading { display:grid; }
+  .bt-review-count { justify-self:start; }
+  .bt-strength-grid, .bt-summary-grid { grid-template-columns:1fr; }
+  .bt-summary-grid .bt-summary-section + .bt-summary-section { padding-left:0; border-left:0; border-top:1px solid var(--border); }
+  .bt-evidence-row { grid-template-columns:1fr; }
+  .bt-evidence-actions .bt-button { flex:1; }
+  .bt-evidence-needs ul { columns:1; }
+}
 
 /* ---- Phase 2A: coaching-plan Development + guided Practice ---- */
 .p2a-section-head { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); }

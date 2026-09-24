@@ -4,20 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=98785c507f">
+<link rel="stylesheet" href="./coach.css?v=86c225d02a">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
 </head>
 <body>
 <header class="app-bar" id="appBar"></header>
-<div class="wrap">
+<div class="wrap wide bt-player-page">
   <nav id="devTabs"></nav>
-  <section id="nextAction"></section>
-  <div id="priorityStrip"></div>
-
-  <section id="assignedDrill"></section>
-  <section class="p1b-section"><div class="p1b-section-head"><h2>Recent</h2></div><div id="recentActivity" class="bt-list"></div></section>
+  <section id="developmentSummary" aria-labelledby="developmentSummaryTitle"></section>
+  <div class="bt-player-support-grid">
+    <section class="p1b-section bt-swing-evidence" aria-labelledby="swingEvidenceTitle"><div class="p1b-section-head"><div><span class="bt-eyebrow">Supporting evidence</span><h2 id="swingEvidenceTitle">Swing evidence</h2></div></div><div id="swingEvidenceList" class="bt-list"></div></section>
+    <section class="p1b-section bt-secondary-activity"><div class="p1b-section-head"><h2>Recent activity</h2></div><div id="recentActivity" class="bt-list"></div></section>
+  </div>
 
   <details class="bt-disclosure" id="moreGame"><summary><span>Game log</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><div id="gameLogList" class="bt-list"></div></div></details>
   <details class="bt-disclosure" id="morePractice"><summary><span>Practice log</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><div id="practiceLogList" class="bt-list"></div></div></details>
@@ -25,11 +25,16 @@
     <div id="trendBanner"></div>
     <div id="issuesList"></div><div id="compList"></div><div id="drillList"></div><div id="followUp"></div>
   </div></details>
-  <details class="bt-disclosure" id="checklistDrawer">
-    <summary><span>Detailed checklist scoring <span class="hint" id="checklistHint">11 checkpoints · advanced</span></span></summary>
-    <div class="drawer-body">
-      <p class="hint">Optional detail. You don't need to confirm every score - use the review page for what matters most, and the development page for what to work on.</p>
-      <div id="checklistCards"></div>
+  <details class="bt-disclosure p1b-advanced" id="technicalDetails">
+    <summary><span>Technical details</span><span class="hint" id="technicalSummary"></span><span class="bt-disclosure-chevron">⌄</span></summary>
+    <div class="bt-disclosure-body">
+      <details class="bt-disclosure" id="checklistDrawer">
+        <summary><span>Detailed checklist <span class="hint" id="checklistHint">11 checkpoints · advanced</span></span></summary>
+        <div class="drawer-body">
+          <p class="hint">Optional detail. You don't need to confirm every score—use the development summary for the current coaching story.</p>
+          <div id="checklistCards"></div>
+        </div>
+      </details>
     </div>
   </details>
 
@@ -73,9 +78,8 @@
   import { getVideoUrl, videoTimeFor } from "./components/devUi.js";
   import { renderPlayerAppBar, renderBottomNav, loadRosterWithProgress, setLastPlayerSlug } from "./components/appShell.js";
   import { openLogAtBatSheet } from "./components/logAtBatSheet.js";
-  import { mountSegmentedTabs, card, confirmDialog, emptyState, icon, listRow, showSnackbar, statusChip } from "./components/ui.js";
-  import { nextActionModel } from "./components/phase1bScreens.js";
-  import * as DevLogic from "./components/developmentLogic.js";
+  import { mountSegmentedTabs, card, confirmDialog, emptyState, icon, listRow, showSnackbar } from "./components/ui.js";
+  import { derivePlayerDevelopmentSummary } from "./components/playerDevelopmentSummary.js";
   import { renderZonePicker, zoneLabel, outcomeLabel } from "./components/pitchZonePicker.js";
 
   const MIN_ATBATS_FOR_PATTERN = 3;
@@ -248,7 +252,7 @@
       { key: "compare", label: "Compare", href: `./compare.html?${devQuery}` },
       { key: "practice", label: "Practice", href: `./session.html?${devQuery}` },
     ], "overview", { label: "Player sections" });
-    await loadPriorityStrip(devQuery);
+    await loadDevelopmentSummary(devQuery, player);
 
     const reportHref = `./player.html?team=${teamSlug}&player=${playerSlug}`;
     renderBottomNav(document.getElementById("bottomNav"), {
@@ -265,6 +269,7 @@
     await loadCompsAndDrills();
     renderFollowUp(player.refilm_by, player.what_to_check_next);
     await loadGameLog();
+    await loadSwingEvidence();
     await loadPracticeLog();
     await renderStats();
     wireGameLogDelegation();
@@ -329,7 +334,43 @@
   }
 
   async function renderStats() {
-    // session_type='game' - "Logged ABs"/"Early Read" status are real-game
+  async function loadSwingEvidence() {
+    const { data: clips, error } = await supabase
+      .from("video_clips")
+      .select("id, status, game_log_entries!inner(date, ab, session_type, player_id), at_bat_pitches(pitch_number)")
+      .eq("game_log_entries.player_id", playerId)
+      .eq("game_log_entries.session_type", "game")
+      .order("created_at", { ascending: true });
+    const host = document.getElementById("swingEvidenceList");
+    if (error) {
+      host.innerHTML = emptyState("Swing evidence unavailable", "Reload to try again.");
+      document.getElementById("reviewedSwingCount").textContent = "Swing count unavailable";
+      return;
+    }
+    const ready = (clips ?? []).filter((row) => row.status === "ready");
+    const ids = ready.map((row) => row.id);
+    const [{ data: runs }, { data: findings }] = ids.length ? await Promise.all([
+      supabase.from("analysis_runs").select("video_clip_id").in("video_clip_id", ids),
+      supabase.from("issues").select("video_clip_id, review_status").in("video_clip_id", ids),
+    ]) : [{ data: [] }, { data: [] }];
+    const analyzed = new Set((runs ?? []).map((row) => row.video_clip_id));
+    const reviewByClip = new Map();
+    for (const finding of findings ?? []) {
+      const values = reviewByClip.get(finding.video_clip_id) ?? [];
+      values.push(finding.review_status); reviewByClip.set(finding.video_clip_id, values);
+    }
+    document.getElementById("reviewedSwingCount").textContent = `${ready.length} game swing${ready.length === 1 ? "" : "s"} reviewed`;
+    host.innerHTML = ready.length ? ready.map((row) => {
+      const statuses = reviewByClip.get(row.id) ?? [];
+      const reviewLabel = statuses.includes("draft") ? "Finding needs review" : statuses.length ? "Findings reviewed" : analyzed.has(row.id) ? "Analyzed · no finding confirmed" : "Not analyzed";
+      const entry = row.game_log_entries;
+      const pitch = row.at_bat_pitches?.pitch_number;
+      const query = `team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}`;
+      return `<article class="bt-evidence-row"><div class="bt-evidence-copy"><strong>${escapeHtml(entry.date)} · AB ${escapeHtml(entry.ab)}${pitch ? ` · Pitch ${escapeHtml(pitch)}` : ""}</strong><span>${escapeHtml(reviewLabel)}</span></div><div class="bt-evidence-actions"><a class="bt-button bt-button-secondary" href="./review.html?clip=${encodeURIComponent(row.id)}&${query}">Review</a><a class="bt-button bt-button-tertiary" href="./compare.html?a=${encodeURIComponent(row.id)}&${query}">Compare</a></div></article>`;
+    }).join("") : emptyState("No swing evidence yet", "Add a game swing when video evidence is available.");
+  }
+
+  // session_type='game' - "Logged ABs"/"Early Read" status are real-game
     // performance concepts; a practice rep isn't an at-bat and shouldn't
     // count toward either (see 00015_practice_sessions.sql).
     const { count: abCount, error: abCountError } = await supabase
@@ -512,40 +553,43 @@
       : "11 checkpoints · advanced";
   }
 
-  /** Top-of-page answer to "what are we working on": active priorities and
-   * how many AI drafts still need a coach decision. Links out; owns no state. */
-  async function loadPriorityStrip(devQuery) {
-    const el = document.getElementById("priorityStrip");
-    const [{ data: pri }, { data: drafts }] = await Promise.all([
-      supabase.from("player_priorities").select("id, title, description, status, follow_up_kind, follow_up_date, follow_up_swings, follow_up_set_at, follow_up_done_at").eq("player_id", playerId).in("status", ["active", "monitoring"]).order("priority_order").limit(3),
-      supabase.from("issues").select("id, video_clip_id, created_at").eq("player_id", playerId).eq("review_status", "draft").order("created_at", { ascending: false }),
+  async function loadDevelopmentSummary(devQuery, player) {
+    const [{ data: checklist }, { data: priorities }, { data: drafts }] = await Promise.all([
+      supabase.from("checklist_scores").select("score, review_status, notes, checkpoints!inner(slug, label, sort_order)").eq("player_id", playerId).order("sort_order", { referencedTable: "checkpoints" }),
+      supabase.from("player_priorities").select("id, title, description, status").eq("player_id", playerId).in("status", ["active", "monitoring"]).order("priority_order"),
+      supabase.from("issues").select("id, video_clip_id").eq("player_id", playerId).eq("review_status", "draft"),
     ]);
-    const list = pri ?? [];
-    const priorityIds = list.map((p) => p.id);
-    const { data: drillRows } = priorityIds.length ? await supabase.from("player_priority_drills").select("player_priority_id, active, drill_library(name, purpose, instructions)").in("player_priority_id", priorityIds).eq("active", true).order("assigned_at", { ascending: false }) : { data: [] };
-    const top = list[0] ?? null;
-    const assignment = (drillRows ?? []).find((row) => row.player_priority_id === top?.id) ?? null;
-    let duePriority = null;
-    if (list.some((p) => p.follow_up_kind)) {
-      const [{ data: practiceEvents }, { data: gameEvents }, { data: swingEvents }] = await Promise.all([
-        supabase.from("practice_sessions").select("session_date").eq("player_id", playerId).order("session_date", { ascending: false }).limit(50),
-        supabase.from("game_log_entries").select("date").eq("player_id", playerId).eq("session_type", "game").order("date", { ascending: false }).limit(100),
-        supabase.from("video_clips").select("created_at, game_log_entries!inner(player_id)").eq("game_log_entries.player_id", playerId).order("created_at", { ascending: false }).limit(200),
-      ]);
-      duePriority = list.find((p) => DevLogic.isFollowUpDue(p, { now: new Date(), practiceSessionDates: (practiceEvents ?? []).map((row) => row.session_date), gameDates: (gameEvents ?? []).map((row) => row.date), swingDates: (swingEvents ?? []).map((row) => row.created_at) })) ?? null;
-    }
-    const action = nextActionModel({ drafts: drafts ?? [], duePriority, priority: top, assignment });
-    const actionHref = action.kind === "review" && action.clipId ? `./review.html?clip=${encodeURIComponent(action.clipId)}&${devQuery}`
-      : action.kind === "practice" ? `./session.html?${devQuery}&start=1`
-      : action.kind === "atbat" ? null
-      : `./development.html?${devQuery}`;
-    document.getElementById("nextAction").innerHTML = card(`<span class="bt-eyebrow">Next action</span><h2>${escapeHtml(action.title)}</h2><p class="bt-supporting">${escapeHtml(action.detail)}</p>${actionHref ? `<a class="bt-button bt-button-primary p1b-full-button" href="${actionHref}">${escapeHtml(action.label)}</a>` : `<button type="button" class="bt-button bt-button-primary p1b-full-button" id="nextActionLog">${escapeHtml(action.label)}</button>`}`, { className: "p1b-next-action" });
-    const logButton = document.getElementById("nextActionLog");
-    if (logButton) logButton.onclick = () => openLogAtBatSheet({ player: { id: playerId, slug: playerSlug }, teamSlug, trigger: logButton });
-    el.innerHTML = `<section class="bt-card p1b-working"><div class="p1b-card-head"><h2>Working on</h2><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Development</a></div>
-      ${top ? `<a class="p1b-priority-link" href="./development.html?${devQuery}"><strong>${escapeHtml(top.title)}</strong>${statusChip(top.status, { domain: "priority" })}<span>${escapeHtml(top.description || "Current coaching priority")}</span></a>${list.length > 1 ? `<span class="bt-caption">+${list.length - 1} more</span>` : ""}`
-        : emptyState("No active priorities", "Approve a finding and track it to begin.")}</section>`;
-    document.getElementById("assignedDrill").innerHTML = assignment ? card(`<span class="bt-eyebrow">Next practice</span><h2>${escapeHtml(assignment.drill_library?.name ?? "Assigned drill")}</h2><p class="bt-supporting">${escapeHtml(assignment.drill_library?.purpose ?? top.title)}</p>${assignment.drill_library?.instructions ? `<details class="p1b-inline-disclosure"><summary>How to run it</summary><p>${escapeHtml(assignment.drill_library.instructions)}</p></details>` : ""}`, { className: "p1b-assigned-drill" }) : "";
+    const priorityIds = (priorities ?? []).map((row) => row.id);
+    const { data: assignments } = priorityIds.length
+      ? await supabase.from("player_priority_drills").select("player_priority_id, active, drill_library(name, purpose, instructions)").in("player_priority_id", priorityIds).eq("active", true).order("assigned_at", { ascending: false })
+      : { data: [] };
+    const summary = derivePlayerDevelopmentSummary({
+      checklist: checklist ?? [], priorities: priorities ?? [], assignments: assignments ?? [], draftFindings: drafts ?? [], captureGuidance: player.what_to_check_next,
+    });
+    const strengthHtml = summary.strengths.length
+      ? `<div class="bt-strength-grid">${summary.strengths.map((strength) => `<article class="bt-strength-card"><div class="bt-summary-title">${icon("check", { size: 18 })}<h3>${escapeHtml(strength.label)}</h3></div>${strength.note ? `<p>${escapeHtml(strength.note)}</p>` : ""}</article>`).join("")}</div>`
+      : `<p class="bt-supporting">No strengths have been coach-verified yet.</p>`;
+    const focusHtml = summary.currentPriority
+      ? `<h3>${escapeHtml(summary.currentPriority.title)}</h3><p>${escapeHtml(summary.currentPriority.description || "Current coach-confirmed development priority.")}</p><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Open development plan</a>`
+      : `<h3>No development priority confirmed yet.</h3><p>The current footage does not provide enough reliable evidence to confidently identify the next mechanical priority.</p>`;
+    const nextHtml = summary.draftFindingCount
+      ? `<h3>${summary.draftFindingCount} finding${summary.draftFindingCount === 1 ? "" : "s"} awaiting coach review</h3><p>Review the swing evidence before setting a development priority.</p><a class="bt-button bt-button-primary" href="./review.html?clip=${encodeURIComponent(drafts[0].video_clip_id)}&${devQuery}">Review swing</a>`
+      : summary.nextStep
+        ? `<h3>${escapeHtml(summary.nextStep)}</h3><p>Better footage can support a confident coaching decision without guessing at a mechanical issue.</p>`
+        : `<h3>Continue the current development plan.</h3><p>Use the confirmed priority and reviewed evidence to guide the next session.</p>`;
+    const drill = summary.recommendedDrill?.drill_library;
+    const planHtml = drill
+      ? `<h3>${escapeHtml(drill.name || "Assigned drill")}</h3>${drill.purpose ? `<p>${escapeHtml(drill.purpose)}</p>` : ""}${drill.instructions ? `<details class="p1b-inline-disclosure"><summary>How to run it</summary><p>${escapeHtml(drill.instructions)}</p></details>` : ""}`
+      : summary.currentPriority
+        ? `<h3>No drill selected yet.</h3><p>HitterLoop can recommend a drill for the coach to choose for this confirmed priority.</p><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Choose a drill</a>`
+        : `<h3>No drill yet.</h3><p>Once a coach confirms a development priority, HitterLoop can recommend a drill for the coach to choose.</p><p class="bt-caption">There is not enough reviewed history yet to show progress.</p>`;
+    document.getElementById("technicalSummary").textContent = `${summary.strengths.length} verified checkpoints · ${summary.needsBetterEvidence.length} need better evidence`;
+    document.getElementById("developmentSummary").innerHTML = `<div class="bt-development-hero">
+      <div class="bt-development-heading"><div><span class="bt-eyebrow">Player development summary</span><h1 id="developmentSummaryTitle">${escapeHtml(player.name)}</h1><p>${escapeHtml(player.teams.name)}</p></div><p class="bt-review-count" id="reviewedSwingCount">Reviewing swing evidence…</p></div>
+      <section class="bt-summary-section bt-summary-strengths"><span class="bt-eyebrow">What’s working</span><h2>Coach-verified strengths</h2>${strengthHtml}</section>
+      <div class="bt-summary-grid"><section class="bt-summary-section"><span class="bt-eyebrow">Current focus</span>${focusHtml}</section><section class="bt-summary-section"><span class="bt-eyebrow">Next step</span>${nextHtml}</section></div>
+      <section class="bt-summary-section bt-summary-plan"><span class="bt-eyebrow">Development plan</span>${planHtml}</section>
+    </div>`;
   }
 
   async function loadIssues() {

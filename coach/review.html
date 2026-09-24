@@ -4,29 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Review Swing</title>
-<link rel="stylesheet" href="./coach.css?v=98785c507f">
+<link rel="stylesheet" href="./coach.css?v=86c225d02a">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
 </head>
 <body>
 <header class="app-bar" id="appBar"></header>
-<div class="wrap">
+<div class="wrap wide bt-review-page">
   <p class="bt-caption" id="queueCaption" hidden></p>
   <p class="hint" id="loading">Loading swing…</p>
   <div id="content" hidden>
-    <div id="swingHeader"></div>
-    <div id="watch"></div>
-    <div id="reviewSummary"></div>
-    <div id="observations"></div>
-    <div id="workOn"></div>
-    <div id="lookFor"></div>
-    <div id="track"></div>
+    <div class="bt-review-primary">
+      <div class="bt-review-media"><div id="swingHeader"></div><div id="watch"></div></div>
+      <div class="bt-review-coaching"><section id="reviewSummary" aria-labelledby="swingReviewTitle"></section><div id="observations"></div><div id="verifiedSummary"></div><div id="evidenceNeeds"></div><div id="workOn"></div><div id="lookFor"></div><div id="track"></div></div>
+    </div>
     <details class="bt-disclosure p1b-advanced" id="advancedAnalysis"><summary><span>Advanced analysis</span><span id="qualityChip"></span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body">
       <details class="bt-disclosure" id="quality"><summary><span>Analysis quality</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body" id="qualityBody"></div></details>
-      <details class="bt-disclosure" id="metricsDrawer"><summary><span>Metrics</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body" id="metricsBody"></div></details>
-      <details class="bt-disclosure" id="threeD"><summary><span>3D reconstruction</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body" id="threeDBody"><p class="hint">Opens on demand.</p></div></details>
-      <details class="bt-disclosure" id="advanced"><summary><span>Advanced checklist</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body" id="advancedBody"></div></details>
+      <details class="bt-disclosure" id="metricsDrawer"><summary><span>Measurements</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body" id="metricsBody"></div></details>
+      <details class="bt-disclosure" id="threeD"><summary><span>Experimental 3D reconstruction</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body" id="threeDBody"><p class="hint">Experimental single-camera reconstruction. Use it only as a visual aid; the original video is the source of truth.</p></div></details>
+      <details class="bt-disclosure" id="advanced"><summary><span>Detailed checklist</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body" id="advancedBody"></div></details>
     </div></details>
   </div>
 </div>
@@ -49,11 +46,12 @@
   import { button, card, icon, openOverflowMenu, showSnackbar, statusChip } from "./components/ui.js";
   import { findingActionState, reviewSummary } from "./components/phase1bScreens.js";
   import { buildReviewQueue, findingSequence, queueRemaining } from "./components/reviewQueue.js";
+  import { canRenderExperimental3d, derivePlayerDevelopmentSummary, hasPublishedMetrics, reviewFindingState } from "./components/playerDevelopmentSummary.js";
 
   const clipId = qs("clip");
   const queueMode = qs("queue") === "1";
   document.body.classList.toggle("queue-mode", queueMode);
-  let ctx, clip, phases = [], videoEl = null, library = [], priorities = [], assignments = [], issues = [], viewer = null, latestAnalysisRun = null, queueModel = null;
+  let ctx, clip, phases = [], videoEl = null, library = [], priorities = [], assignments = [], issues = [], playerChecklist = [], viewer = null, latestAnalysisRun = null, queueModel = null;
 
   async function main() {
     const session = await requireSession();
@@ -77,7 +75,9 @@
       ...(queueMode ? [{ label: "Skip for now", icon: "chevron-right", onSelect: skipCurrent }] : []),
     ] });
 
-    [phases, library, priorities] = await Promise.all([loadPhases(clipId), loadDrillLibrary(ctx.team.id), loadPriorities(ctx.player.id, ["active", "monitoring"])]);
+    const checklistRequest = supabase.from("checklist_scores").select("score, review_status, notes, checkpoints!inner(slug, label, sort_order)").eq("player_id", ctx.player.id).order("sort_order", { referencedTable: "checkpoints" });
+    const [loadedPhases, loadedLibrary, loadedPriorities, checklistResult] = await Promise.all([loadPhases(clipId), loadDrillLibrary(ctx.team.id), loadPriorities(ctx.player.id, ["active", "monitoring"]), checklistRequest]);
+    phases = loadedPhases; library = loadedLibrary; priorities = loadedPriorities; playerChecklist = checklistResult.data ?? [];
     assignments = await loadDrillAssignments(priorities.map((p) => p.id));
     await loadIssues();
 
@@ -178,9 +178,15 @@
     const drafts = issues.filter((issue) => issue.review_status === "draft").length;
     const approved = issues.filter((issue) => ["approved", "edited"].includes(issue.review_status)).length;
     const rejected = issues.filter((issue) => issue.review_status === "rejected").length;
-    const label = issues.length && drafts === 0 ? `Reviewed · ${approved} approved${rejected ? ` · ${rejected} rejected` : ""}` : reviewSummary(issues).label;
-    document.getElementById("reviewSummary").innerHTML = `<p class="p1b-review-summary">${escapeHtml(label)}</p>`;
+    const state = reviewFindingState({ issues, hasAnalysisRun: Boolean(latestAnalysisRun) });
+    const status = issues.length && drafts === 0 ? `Reviewed · ${approved} approved${rejected ? ` · ${rejected} rejected` : ""}` : reviewSummary(issues).label;
+    const heading = state === "analyzed-empty" ? "No finding was confirmed from this swing."
+      : state === "unanalyzed" ? "This swing has not been analyzed."
+      : drafts ? `${drafts} finding${drafts === 1 ? "" : "s"} awaiting coach review`
+      : "Swing review complete";
+    document.getElementById("reviewSummary").innerHTML = `<section class="bt-card bt-swing-review"><span class="bt-eyebrow">Swing review</span><h1 id="swingReviewTitle">${escapeHtml(heading)}</h1><p class="p1b-review-summary">${escapeHtml(status)}</p></section>`;
     renderObservations();
+    renderVerificationSummary();
     renderWorkOn();
     renderLookFor();
     renderTrack();
@@ -188,14 +194,20 @@
     renderQueueAction();
   }
 
+  function renderVerificationSummary() {
+    const summary = derivePlayerDevelopmentSummary({ checklist: playerChecklist, priorities, assignments });
+    const verified = document.getElementById("verifiedSummary");
+    verified.innerHTML = `<section class="bt-card bt-review-verified"><span class="bt-eyebrow">What we can verify</span><h2>Coach-verified across reviewed swings</h2><p class="bt-caption">These are player-level checklist decisions, not independent verification of this specific swing.</p>${summary.strengths.length ? `<div class="bt-verified-list">${summary.strengths.map((row) => `<article><div class="bt-summary-title">${icon("check", { size: 18 })}<h3>${escapeHtml(row.label)}</h3></div>${row.note ? `<p>${escapeHtml(row.note)}</p>` : ""}</article>`).join("")}</div>` : `<p class="bt-supporting">No checklist item has been coach-verified yet.</p>`}</section>`;
+    const needs = document.getElementById("evidenceNeeds");
+    needs.innerHTML = summary.needsBetterEvidence.length ? `<details class="bt-card bt-evidence-needs"><summary><span><span class="bt-eyebrow">What needs better evidence</span><strong>${summary.needsBetterEvidence.length} checkpoint${summary.needsBetterEvidence.length === 1 ? "" : "s"} need better evidence</strong></span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><ul>${summary.needsBetterEvidence.map((row) => `<li>${escapeHtml(row.label)}</li>`).join("")}</ul></div></details>` : "";
+  }
+
   function renderObservations() {
     const el = document.getElementById("observations");
     if (!issues.length) {
-      el.innerHTML = latestAnalysisRun?.no_action_needed
-        ? emptyState("No reviewed findings for this swing", `No finding has been confirmed from this footage - that is not a judgment that the swing has no issues.${latestAnalysisRun.no_action_reason ? ` Analysis draft note (not reviewed): ${latestAnalysisRun.no_action_reason}` : ""}`)
-        : latestAnalysisRun
-          ? emptyState("No reviewed findings for this swing", "The analysis finished without a draft finding, and no coach has confirmed one - that is not a judgment that the swing has no issues.")
-          : emptyState("Findings appear here once analysis finishes.", "You can still review the original video and track progress against an existing priority.");
+      el.innerHTML = latestAnalysisRun
+        ? `<p class="bt-supporting bt-review-explanation">The analysis finished without a draft finding, and no coach has confirmed one. This is not a judgment that the swing has no issues.</p>`
+        : `<p class="bt-supporting bt-review-explanation">Findings appear here once analysis finishes. You can still review the original video and the player-level coaching context below.</p>`;
       return;
     }
     const promoted = new Set(priorities.map((p) => p.source_issue_id).filter(Boolean));
@@ -338,18 +350,23 @@
       if (!e.target.open || metricsDone) return; metricsDone = true;
       const row = await loadSwingMetrics(clipId);
       const body = document.getElementById("metricsBody");
-      if (!row) { body.innerHTML = '<p class="hint">No metrics for this swing yet.</p>'; return; }
+      if (!hasPublishedMetrics(row)) { body.innerHTML = '<p class="hint">No reliable measurements are published for this swing.</p>'; return; }
       renderSwingMetricsPanel(body, row);
       body.querySelector("details")?.setAttribute("open", "");
     });
     document.getElementById("threeD").addEventListener("toggle", async (e) => {
       if (!e.target.open || threeDone) return; threeDone = true;
       const body = document.getElementById("threeDBody");
+      const { data: metrics } = await supabase.from("video_clip_metrics").select("analysis_quality").eq("video_clip_id", clipId).maybeSingle();
+      if (!canRenderExperimental3d(metrics?.analysis_quality)) {
+        body.innerHTML = emptyState("Experimental 3D unavailable for this swing", "The existing reconstruction quality is limited or unavailable. Use the original video as the source of truth.");
+        return;
+      }
       body.innerHTML = '<p class="hint">Loading 3D…</p>';
       const data = await loadClipSkeletonData(clipId);
       if (!data || !data.frames.length) { body.innerHTML = emptyState("No 3D reconstruction", "The video and 2D analysis above are still valid."); return; }
       body.innerHTML = "";
-      viewer = await renderSkeletonComparison(body, { realFrames: data.frames, correctedFrames: null, phases, note: "3D is an estimate from one camera - use it to explain, not to decide.", videoUrl: null, initialTimeS: L.phaseTime(phases, qs("phase") ?? "") });
+      viewer = await renderSkeletonComparison(body, { realFrames: data.frames, correctedFrames: null, phases, note: "Experimental single-camera reconstruction. Use it only as a visual aid; the original video is the source of truth.", videoUrl: null, initialTimeS: L.phaseTime(phases, qs("phase") ?? "") });
     });
   }
 

@@ -184,8 +184,9 @@ test("public copy: no 'Direct video measurement' labels, no unreviewed no-action
   }
   const review = read("review.html");
   assert.doesNotMatch(review, /emptyState\("No meaningful mechanical issue/);
-  assert.match(review, /No reviewed findings for this swing/);
-  assert.match(review, /Analysis draft note \(not reviewed\)/);
+  assert.match(review, /No finding was confirmed from this swing/);
+  assert.match(review, /This swing has not been analyzed/);
+  assert.match(review, /not a judgment that the swing has no issues/);
   const report = read("report.html");
   assert.doesNotMatch(report, /Your coach will add a drill/);
   assert.match(report, /HitterLoop can recommend a drill for your coach to choose/);
