@@ -169,3 +169,11 @@ test("deep links: review.html reads ?clip and ?phase; compare.html reads ?a/?b",
   assert.match(compare, /qs\("a"\)/);
   assert.match(compare, /qs\("b"\)/);
 });
+
+test("share links point at the report page even when the host serves extensionless URLs", () => {
+  const m = read("player.html").match(/pathname\.replace\((\/.+?\/), "report\.html"\)/);
+  assert.ok(m, "player.html builds share links from its own pathname");
+  const re = eval(m[1]);
+  assert.equal("/coach/player.html".replace(re, "report.html"), "/coach/report.html");
+  assert.equal("/hitterloop/demo/player".replace(re, "report.html"), "/hitterloop/demo/report.html");
+});
