@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.25.1] - 2026-09-24
+
+### Fixed
+
+- The Review summary labelled every swing with no approved finding "Draft from analysis · Not reviewed", including swings with zero findings (unanalyzed, or analyzed with no draft). It now reads "0 findings" in those cases. The draft label appears only when at least one unreviewed AI draft finding exists.
+
 ## [0.25.0] - 2026-09-24
 
 ### Added

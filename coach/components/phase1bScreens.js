@@ -35,9 +35,12 @@ export function findingActionState(issue, isTracked = false) {
 
 export function reviewSummary(issues = []) {
   const approved = issues.filter((i) => ["approved", "edited"].includes(i.review_status)).length;
+  const drafts = issues.filter((i) => i.review_status === "draft").length;
+  // "Draft from analysis · Not reviewed" describes actual unreviewed AI drafts - never zero findings.
+  const status = approved ? ` · ${approved} approved` : drafts ? " · Draft from analysis · Not reviewed" : "";
   return {
     total: issues.length,
     approved,
-    label: `${issues.length} finding${issues.length === 1 ? "" : "s"} · ${approved ? `${approved} approved` : "Draft from analysis · Not reviewed"}`,
+    label: `${issues.length} finding${issues.length === 1 ? "" : "s"}${status}`,
   };
 }

@@ -51,3 +51,20 @@ test("Swing Review phase track uses the standard coaching sequence", () => {
   assert.match(source, /\["stance", "load", "stride", "contact", "extension", "follow-through"\]/);
   assert.match(source, /\.sort\(\(a, b\).*order\.get\(a\.slug\)/s);
 });
+
+test("Review summary: zero findings are never labelled a draft; only real unreviewed AI drafts are", () => {
+  // Unanalyzed swing (no analysis run) and analyzed swing with no draft finding both have zero issues.
+  for (const issues of [[], undefined]) {
+    const label = reviewSummary(issues).label;
+    assert.equal(label, "0 findings");
+    assert.doesNotMatch(label, /Draft from analysis|Not reviewed/);
+  }
+  const review = read("review.html");
+  const obs = review.slice(review.indexOf("function renderObservations"), review.indexOf("function renderObservations") + 1200);
+  assert.match(obs, /latestAnalysisRun\s*\n?\s*\?\s*emptyState\("No reviewed findings for this swing", "The analysis finished without a draft finding, and no coach has confirmed one - that is not a judgment that the swing has no issues\."\)/, "analyzed, no draft finding");
+  assert.match(obs, /emptyState\("Findings appear here once analysis finishes\."/, "unanalyzed");
+  // At least one actual unreviewed AI draft finding.
+  assert.equal(reviewSummary([{ review_status: "draft" }]).label, "1 finding · Draft from analysis · Not reviewed");
+  assert.equal(reviewSummary([{ review_status: "draft" }, { review_status: "draft" }]).label, "2 findings · Draft from analysis · Not reviewed");
+  assert.equal(reviewSummary([{ review_status: "rejected" }]).label, "1 finding", "a rejected finding is not an unreviewed draft");
+});
