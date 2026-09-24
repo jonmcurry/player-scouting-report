@@ -1,7 +1,23 @@
 # Promoting curated real footage into the public demo
 
-**Status (2026-09-24): LIVE.** `emily@2026-09-24.2` is the canonical public
-demo fixture at https://joncurry.co/hitterloop/demo/ (activated 15:34 UTC).
+**Status (2026-09-24): LIVE.** The canonical public demo fixture at
+https://joncurry.co/hitterloop/demo/ is `emily@2026-09-24.3` (activated 16:23 UTC).
+It replaced `emily@2026-09-24.2` (activated 15:34 UTC), which stays stored as the
+rollback target.
+
+`.3` is `.2` with every swing-metric value withheld (`publishAsUnknown.videoClipMetrics`)
+and the unreviewed AI "no action needed" conclusion withheld (`publishAsUnknown.analysisRun`).
+Why the metrics went:
+- contact confidence is "limited" on 4 of 5 clips;
+- handedness is "limited" on all 5;
+- 3D reconstruction is "limited" on 4 of 5;
+- there are known artifacts (clip-004 attack angle 85.5°; `wrist_lead_ms` is -301.3 on three clips);
+- the human review marked every related checkpoint insufficient evidence.
+
+`.3` reuses `.2`'s five approved media files and filenames (`mediaFileVersion`), so no media byte or URL changed.
+It was derived from the released `.2` export rather than re-exported, because the local Docker stack was down.
+The same withholding semantics were applied, then `fixtureContentSha256` and `validateFixture` were re-run.
+Only the withheld fields differ from `.2`.
 Publication consent is recorded locally, in the gitignored manifest. The
 rollout below was executed as follows:
 
@@ -17,6 +33,7 @@ rollout below was executed as follows:
 
 **Rollback:**
 - **Pointer:**
+  - `select demo.publish_demo_canonical('emily', '2026-09-24.2');` returns to the previous Emily version (same media files).
   - `select demo.publish_demo_canonical(null, null);` returns to fictional.
   - `select demo.publish_demo_canonical('<id>', '<version>');` returns to any stored version.
   - Then run `select demo.retire_noncanonical_sessions();` (fixture pointers only).
@@ -26,10 +43,14 @@ rollout below was executed as follows:
 - **Do not revert 00040 blindly.** Once real coach data uses the `insufficient_evidence` / `rejected` states, dropping the column loses those human decisions. Fix forward instead.
 
 **Known issues found live (not fixed):**
-- **Metrics tab:** Compare > Metrics shows raw pose metrics labelled "Direct video measurement" with no unit. These include known artifacts: clip-004 attack angle 85.5°, clip-005 bat speed 137.8 (body-relative shoulder-widths/s, not mph), and clip-001 stride 4.9 hip-widths. Hiding them needs a new fixture version, which is a human decision.
 - **Range requests:** the Cloudflare asset layer ignores `Range` and always returns 200 with the full file. Edge plays the clips; iOS Safari playback is unverified.
 - **Bare `*.html` URLs:** the service worker precaches `./team.html` and the other pages, and the host 307-redirects them to extensionless URLs. So a bare `*.html` navigation with no query string fails once the worker is installed. The app's own links always carry a query string.
-- **Project page copy:** `content/projects/hitterloop.mdx` in the website repo still describes a "fictional dataset".
+
+**Resolved in 0.25.0 / `.3`:**
+- **Metrics:** Compare and Review now label 2D values "2D video estimate · not calibrated", with units, and show an honest empty state. The demo publishes no metric values.
+- **Review no-finding state:** it reads "No reviewed findings for this swing".
+- **Report drill copy:** it matches the confirm-then-recommend workflow.
+- **Project page:** it no longer calls the demo fictional.
 
 > **Media (2026-09-24):** real clips are published only as
 > privacy-treated video (bystanders anonymized) with a human approval bound
