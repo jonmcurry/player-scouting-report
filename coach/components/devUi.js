@@ -4,7 +4,7 @@
 // logic lives in developmentLogic.js (unit-tested); this file only touches the
 // DOM and Supabase.
 import { supabase, requireSession, getMyDisplayName, qs, escapeHtml } from "../shared.js";
-import { isDemoMode } from "../demoConfig.js";
+import { getDemoConfig, isDemoMode } from "../demoConfig.js";
 import { renderPlayerAppBar, renderBottomNav, loadRosterWithProgress, setLastPlayerSlug } from "./appShell.js";
 import {
   confirmDialog, emptyState as emptyStatePrimitive, mountSegmentedTabs, openBottomSheet,
@@ -240,16 +240,48 @@ export async function loadPhases(clipId) {
   })).sort((a, b) => (order.get(a.slug) ?? 99) - (order.get(b.slug) ?? 99));
 }
 
+// Seconds to add to an analysis timestamp (swing_phases.time_s, pose frame
+// time_s - relative to the pipeline's analysis window) to reach the same
+// moment in the video element's own timeline. 0 for production's original
+// upload; demo_media_offset_s for a trimmed, curated demo clip.
+const videoOffsets = new Map();
+
+/** Public URL of a curated demo clip, or null. Pure: the path is validated
+ * against the same safe-filename rule the database enforces, and only ever
+ * resolved under the demo's own static media directory - never a bucket or
+ * signed URL (get-video-url is deliberately not deployed for the demo). */
+export function demoMediaUrl(mediaPath, basePath = getDemoConfig().basePath) {
+  if (typeof mediaPath !== "string" || !/^[a-z0-9][a-z0-9._-]{0,120}\.mp4$/.test(mediaPath)) return null;
+  return `${String(basePath || "./").replace(/\/?$/, "/")}media/${mediaPath}`;
+}
+
 export async function getVideoUrl(clipId) {
-  // The public demo never stores real swing video and get-video-url is
-  // deliberately not deployed to the demo project (see
-  // docs/research/demo-shared-project-architecture.md's media strategy) -
-  // skip the call entirely rather than let it fail against a nonexistent
-  // function. Callers distinguish "demo, by design" from "real failure"
-  // via isDemoMode() themselves when choosing what empty state to render.
-  if (isDemoMode()) return null;
+  if (isDemoMode()) {
+    // Only curated clips exported with a published media file have one;
+    // everything else keeps the explicit "no video published" state.
+    const { data } = await supabase.from("video_clips").select("demo_media_path, demo_media_offset_s").eq("id", clipId).maybeSingle();
+    const url = demoMediaUrl(data?.demo_media_path);
+    const offset = Number(data?.demo_media_offset_s);
+    if (!url || !Number.isFinite(offset)) return null; // unknown alignment: never show misaligned phase markers
+    videoOffsets.set(clipId, offset);
+    return url;
+  }
   const { data } = await supabase.functions.invoke("get-video-url", { body: { videoClipId: clipId } });
+  videoOffsets.set(clipId, 0);
   return data?.url ?? null;
+}
+
+// Seek 1 ms INTO the target frame. A frame's analysis time (index / fps) and
+// its container timestamp differ by rounding (e.g. frame 142 at 29.871 fps:
+// 4.7537317 s vs a stored pts of 4.753732 s), and seeking to the exact value
+// lands a hair before the frame's pts, so the browser shows the PREVIOUS
+// frame - measured on real demo media: every phase marker was one frame
+// early. 1 ms is far below half a frame even at 240 fps (2.08 ms).
+export const FRAME_SEEK_EPSILON_S = 0.001;
+
+/** Analysis time -> this clip's video-element time (call after getVideoUrl). */
+export function videoTimeFor(clipId, analysisTimeS) {
+  return analysisTimeS + (videoOffsets.get(clipId) ?? 0) + FRAME_SEEK_EPSILON_S;
 }
 
 export function lastComparisonKey(playerId) {

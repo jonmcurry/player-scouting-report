@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Review Swing</title>
-<link rel="stylesheet" href="./coach.css?v=9a421ab29e">
+<link rel="stylesheet" href="./coach.css?v=a5adcdbee0">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -36,7 +36,7 @@
 <script type="module">
   import {
     L, supabase, qs, buildContext, PLAYER_SELECT, loadPriorities,
-    loadDrillLibrary, loadDrillAssignments, loadPhases, getVideoUrl, emptyState, pill, fmtDate, escapeHtml, showNotFound, toast,
+    loadDrillLibrary, loadDrillAssignments, loadPhases, getVideoUrl, videoTimeFor, emptyState, pill, fmtDate, escapeHtml, showNotFound, toast,
   } from "./components/devUi.js";
   import {
     openPromoteSheet, openAssignDrillSheet, openObservationSheet, openEditIssueSheet, reviewIssue,
@@ -148,7 +148,7 @@
     const url = await getVideoUrl(clipId);
     if (!url) {
       el.innerHTML = isDemoMode()
-        ? emptyState("Demo evidence placeholder", "The public demo doesn't store real swing video. Phase timing and the coaching notes below are real seeded demo data.")
+        ? emptyState("No video published for this swing", "The analysis below comes from the original footage; this clip wasn't selected for public playback.")
         : emptyState("Video unavailable", "The original video couldn't be loaded right now.");
       return;
     }
@@ -168,7 +168,7 @@
     const t = L.phaseTime(phases, slug);
     if (t == null) return;
     if (videoEl) {
-      const go = () => { videoEl.currentTime = t; };
+      const go = () => { videoEl.currentTime = videoTimeFor(clipId, t); };
       videoEl.readyState >= 1 ? go() : videoEl.addEventListener("loadedmetadata", go, { once: true });
     }
     viewer?.seekToTime(t);

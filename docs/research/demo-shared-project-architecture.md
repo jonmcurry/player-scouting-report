@@ -1,5 +1,13 @@
 # HitterLoop demo: temporary same-project + isolated `demo` schema
 
+> **Update (0.20.0, local only, not deployed):** migration 00036 lets
+> curated, coach-reviewed real footage join every visitor's clone through
+> `demo.demo_real_fixtures`. `demo.clone_demo_dataset()` is now the
+> fictional narrative (renamed `demo.clone_fictional_dataset`) plus every
+> active real fixture. The migration also fixes the missing
+> `game_log_entries.pitch` column and a `clone_demo_dataset` PUBLIC-execute
+> gap. See [demo-real-data-promotion.md](./demo-real-data-promotion.md).
+
 **Status as of 2026-09-22 (live-audit compatibility fix pass): the
 deployed public demo at joncurry.co/hitterloop/demo surfaced real
 frontend/schema mismatches once real traffic hit it — the schema/RLS

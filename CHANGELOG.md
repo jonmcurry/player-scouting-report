@@ -1,5 +1,99 @@
 # Changelog
 
+## [0.24.0] - 2026-09-23
+
+### Added
+
+- Explicit checklist review states (migration `00040_checklist_review_status.sql`, applied to `public` and `demo`). A checkpoint is now `ai_draft`, `verified`, `insufficient_evidence` or `rejected`.
+  - A trigger derives the state for every existing writer, so AI and pose3d drafts, the score stepper, seeds and clones need no change.
+  - A constraint keeps the states consistent: insufficient and rejected rows carry a reviewer and no score.
+  - Score history now records review-state transitions.
+  - The AI draft value, note, source and run link are never altered by a review.
+- Coach checklist actions "Insufficient evidence" and "Reject draft", beside the existing tap-to-verify score stepper. Insufficient and rejected checkpoints show a compact state label instead of "AI Draft — Unconfirmed", and the AI note is not shown as coaching text.
+- Exporter `publishAsUnknown` (per curated clip). Specific game or pitch fields the human declares unverified are published as null, with a warning and the prior value withheld, instead of failing as missing.
+
+### Changed
+
+- The report (`get-player-report`, `get-demo-player-report`) shows verified scores, plus insufficient-evidence checkpoints labelled as such. Rejected drafts never appear.
+- The exporter exports verified scores and insufficient-evidence checkpoints; the latter carry no AI number or note. Rejected and unreviewed drafts are never exported, and only coach-verified score history is. The validator fails closed on any rejected or leaking row.
+
+### Fixed
+
+- The Player page "Trending Up" banner, and the per-checkpoint trend chart, treated an AI draft followed by a coach's score as the player's progress. They now compare coach-verified scores only.
+- `demo.test.ts` silently failed to restore a local-validation canonical demo fixture after its run. It now restores it, or fails loudly.
+
+## [0.23.0] - 2026-09-24
+
+### Added
+
+- The batter's own jersey lettering (back name bar and chest team name) is now masked in privacy-treated demo video. The band follows the torso's shoulder-to-hip axis through turns and follow-through. Only the head is carved out: limb carve-outs exposed lettering fragments on real footage. Helmet decals (surname on the back, team wordmark on the front) are masked too. Only a small face window below the brim stays visible, and the whole helmet is masked when the batter faces away. Frames with no reliable shoulders use a flagged fallback band that forces manual review. The validator reports surviving upper-torso detail.
+- `scripts/privacy/ocr_check.py`: a frame-by-frame OCR check (full frame plus an upscaled subject crop) for words that must not appear, with an extra upscaled head crop for helmet decals. It runs on the source as a sensitivity baseline and on the treated output, and the words are never stored in the repo.
+- Prototype `--lettering-mode precise` for the privacy anonymizer. It masks only the detected jersey and helmet lettering (segmented silhouette, stroke detection, whole-word outlines, tracked across neighbouring frames) instead of the whole torso band. It is opt-in, and the default broad output is byte-identical. New review tools: `check_lettering.py` (independent residual-lettering check), `compare_torso_pose.py`, `review_all_frames.py` and `compare_treatments.py`.
+- Precise lettering mode can keep the jersey number visible (`classify_numbers.py`). It is used for the four navy-jersey demo clips and needs a components cache plus number labels from `anonymize_clip.py`.
+  - An outline stays visible only if OCR reads digits of the given number at every scale, on the lower torso, in a roughly square outline outside the glove/bat area, or if it is tracked from such a read through outlines that show no name letters.
+  - Everything else stays masked, including lettering inside the glove and bat areas.
+  - New tools: `review_numbers.py` (a local-only sheet of every exempted outline) and `review_lettering.py`. `check_lettering.py` records deliberately visible number clusters separately.
+- Exporter `forbiddenPublicTerms` (local manifest only): any fixture value containing one of these terms fails the export closed, and the error message never echoes the term.
+
+### Changed
+
+- Exported `video_clips.clip_slug` is now a neutral `<publicSlug>-clip-NNN`. Local slugs come from original filenames and can carry the athlete's name.
+- Coach app placeholders, examples and source comments no longer use real team or player names.
+- The analyzer records the concrete model IDs a Claude CLI alias resolved to (`analysis_runs.ai_model_version`). `analyzeAndSync` also accepts per-clip excluded measurements, which are recorded in the run's input manifest and shown to the model.
+- `analyzeSwingViaClaudeCli` accepts an optional evidence addendum, off by default, so the production prompt is unchanged. Callers that use it must record their own prompt version. `buildAnalysisInput` is now exported for local experiments that must not write drafts to the database.
+- The methodology DB test now restores whichever methodology version was active before it ran. Previously it always reactivated `k-0.1.0`, which silently replaced a locally published `k-0.2.0`.
+- The real-fixture e2e test now restores the canonical demo pointer even when it names a local-validation fixture, and fails loudly if it can't. Previously the restore failed silently and left the local demo pointing at the test fixture.
+- All earlier privacy-treated clip approvals are void. Every regenerated clip needs fresh human approval of its new hash.
+
+## [0.22.0] - 2026-09-24
+
+### Added
+
+- Privacy treatment for real demo footage (`scripts/privacy/`, `docs/research/demo-privacy-video.md`). Everyone except the analyzed batter is pixelated and blurred. The keep region comes from the pipeline's own tracked batter (keypoints + bat), and other people are masked even inside it using two detector architectures at 1920 px with track holding. Frames stay exactly as analyzed: CFR at the analysis fps, frame i = analysis frame i, no crop.
+- Identity gates: a clip whose tracked "batter" doesn't hold the bat is rejected. A track switch (body-size or position jump) obscures every later frame, and rejects the clip if it falls inside the analysis phase window. The post-swing tail is obscured.
+- Independent validator on the encoded file: timing, per-person detail destruction (two detectors at 2560 px), fail-closed frames really obscured, and re-detected pose alignment against the stored analysis. Local-only review tooling covers source-vs-output zooms and a subject-identity audit.
+- Publication gate (`evaluatePrivacyGate`). Exported media must be the treated file, with a non-REJECT summary, a non-FAIL validation, matching hashes, analyzed frame count, trim at the analysis window, and a separate human approval bound to the exact sha256 (`resolvedReviewItems` for manual-review clips). Treated media is copied byte for byte. Untreated transcodes are only allowed in local-validation manifests.
+
+### Fixed
+
+- Phase-marker and Compare seeks showed the previous frame. Container timestamps round up (e.g. 4.753732 s vs 142/fps = 4.7537317 s), so seeks now target 1 ms inside the frame.
+- The player game log showed "vs null" for an at-bat with no recorded opponent.
+
+## [0.21.0] - 2026-09-23
+
+### Added
+
+- Single-player canonical demo (migration `00037`). Every new or reset demo visitor gets exactly one team, built from ONE explicitly published, immutable fixture version (`demo.demo_canonical` pointer, `publish_demo_canonical()`). A broken or missing published fixture fails closed, with no silent fallback to the fictional team. The fictional narrative remains only as an explicit rollback target. `retire_noncanonical_sessions()` ends stale sessions after a switch.
+- Database-level publication-consent guard (`00038`). Fixtures without recorded consent, or exported in the new local-validation mode, can't be stored or published except on a local stack with an explicit dev setting.
+- Exporter local-validation mode, for exercising the pipeline on real footage before the consent checkpoint. Missing human facts become labelled "UNCONFIRMED" warnings, and the fixture is stamped and refused everywhere else. Unfilled worksheet placeholders are rejected in manifests. A publication-approved team block is now required. Media filenames are version-stamped, and unknown phase-to-media alignment fails closed.
+- Real demo video playback: demo mode resolves curated clips to static `/hitterloop/demo/media/<file>` (never a signing function), and every seek site (Review phase markers, Compare, skeleton sync) applies the clip's analysis-to-media offset.
+- Import CLI: `--publish`, `--status`, `--rollback-to <id>@<version>`, `--rollback-fictional`, `--retire-stale`.
+
+### Changed
+
+- Demo banner no longer says "fictional players and data". Demo "no video" states now say "No video published for this swing".
+- Transcodes convert full-range phone video to limited-range `yuv420p` for consistent browser playback.
+
+### Fixed
+
+- The upload worker created a phantom blank pitch for every processed game clip. The BEFORE INSERT auto-link trigger fired on `ingestPhases`' upsert of an already-existing clip (`00039`).
+- The first visit to the app reloaded the page when the service worker first took control, aborting in-flight work, such as the demo's session bootstrap.
+- `player.html` called `get-video-url` directly, bypassing demo-mode handling. Compare applied start times by position in a filtered list, so one missing video shifted the other's start.
+
+## [0.20.0] - 2026-09-22
+
+### Added
+
+- Real-footage demo promotion pipeline (`docs/research/demo-real-data-promotion.md`). A human-authored curation manifest serves as the clip allowlist and supplies all human-only metadata. It is paired with `npm run export-demo-fixture`, which exports a coach-reviewed local player into a deterministic, content-hashed, demo-shaped fixture, with browser-ready H.264 media that has its metadata stripped. `npm run import-demo-fixture` loads that fixture into a new canonical clone source, `demo.demo_real_fixtures`, after the database verifies it with a full rolled-back canonical clone. Every new demo visitor then gets the fictional team plus each active real fixture.
+- Fail-closed curation rules. Only allowlisted, fully processed clips are exported. Findings must be approved or edited: drafts need an explicit opt-in and stay marked as drafts, and rejected findings are never exported. Checklist scores must be coach-reviewed. Coach names are aliased. Missing dates, opponents, counts, outcomes, trim bounds, or publication consent cause errors rather than guesses. A leak scan blocks local paths, bucket keys, secrets, and source row ids.
+- Migration `00036_demo_real_fixture_promotion.sql`, additive. `demo.*` now matches production for real metrics, pose (`joints_blob`, `lead_side`), analysis provenance, and edited-finding originals. It also adds demo media columns and a generic, whitelisted, JSON-driven `demo.clone_real_fixture()`.
+- Unit tests (18) and a local end-to-end test (`npm run test:demo-real-fixture`, 14). The E2E drives an anonymous visitor through the exact frontend query shapes of all eight demo pages.
+
+### Fixed
+
+- The demo Player page's Game Log always showed "No recent game": `loadGameLog()` selects `game_log_entries.pitch`, which `demo.*` lacked.
+- `demo.clone_demo_dataset(uuid)` inherited Postgres's default EXECUTE-to-PUBLIC grant, so any signed-in demo visitor could call this SECURITY DEFINER function directly and create orphan teams. All clone and load functions now revoke `PUBLIC` (takes effect in the cloud once 00036 is deployed).
+
 ## [0.19.1] - 2026-09-22
 
 ### Fixed

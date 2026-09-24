@@ -225,7 +225,7 @@ export async function createSkeletonScene(canvasEl, opts = {}) {
   // comparison view (compModal.js) far enough to hit that old limit put the
   // camera near top-down, where ANY standing human figure foreshortens into
   // a confusing blob - reproduced directly by dispatching a real drag on a
-  // known-good, anatomically-valid frame (Emily_C_AB11-1785696124000's
+  // known-good, anatomically-valid frame (the reference AB11 clip's
   // Stance checkpoint, frame 65) and getting exactly the "bat sticking
   // straight up out of her head" look the coach screenshotted, with a drag
   // as small as 60px on a ~164px-tall canvas already saturating the old
@@ -409,7 +409,7 @@ export async function createSkeletonScene(canvasEl, opts = {}) {
    * clip opens with real pre-swing stance/load time before the dynamic
    * swing takes over, so the early portion is a trustworthy "what does
    * upright look like on this uncalibrated camera" reference. Measured on a
-   * real clip (Emily_C_AB11): full-clip calibration left the stance frame
+   * real clip (reference AB11): full-clip calibration left the stance frame
    * ~6-7deg off vertical; first-20% calibration brought it under 1deg, while
    * correctly leaving contact/extension's real forward lean visible (~15-22
    * deg) instead of averaging it away. Same single rigid correction applied

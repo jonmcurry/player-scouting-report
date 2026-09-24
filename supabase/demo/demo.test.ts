@@ -55,6 +55,34 @@ function must(res: { data: any; error: { message: string } | null }, what: strin
   return res.data;
 }
 
+// Since 00037 the public demo clones ONE published real-data fixture; the
+// fictional Jordan/Maya/Riley narrative this suite covers is kept only as the
+// explicit rollback target. Pin the canonical pointer to it for this run and
+// restore whatever was published afterwards.
+const svcDemoForCanonical = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+  auth: { persistSession: false, autoRefreshToken: false },
+}).schema("demo");
+let savedCanonical: { mode: string; fixture_id: string | null; fixture_version: string | null } | null = null;
+before(async () => {
+  const { data, error } = await svcDemoForCanonical.from("demo_canonical").select("mode, fixture_id, fixture_version").single();
+  if (error) throw new Error(`reading demo_canonical: ${error.message}`);
+  savedCanonical = data;
+  const pinned = await svcDemoForCanonical.rpc("publish_demo_canonical", { p_fixture_id: null, p_fixture_version: null });
+  if (pinned.error) throw new Error(`pinning fictional canonical: ${pinned.error.message}`);
+});
+after(async () => {
+  if (savedCanonical?.mode === "fixture") {
+    // Restoring a local-validation fixture needs the (local-only) dev setting; the
+    // consent guard otherwise refuses it silently. Enable it just for the restore,
+    // put it back exactly, and fail loudly if the restore didn't happen.
+    const prev = (await svcDemoForCanonical.from("demo_dev_settings").select("allow_unconsented_fixtures").maybeSingle()).data;
+    if (prev) await svcDemoForCanonical.from("demo_dev_settings").update({ allow_unconsented_fixtures: true }).eq("allow_unconsented_fixtures", prev.allow_unconsented_fixtures);
+    const restored = await svcDemoForCanonical.rpc("publish_demo_canonical", { p_fixture_id: savedCanonical.fixture_id, p_fixture_version: savedCanonical.fixture_version });
+    if (prev) await svcDemoForCanonical.from("demo_dev_settings").update({ allow_unconsented_fixtures: prev.allow_unconsented_fixtures }).eq("allow_unconsented_fixtures", true);
+    if (restored.error) throw new Error(`could not restore the canonical pointer: ${restored.error.message}`);
+  }
+});
+
 async function newAnonSession(schema: "demo" | "public" = "demo"): Promise<SupabaseClient> {
   const c = schema === "demo" ? demoClient() : publicClient();
   const { error } = await c.auth.signInAnonymously();

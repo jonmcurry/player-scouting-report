@@ -34,7 +34,7 @@ function loadFrameImages(framesDir: string): FrameImage[] {
 
 const emptyPitch = (): PitchContext => ({ location: null, zone: null, count: null, outcome: null, swung: null, pitchType: null });
 
-async function buildAnalysisInput(args: {
+export async function buildAnalysisInput(args: {
   teamSlug: string;
   playerSlug: string;
   playerId: string;
@@ -42,6 +42,7 @@ async function buildAnalysisInput(args: {
   fallbackPitchContext: string;
   videoClipId: string | null;
   pipelineVersion: string | null;
+  extraExclusions?: { field: string; reason: string }[];
 }): Promise<AnalysisInput> {
   const supabase = getSupabaseClient();
   const { data: player, error: playerErr } = await supabase
@@ -102,7 +103,7 @@ async function buildAnalysisInput(args: {
     coachReviewedDecisions: (decisions ?? []).map((d) => ({ concept: d.concept, phase: d.phase, videoClipId: d.video_clip_id, status: d.review_status })),
     swing: {
       frameNames: frameNames(args.framesDir), pipelineVersion: args.pipelineVersion, metrics: {},
-      reconstructionSupplied: false, excludedMeasurements: TILT_EXCLUSIONS,
+      reconstructionSupplied: false, excludedMeasurements: [...TILT_EXCLUSIONS, ...(args.extraExclusions ?? [])],
     },
     knowledgePack: pack.text,
     knowledgeClaimIds: pack.claimIds,
@@ -142,9 +143,13 @@ export async function analyzeAndSync(
   useClaudeCli = false,
   videoClipId: string | null = null,
   pipelineVersion: string | null = null,
+  // Measurements/phase markers audited as unreliable for this clip. Recorded
+  // in the run's input_manifest and shown to the model as excluded, so an
+  // omitted still or metric is explained rather than silently missing.
+  extraExclusions: { field: string; reason: string }[] = [],
 ): Promise<void> {
   const playerId = await findPlayerId(teamSlug, playerSlug);
-  const input = await buildAnalysisInput({ teamSlug, playerSlug, playerId, framesDir, fallbackPitchContext: pitchContext, videoClipId, pipelineVersion });
+  const input = await buildAnalysisInput({ teamSlug, playerSlug, playerId, framesDir, fallbackPitchContext: pitchContext, videoClipId, pipelineVersion, extraExclusions });
   let result: SwingAnalysisResult;
   if (claudeDraftPath) {
     console.log(`Loading Claude-drafted analysis from ${claudeDraftPath} (Gemini not called)...`);

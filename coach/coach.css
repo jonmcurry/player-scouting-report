@@ -438,6 +438,30 @@ details.drawer .drawer-body { padding: 0 16px 16px; }
   white-space: nowrap;
 }
 
+/* Coach-reviewed checkpoints with no score (00040): insufficient evidence
+   or a rejected AI draft - compact, muted, never styled like a result. */
+.review-pill {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  color: var(--text-muted);
+  border: 1px solid color-mix(in srgb, var(--text-muted) 40%, transparent);
+}
+.review-pill.rejected {
+  color: var(--status-critical);
+  border-color: color-mix(in srgb, var(--status-critical) 40%, transparent);
+}
+.checkpoint-card.reviewed-no-score h3 { color: var(--text-muted); }
+.cp-review-actions { display: flex; gap: 16px; margin: 4px 0 2px; }
+.cp-review-actions .link-btn {
+  background: none; border: 0; padding: 6px 0; min-height: 32px;
+  color: var(--text-muted); font-size: 13px; text-decoration: underline; cursor: pointer;
+}
+
 /* Reference Comp table (player.html diagnosis section) - stacked, not a
    rigid 2-column table: a comp name + full sourced cue don't fit side by
    side on a phone-width screen without crushing the cue text, so each row
@@ -629,7 +653,7 @@ details.drawer .drawer-body { padding: 0 16px 16px; }
 .app-bar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .app-bar-titles { min-width: 0; }
 .app-bar-title-row { display: flex; align-items: center; gap: 4px; }
-/* Long team/player names (e.g. "Latham Lady Bison White 10U") were hard
+/* Long team/player names (e.g. "Riverside Rockets Travel White 10U") were hard
    single-line-truncating here - the header row's horizontal space is
    squeezed between the fixed-width back arrow/jersey badge on the left and
    the confirmed-pill on the right, not something a subtitle change below it

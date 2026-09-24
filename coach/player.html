@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=9a421ab29e">
+<link rel="stylesheet" href="./coach.css?v=a5adcdbee0">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -65,10 +65,12 @@
   import { supabase, requireSession, getMyDisplayName, CHECKPOINTS, qs, renderReviewBadge, escapeHtml } from "./shared.js";
   import { renderStepper } from "./components/stepper.js";
   import { renderTrendChart } from "./components/trendChart.js";
+  import { checklistState, isPendingDraft, showsNote, stateLabel, reviewPayload, verifiedHistory } from "./components/checklistReview.js";
   import { openCompModal } from "./components/compModal.js";
   import { loadClipSkeletonData, loadExtensionScore, buildExtensionCorrectedFrames, renderSkeletonComparison } from "./components/skeletonComparison.js";
   import { loadSwingMetrics, renderSwingMetricsPanel } from "./components/swingMetricsPanel.js";
   import { uploadRawClip } from "./components/videoUpload.js";
+  import { getVideoUrl, videoTimeFor } from "./components/devUi.js";
   import { renderPlayerAppBar, renderBottomNav, loadRosterWithProgress, setLastPlayerSlug } from "./components/appShell.js";
   import { openLogAtBatSheet } from "./components/logAtBatSheet.js";
   import { mountSegmentedTabs, card, confirmDialog, emptyState, icon, listRow, showSnackbar, statusChip } from "./components/ui.js";
@@ -279,13 +281,17 @@
   /** Only rendered when a real checklist_score_history row shows an actual
    * improvement since the last change - never a fabricated/always-on
    * banner (see the pose3d-skeleton-comparison honesty convention this
-   * project follows elsewhere). */
+   * project follows elsewhere). Compares coach-verified scores only: an AI
+   * draft followed by a coach's score is a review, not the player's progress
+   * (00040_checklist_review_status.sql). */
   async function loadTrend() {
     const el = document.getElementById("trendBanner");
     const { data: latestRows } = await supabase
       .from("checklist_score_history")
-      .select("score, changed_at, checklist_score_id, checklist_scores!inner(player_id, ai_draft, checkpoints!inner(label))")
+      .select("score, changed_at, checklist_score_id, checklist_scores!inner(player_id, checkpoints!inner(label))")
       .eq("checklist_scores.player_id", playerId)
+      .eq("review_status", "verified")
+      .not("score", "is", null)
       .order("changed_at", { ascending: false })
       .limit(1);
     const latest = latestRows?.[0];
@@ -298,10 +304,12 @@
       .from("checklist_score_history")
       .select("score")
       .eq("checklist_score_id", latest.checklist_score_id)
+      .eq("review_status", "verified")
+      .not("score", "is", null)
       .lt("changed_at", latest.changed_at)
       .order("changed_at", { ascending: false })
       .limit(1);
-    const priorScore = priorRows?.[0]?.score ?? latest.checklist_scores.ai_draft;
+    const priorScore = priorRows?.[0]?.score ?? null;
 
     if (priorScore == null || latest.score <= priorScore) {
       el.innerHTML = "";
@@ -386,7 +394,7 @@
 
     const { data: rows, error: rowsError } = await supabase
       .from("checklist_scores")
-      .select("id, score, ai_draft, reviewed_by, notes, source, checkpoints!inner(slug, label, sort_order)")
+      .select("id, score, ai_draft, reviewed_by, review_status, notes, source, checkpoints!inner(slug, label, sort_order)")
       .eq("player_id", playerId)
       .order("sort_order", { referencedTable: "checkpoints" });
 
@@ -419,7 +427,7 @@
     if (scoreIds.length > 0) {
       const { data: history } = await supabase
         .from("checklist_score_history")
-        .select("checklist_score_id, score, changed_at")
+        .select("checklist_score_id, score, changed_at, changed_by, review_status")
         .in("checklist_score_id", scoreIds)
         .order("changed_at");
       for (const h of history ?? []) {
@@ -443,25 +451,30 @@
         score: null,
         ai_draft: null,
         reviewed_by: null,
+        review_status: null,
         notes: "",
         source: null,
         checkpoints: cp,
       };
       row.playerId = playerId;
       row.checkpointId = row.checkpointId ?? checkpointIdBySlug.get(cp.slug);
-      const unconfirmed = !!row.id && row.score !== null && !row.reviewed_by;
+      const state = row.id ? checklistState(row) : null;
+      const unconfirmed = !!row.id && isPendingDraft(row);
+      const reviewedNoScore = state === "insufficient_evidence" || state === "rejected";
 
       const card = document.createElement("div");
-      card.className = `checkpoint-card${unconfirmed ? " unconfirmed" : ""}`;
+      card.className = `checkpoint-card${unconfirmed ? " unconfirmed" : ""}${reviewedNoScore ? " reviewed-no-score" : ""}`;
       card.innerHTML = `
         ${unconfirmed ? `<div class="ai-ribbon">🤖 AI Draft — Unconfirmed</div>` : ""}
         <div class="cp-eyebrow">Checkpoint ${String(idx + 1).padStart(2, "0")}</div>
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
           <h3>${cp.label}</h3>
-          ${row.id && row.reviewed_by ? `<span class="verified-pill">✓ Verified</span>` : ""}
+          ${state === "verified" ? `<span class="verified-pill">✓ Verified</span>` : ""}
+          ${reviewedNoScore ? `<span class="review-pill ${state === "rejected" ? "rejected" : "insufficient"}">${stateLabel(state)}</span>` : ""}
         </div>
         <div class="stepper-mount"></div>
-        <p class="cp-notes">${escapeHtml(row.notes ?? "")}</p>
+        ${showsNote(row) ? `<p class="cp-notes">${escapeHtml(row.notes ?? "")}</p>` : ""}
+        ${unconfirmed ? `<div class="cp-review-actions"><button type="button" class="link-btn" data-review="insufficient">Insufficient evidence</button><button type="button" class="link-btn" data-review="reject">Reject draft</button></div>` : ""}
         <div class="cp-actions">
           <button type="button" class="view-skeleton-btn tap-target" data-comp="${cp.slug}" data-label="${cp.label}">📐 View 3D Skeleton</button>
           <span class="cp-meta">${row.reviewed_by ? `Reviewed by ${escapeHtml(row.reviewed_by)}` : ""}</span>
@@ -475,16 +488,25 @@
         loadChecklist();
         refreshConfirmedPill();
       });
+      card.querySelectorAll("[data-review]").forEach((btn) => btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        const { error } = await supabase.from("checklist_scores")
+          .upsert(reviewPayload(row, btn.dataset.review, coachDisplayName), { onConflict: "player_id,checkpoint_id" });
+        btn.disabled = false;
+        if (error) { alert(`Couldn't save review: ${error.message}`); return; }
+        loadChecklist();
+        refreshConfirmedPill();
+      }));
       card.querySelector("[data-comp]").addEventListener("click", (e) => {
         openCompModal(e.currentTarget.dataset.comp, e.currentTarget.dataset.label, firstClipContext);
       });
 
-      const scoreHistory = row.id ? historyByScoreId.get(row.id) : null;
+      const scoreHistory = row.id ? verifiedHistory(historyByScoreId.get(row.id)) : null;
       if (scoreHistory && scoreHistory.length >= 2) {
         renderTrendChart(card.querySelector(".trend-mount"), scoreHistory);
       }
     });
-    const pending = (rows ?? []).filter((r) => r.score !== null && !r.reviewed_by).length;
+    const pending = (rows ?? []).filter((r) => isPendingDraft(r)).length;
     document.getElementById("checklistHint").textContent = pending
       ? `${pending} AI draft${pending === 1 ? "" : "s"} unconfirmed · advanced`
       : "11 checkpoints · advanced";
@@ -655,7 +677,7 @@
     const el = document.getElementById("gameLogList");
     const rows = (logs ?? []).map((g) => {
         const zoneBits = [zoneLabel(g.pitch_zone), outcomeLabel(g.pitch_outcome)].filter(Boolean).join(" · ");
-        return listRow({ href: `./atbat.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}&entry=${g.id}`, leading: icon("video", { size: 20 }), title: `${g.date} vs ${g.opponent} · AB ${g.ab}`, supporting: `${g.result || "No result"}${zoneBits ? ` · ${zoneBits}` : ""}`, trailing: icon("chevron-right", { size: 20 }) });
+        return listRow({ href: `./atbat.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}&entry=${g.id}`, leading: icon("video", { size: 20 }), title: `${g.date}${g.opponent ? ` vs ${g.opponent}` : ""} · AB ${g.ab}`, supporting: `${g.result || "No result"}${zoneBits ? ` · ${zoneBits}` : ""}`, trailing: icon("chevron-right", { size: 20 }) });
       });
     el.innerHTML = rows.length ? rows.join("") : emptyState("No recent game", "Log the next at-bat when game evidence is available.");
     recentGameHtml = rows.at(-1) ?? "";
@@ -683,7 +705,7 @@
 
   /** A game_log_entries row can have >1 physical clip (e.g. 4 separate
    * pitches filmed as separate files for one at-bat, per this project's own
-   * real data - see emily_c.html's AB1 note). Fetches ALL clips for the
+   * real data - see the reference player's AB1 note). Fetches ALL clips for the
    * entry, renders a tab per clip (plus an always-available "Add Pitch"
    * upload) and the currently-active one's contents. */
   async function loadClipsForEntry(gameLogEntryId, extensionScore) {
@@ -847,10 +869,10 @@
 
     const canvasContainer = document.createElement("div");
     clipMount.appendChild(canvasContainer);
-    let videoUrl = null;
-    const { data: videoResult } = await supabase.functions.invoke("get-video-url", { body: { videoClipId: clip.id } });
-    if (videoResult?.url) videoUrl = videoResult.url;
-    renderSkeletonComparison(canvasContainer, { realFrames: pose3dData.frames, correctedFrames, phases, note, videoUrl });
+    // Shared resolver: production signs the original upload; demo mode serves
+    // only a curated static clip (never calls get-video-url) plus its offset.
+    const videoUrl = await getVideoUrl(clip.id);
+    renderSkeletonComparison(canvasContainer, { realFrames: pose3dData.frames, correctedFrames, phases, note, videoUrl, videoOffsetS: videoUrl ? videoTimeFor(clip.id, 0) : 0 });
 
     const metricsRow = await loadSwingMetrics(clip.id);
     if (metricsRow) {

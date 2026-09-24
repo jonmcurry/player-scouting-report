@@ -61,8 +61,13 @@ const createdSourceIds: string[] = [];
 // found (a leftover TEST-FULL-* fixture).
 const createdMaterialIds: string[] = [];
 const createdVersionLabels: string[] = [];
+// The version that was active BEFORE this file ran (e.g. a locally published
+// k-0.2.0) - restored in after(). Hard-coding k-0.1.0 there silently swapped a
+// real local methodology back to the baseline (confirmed 2026-09-23).
+let previouslyActive: { version_label: string; status: string } | null = null;
 
 before(async () => {
+  previouslyActive = ((await svc.from("methodology_versions").select("version_label, status").eq("active", true).maybeSingle()).data ?? null) as typeof previouslyActive;
   admin = await makeUser("admin", true);
   coach = await makeUser("coach", false);
 
@@ -136,9 +141,13 @@ after(async () => {
   // currently-active one if a test published over the baseline - restore
   // it fully so other test files (and any local dev use) see a genuinely
   // valid baseline, not just an active=true flag.
-  const stillActive = must(await svc.from("methodology_versions").select("version_label").eq("active", true), "active check");
-  if ((stillActive as unknown[]).length === 0) {
-    await svc.from("methodology_versions").update({ active: true, status: "published" }).eq("version_label", "k-0.1.0");
+  const stillActive = must(await svc.from("methodology_versions").select("version_label").eq("active", true), "active check") as { version_label: string }[];
+  const restoreLabel = previouslyActive?.version_label ?? "k-0.1.0";
+  if (stillActive.length !== 1 || stillActive[0]!.version_label !== restoreLabel) {
+    // Exactly one active version, and it's the one that was active before this file ran.
+    await svc.from("methodology_versions").update({ active: false }).eq("active", true).neq("version_label", restoreLabel);
+    await svc.from("methodology_versions").update({ active: true, status: "published" }).eq("version_label", restoreLabel);
+    if (restoreLabel !== "k-0.1.0") await svc.from("methodology_versions").update({ status: "retired" }).eq("version_label", "k-0.1.0").eq("active", false);
   }
 });
 

@@ -88,7 +88,8 @@ test("shared.js: demo mode skips the normal login redirect and bootstraps anonym
 test("shared.js: demo banner is injected unconditionally at module load (so it also reaches report.html)", () => {
   const src = read("shared.js");
   assert.match(src, /if \(isDemoMode\(\)\) \{\s*\n\s*injectDemoBanner\(\);/);
-  assert.match(src, /Demo — fictional players and data/);
+  assert.match(src, /Public demo — read-only; your changes reset/);
+  assert.doesNotMatch(src, /fictional/i, "the demo now shows real, permission-approved footage - the banner must not call it fictional");
   assert.match(src, /rpc\(["']reset_demo_session["']\)/, "the banner's Reset action must call reset_demo_session()");
 });
 
@@ -148,4 +149,43 @@ test("coach/demo.local.example.js never sets uploads/liveAnalysis to true", () =
   const src = read("demo.local.example.js");
   assert.match(src, /uploads:\s*false/);
   assert.match(src, /liveAnalysis:\s*false/);
+});
+
+test("devUi.js: demo playback resolves ONLY curated static media under the demo base path, never get-video-url", () => {
+  const src = read("components/devUi.js");
+  const demoBranch = src.slice(src.indexOf("export async function getVideoUrl"), src.indexOf("const { data } = await supabase.functions.invoke"));
+  assert.match(demoBranch, /isDemoMode\(\)/);
+  assert.match(demoBranch, /select\("demo_media_path, demo_media_offset_s"\)/);
+  assert.doesNotMatch(demoBranch, /functions\.invoke/, "the demo branch must return before any Edge Function call");
+  assert.match(src, /media\/\$\{mediaPath\}/, "media resolves under <basePath>media/");
+  assert.match(src, /\^\[a-z0-9\]\[a-z0-9\._-\]\{0,120\}\\.mp4\$/, "same safe-filename rule as demo.video_clips' check constraint");
+  assert.match(src, /Number\.isFinite\(offset\)/, "a clip with unknown alignment is never played with misaligned phase markers");
+});
+
+test("no page calls get-video-url directly; every phase seek applies the clip's analysis-to-video offset", () => {
+  for (const page of ["player.html", "review.html", "compare.html", "atbat.html", "practice.html", "development.html"]) {
+    let src = "";
+    try { src = read(page); } catch { continue; }
+    assert.doesNotMatch(src, /functions\.invoke\(["']get-video-url["']/, `${page} must go through devUi.getVideoUrl()`);
+  }
+  assert.match(read("review.html"), /videoEl\.currentTime = videoTimeFor\(clipId, t\)/);
+  const compare = read("compare.html");
+  assert.doesNotMatch(compare, /v\.currentTime=(t|starts\(\)\[i\]);/, "compare seeks must include the offset");
+  assert.match(compare, /videoTimeFor\(d\.clipId,starts\(\)\[i\]\)/);
+  assert.match(compare, /videoTimeFor\(d\.clipId,t\)/);
+  assert.match(read("components/skeletonComparison.js"), /realFrames\[frame\]\.time_s\+videoOffsetS/);
+});
+
+test("devUi.js imports every demoConfig helper it calls (a missing import only fails at runtime in the browser)", () => {
+  const src = read("components/devUi.js");
+  const imported = /import \{([^}]*)\} from "\.\.\/demoConfig\.js"/.exec(src)?.[1] ?? "";
+  for (const fn of ["getDemoConfig", "isDemoMode"]) {
+    if (new RegExp(`\\b${fn}\\(`).test(src)) assert.match(imported, new RegExp(`\\b${fn}\\b`), `${fn} is called but not imported`);
+  }
+});
+
+test("devUi.js: seeks land inside the target frame (container pts rounding made phase markers show the previous frame)", () => {
+  const src = read("components/devUi.js");
+  assert.match(src, /export const FRAME_SEEK_EPSILON_S = 0\.001;/);
+  assert.match(src, /\+ FRAME_SEEK_EPSILON_S;/);
 });

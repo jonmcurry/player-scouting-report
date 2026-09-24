@@ -52,7 +52,7 @@ export const LEG_BONE_KEYS = new Set([
 export const HEAD_BONE_KEYS = new Set([boneKey(NECK, HEAD), boneKey(HEAD, HEAD_TOP)]);
 
 // Torso quad fill corners, in draw order - approximates the old
-// emily_c_swing_model.html page's hand-authored torso fill using this
+// legacy swing-model page's hand-authored torso fill using this
 // project's real H36M joint indices instead of its own 4 named joints.
 export const TORSO_QUAD = [L_SHOULDER, R_SHOULDER, R_HIP, L_HIP];
 

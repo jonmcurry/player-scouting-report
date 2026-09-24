@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
 
     const { data: scores } = await supabase
       .from("checklist_scores")
-      .select("score, reviewed_by, checkpoints!inner(label, sort_order)")
+      .select("score, reviewed_by, review_status, checkpoints!inner(label, sort_order)")
       .eq("player_id", link.player_id)
       .order("sort_order", { referencedTable: "checkpoints" });
 

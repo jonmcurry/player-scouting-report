@@ -70,12 +70,12 @@ test("ActionSheet rows have icons, labels, support copy and 56dp component class
 });
 
 test("bottom nav is Team / Add / Review and Review is always reachable", () => {
-  const withoutPlayer = bottomNavState({ teamSlug: "bison", activeTab: "roster" });
+  const withoutPlayer = bottomNavState({ teamSlug: "rockets", activeTab: "roster" });
   assert.deepEqual(withoutPlayer.map((x) => x.label), ["Team", "Add", "Review"]);
   assert.equal(withoutPlayer[0].active, true);
   assert.equal(withoutPlayer[2].hidden, false);
-  const withPlayer = bottomNavState({ teamSlug: "bison", activeTab: "report", playerHref: "./player.html?player=ada" });
+  const withPlayer = bottomNavState({ teamSlug: "rockets", activeTab: "report", playerHref: "./player.html?player=ada" });
   assert.equal(withPlayer[2].hidden, false);
   assert.equal(withPlayer[2].active, false);
-  assert.match(withPlayer[2].href, /queue\.html\?team=bison/);
+  assert.match(withPlayer[2].href, /queue\.html\?team=rockets/);
 });

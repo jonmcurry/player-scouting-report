@@ -1,0 +1,34 @@
+{
+  "manifestVersion": 1,
+  "fixtureId": "real-player-a",
+  "fixtureVersion": "2026-09-22.1",
+  "source": { "teamSlug": "example-team-10u", "playerSlug": "example-player" },
+  "publication": {
+    "consentConfirmedBy": "<who confirmed consent - stays in the local validation report, never in the fixture>",
+    "consentConfirmedAt": "2026-09-22",
+    "note": "<how/where consent was obtained>"
+  },
+  "player": { "publicName": "Player A.", "publicSlug": "player-a", "bats": "R", "throws": "R", "ageBand": "8-10" },
+  "reviewerDisplayName": "Coach Demo",
+  "clips": [
+    {
+      "sourceClipId": "00000000-0000-4000-8000-000000000001",
+      "trim": { "startS": 158.6, "endS": 166.6 },
+      "sourceVideo": "videos/Game2/<original upload>.mp4",
+      "includeAudio": false,
+      "overrides": {
+        "gameLogEntry": { "opponent": "<verified opponent>", "result": "<verified result>" },
+        "atBatPitch": { "count_before_balls": 1, "count_before_strikes": 2, "pitch_outcome": "foul", "swung": true }
+      }
+    },
+    {
+      "clipSlug": "<practice clip slug>",
+      "trim": "full",
+      "overrides": { "practiceRepetition": { "grouping": "post_drill" } }
+    }
+  ],
+  "priorities": "all",
+  "findings": { "includeDrafts": false },
+  "report": { "shareLink": true },
+  "expect": { "requirePose3d": true, "requireMetrics": false, "comparePairs": ["baseline_post"] }
+}

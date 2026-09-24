@@ -3,7 +3,7 @@
 // correspondence in pose_3d.json's angles dict - see the approved plan's
 // section 3/4 for why only these two, and section 4 for the geometric
 // approach each correction uses. Pure functions, no DOM, independently
-// testable against real emily_c coordinates (see verifyFkCorrection.ts).
+// testable against real reference-clip coordinates (see verifyFkCorrection.ts).
 
 import {
   THORAX, THORAX_SUBTREE, L_SHOULDER, R_SHOULDER, L_HIP, R_HIP,

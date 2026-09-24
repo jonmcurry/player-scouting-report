@@ -90,6 +90,8 @@ test("player report shaping exposes only coach-confirmed content and no internal
       { score: 3, reviewed_by: "Coach", checkpoints: { label: "Balance" } },
       { score: 3, reviewed_by: null, checkpoints: { label: "Unreviewed AI draft" } },
       { score: 1, reviewed_by: "Coach", checkpoints: { label: "Hands" } },
+      { score: null, reviewed_by: "Coach", review_status: "insufficient_evidence", checkpoints: { label: "Head" } },
+      { score: null, reviewed_by: "Coach", review_status: "rejected", checkpoints: { label: "Rejected AI draft" } },
     ],
     priorities: [
       { id: "p1", title: "Front side", description: "stay closed", status: "active", priority_order: 0, first_identified_at: "2026-09-01", resolved_at: null },
@@ -109,9 +111,10 @@ test("player report shaping exposes only coach-confirmed content and no internal
   });
   assert.deepEqual(report.strengths, ["Balance"], "only coach-reviewed top scores");
   assert.deepEqual(report.checkpoints, [
-    { label: "Balance", score: 3 },
-    { label: "Hands", score: 1 },
-  ], "unconfirmed checkpoint rows are removed from the public response");
+    { label: "Balance", score: 3, state: "verified" },
+    { label: "Hands", score: 1, state: "verified" },
+    { label: "Head", score: null, state: "insufficient_evidence" },
+  ], "unconfirmed and rejected checkpoint rows are removed; insufficient evidence is shown as such, with no score");
   assert.deepEqual(report.priorities.map((p: { title: string }) => p.title), ["Front side", "Fixed"], "archived hidden, resolved last");
   const p = report.priorities[0];
   assert.deepEqual(p.progress.map((o: { label: string }) => o.label), ["Improving", "Holding steady"], "newest first, 'unclear' dropped");

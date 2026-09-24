@@ -115,7 +115,7 @@ function currentPhaseLabel(phases, t) {
  *   model hasn't finished loading yet (e.g. the coach closes the modal
  *   immediately) - it cancels cleanly instead of finishing setup pointlessly.
  */
-export async function renderSkeletonComparison(mountEl, { realFrames, correctedFrames, phases, note, videoUrl = null, initialTimeS = null, trailControls = true }) {
+export async function renderSkeletonComparison(mountEl, { realFrames, correctedFrames, phases, note, videoUrl = null, videoOffsetS = 0, initialTimeS = null, trailControls = true }) {
   const locatedPhases = phases.filter((p) => p.timeS !== null);
   const twoPanel = !!correctedFrames && !videoUrl;
 
@@ -244,7 +244,7 @@ export async function renderSkeletonComparison(mountEl, { realFrames, correctedF
     sceneReal.updateTrails(frame);
     scrubInput.value = String(Math.round((frame / Math.max(1, n - 1)) * 1000));
     phaseLabel.textContent = currentPhaseLabel(locatedPhases, realFrames[frame].time_s);
-    if(originalVideo && Math.abs(originalVideo.currentTime-realFrames[frame].time_s) > 0.012) originalVideo.currentTime=realFrames[frame].time_s;
+    if(originalVideo && Math.abs(originalVideo.currentTime-(realFrames[frame].time_s+videoOffsetS)) > 0.012) originalVideo.currentTime=realFrames[frame].time_s+videoOffsetS;
   }
 
   function tick(ts) {

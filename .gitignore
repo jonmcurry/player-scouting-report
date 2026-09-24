@@ -68,3 +68,14 @@ coach/config.local.js
 # they're anon keys (RLS-protected, not secret) - same reasoning as
 # config.local.js not being committed.
 coach/demo.local.js
+
+# Real-data demo promotion (docs/research/demo-real-data-promotion.md):
+# exported fixtures, transcoded real media, and real curation manifests
+# (consent records, source slugs/ids) carry real athlete data - this is a
+# public repo, never commit them. The example manifest is fictional.
+demo-export/
+demo-curation*.json
+!docs/research/demo-curation.example.json
+
+# Local OCR tool venv for scripts/privacy/ocr_check.py (RapidOCR) - machine-specific.
+.venv_ocr/

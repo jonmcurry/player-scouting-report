@@ -39,7 +39,7 @@ function injectDemoBanner() {
       "flex-wrap:wrap;padding:6px 12px;background:#B4503A;color:#fff;font:600 13px/1.4 Inter,system-ui,sans-serif;",
   );
   bar.innerHTML =
-    '<span>Demo — fictional players and data</span>' +
+    '<span>Public demo — read-only; your changes reset</span>' +
     '<button type="button" id="hitterloopDemoReset" style="background:transparent;border:1px solid rgba(255,255,255,0.6);color:#fff;border-radius:6px;padding:2px 10px;font:inherit;cursor:pointer;">Reset demo</button>' +
     `<a href="${demo.returnUrl}" style="color:#fff;text-decoration:underline;">Return to HitterLoop</a>`;
   document.body.prepend(bar);
@@ -204,9 +204,17 @@ if ("serviceWorker" in navigator) {
   // those tabs are still rendering whatever the OLD worker served them; this
   // reloads once, automatically, the moment control actually changes hands,
   // so a coach never has to manually close/reopen the app to get a fix.
+  //
+  // Only when a previous worker is being REPLACED: on a first-ever visit,
+  // clients.claim() also fires controllerchange (no controller -> first
+  // controller) and reloading then aborted whatever the page was doing -
+  // concretely, the demo's in-flight start_demo_session() bootstrap (seen as
+  // HTTP 499s at the gateway, 2026-09-23). A first install serves the same
+  // files that just loaded, so there is nothing stale to reload away from.
+  const hadControllerAtLoad = Boolean(navigator.serviceWorker.controller);
   let reloadedForNewWorker = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (reloadedForNewWorker) return;
+    if (!hadControllerAtLoad || reloadedForNewWorker) return;
     reloadedForNewWorker = true;
     window.location.reload();
   });

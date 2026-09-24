@@ -92,6 +92,19 @@ interface ClaudeCliEnvelope {
   result?: string;
   subtype?: string;
   permission_denials?: unknown[];
+  /** Keyed by the concrete model IDs the CLI actually billed for this call -
+   * the only place `--model sonnet` (an alias) resolves to a real ID. The CLI
+   * can also bill a small auxiliary model for its own housekeeping, so this
+   * may list more than one. */
+  modelUsage?: Record<string, unknown>;
+}
+
+/** Concrete model IDs from the envelope, sorted, comma-joined; null if the CLI
+ * reported none. Stored as analysis_runs.ai_model_version so a run records
+ * what the alias resolved to, not just the alias. */
+export function resolvedModelIds(envelope: Pick<ClaudeCliEnvelope, "modelUsage">): string | null {
+  const ids = Object.keys(envelope.modelUsage ?? {}).sort();
+  return ids.length ? ids.join(",") : null;
 }
 
 function runClaudeCli(prompt: string, cwd: string, model: string): Promise<ClaudeCliEnvelope> {
@@ -151,6 +164,10 @@ function runClaudeCli(prompt: string, cwd: string, model: string): Promise<Claud
 export async function analyzeSwingViaClaudeCli(
   framesDir: string,
   input: AnalysisInput,
+  // Optional extra evidence instructions (e.g. how paired views of one instant
+  // relate). Omitted by the production path, so its prompt is unchanged; any
+  // caller that sets it must record its own prompt version.
+  opts: { evidenceAddendum?: string } = {},
 ): Promise<SwingAnalysisResult> {
   const files = fs
     .readdirSync(framesDir)
@@ -165,6 +182,7 @@ export async function analyzeSwingViaClaudeCli(
   const relPaths = files.map((f) => path.relative(repoRoot, path.join(framesDir, f)));
   const prompt = [
     renderSwingAnalysisPrompt(input),
+    ...(opts.evidenceAddendum ? ["", opts.evidenceAddendum] : []),
     "",
     `Read each of these ${relPaths.length} frame image(s) before answering:`,
     ...relPaths.map((p) => `- ${p}`),
@@ -196,6 +214,7 @@ export async function analyzeSwingViaClaudeCli(
   return validateSwingAnalysisResult(parsed, {
     source: "claude",
     aiModel: model,
+    aiModelVersion: resolvedModelIds(envelope),
     allowedKnowledgeClaimIds: input.knowledgeClaimIds,
     availableBases: ["video", ...(Object.keys(input.swing.metrics).length ? ["metric" as const] : []), ...(input.swing.reconstructionSupplied ? ["reconstruction" as const] : [])],
   });
