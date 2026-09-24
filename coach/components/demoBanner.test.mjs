@@ -88,9 +88,18 @@ test("shared.js: demo mode skips the normal login redirect and bootstraps anonym
 test("shared.js: demo banner is injected unconditionally at module load (so it also reaches report.html)", () => {
   const src = read("shared.js");
   assert.match(src, /if \(isDemoMode\(\)\) \{\s*\n\s*injectDemoBanner\(\);/);
-  assert.match(src, /Public demo — read-only; your changes reset/);
+  assert.match(src, /Demo mode/);
+  assert.match(src, /changes reset/);
+  assert.match(src, />Reset</);
+  assert.match(src, />Exit</);
   assert.doesNotMatch(src, /fictional/i, "the demo now shows real, permission-approved footage - the banner must not call it fictional");
   assert.match(src, /rpc\(["']reset_demo_session["']\)/, "the banner's Reset action must call reset_demo_session()");
+});
+
+test("demo banner stays compact on desktop and at most two rows on mobile", () => {
+  const css = read("coach.css");
+  assert.match(css, /\.bt-demo-bar\{[^}]*min-height:32px[^}]*padding:3px 10px/);
+  assert.match(css, /@media\(max-width:480px\)[\s\S]*\.bt-demo-bar>span\{flex-basis:100%/);
 });
 
 test("shared.js: the Supabase client is constructed with db.schema bound to the centralized dataNamespace, never a hardcoded schema", () => {

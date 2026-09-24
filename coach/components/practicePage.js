@@ -75,25 +75,28 @@ function renderPicker() {
   const picker = document.getElementById("picker");
   picker.hidden = false;
   const todaySession = existingSessionForDate(sessions, today());
+  const plannedPriority = priorities.find((priority) => assignments.some((assignment) => assignment.player_priority_id === priority.id && assignment.active));
+  const plannedAssignment = assignments.find((assignment) => assignment.player_priority_id === plannedPriority?.id && assignment.active);
+  const hasGuidedPlan = Boolean(plannedPriority && plannedAssignment);
   picker.innerHTML = `
-    <section class="bt-card p2a-practice-list-head"><div><h1>Practice</h1><p>${todaySession ? "Today's session is ready to continue." : "Start with the player's current focus and drill."}</p></div>
-      <button class="bt-button bt-button-primary" id="newSession">${todaySession ? "Continue today's session" : "Start practice"}</button></section>
+    ${hasGuidedPlan || todaySession ? `<section class="bt-card p2a-practice-list-head"><div><h1>Practice</h1><p>${todaySession ? "Today's session is ready to continue." : `${escapeHtml(plannedPriority.title)} · ${escapeHtml(plannedAssignment.drill_library?.name || "Selected drill")}`}</p></div><button class="bt-button bt-button-primary" id="newSession">${todaySession ? "Continue today's session" : "Start practice"}</button></section>` : `<section class="bt-card bt-unified-development-empty"><span class="bt-eyebrow">Practice</span><h1>No practice plan yet</h1><p>Practice is tied to a confirmed development priority.</p><p>${escapeHtml(ctx.player.name)} does not have one yet because the current footage needs better evidence.</p><h2>Next step</h2><p>Review or capture another swing.</p><a class="bt-button bt-button-primary" href="${ctx.url("player")}">Review swing evidence</a></section>`}
     <h2 class="p2a-section-label">Recent sessions</h2>
     <div class="bt-list">${sessions.length ? sessions.map((row) => `
       <button class="bt-list-row p2a-session-row" data-sid="${row.id}">
         <span class="bt-list-row-copy"><span class="bt-list-row-title">${fmtDate(row.session_date)}</span>
           <span class="bt-list-row-supporting">${row.practice_repetitions.length} rep${row.practice_repetitions.length === 1 ? "" : "s"}${row.player_priorities?.title ? ` · ${escapeHtml(row.player_priorities.title)}` : " · No focus"}${row.drill_library?.name ? ` · ${escapeHtml(row.drill_library.name)}` : ""}</span></span>
         ${row.outcome ? statusChip(row.outcome, { domain: "practice" }) : '<span class="bt-caption">No assessment</span>'}${icon("chevron-right", { size: 20 })}</button>`).join("")
-      : emptyState("No practice yet", "Start a session to work on a priority.", '<button class="bt-button bt-button-secondary" id="emptyStart">Start practice</button>')}</div>`;
+      : '<p class="bt-supporting">Practice history will appear here after a guided plan is used.</p>'}</div>`;
   picker.onclick = (event) => {
     const row = event.target.closest("[data-sid]");
     if (row) openSession(row.dataset.sid);
   };
-  document.getElementById("newSession").onclick = todaySession ? () => openSession(todaySession.id) : () => openNewSession();
-  document.getElementById("emptyStart")?.addEventListener("click", () => openNewSession());
+  document.getElementById("newSession")?.addEventListener("click", todaySession ? () => openSession(todaySession.id) : () => openNewSession());
 }
 
 function openNewSession(forceForm = false) {
+  const hasGuidedPlan = priorities.some((priority) => assignments.some((assignment) => assignment.player_priority_id === priority.id && assignment.active));
+  if (!hasGuidedPlan) { renderPicker(); return; }
   const todaySession = existingSessionForDate(sessions, today());
   if (todaySession && !forceForm) {
     const sheet = openSheet("Continue practice", `<p>You already have a session today.</p><p class="bt-supporting">Continue it instead of creating a duplicate.</p><button class="bt-button bt-button-tertiary" id="differentDate">Choose another date</button>`, '<button class="bt-button bt-button-primary" id="continueToday">Continue today\'s session</button>');

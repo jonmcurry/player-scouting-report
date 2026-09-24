@@ -34,14 +34,13 @@ function injectDemoBanner() {
   const bar = document.createElement("div");
   bar.id = "hitterloopDemoBanner";
   bar.setAttribute(
-    "style",
-    "position:sticky;top:0;z-index:9999;display:flex;align-items:center;justify-content:center;gap:12px;" +
-      "flex-wrap:wrap;padding:6px 12px;background:#B4503A;color:#fff;font:600 13px/1.4 Inter,system-ui,sans-serif;",
+    "class",
+    "bt-demo-bar",
   );
   bar.innerHTML =
-    '<span>Public demo — read-only; your changes reset</span>' +
-    '<button type="button" id="hitterloopDemoReset" style="background:transparent;border:1px solid rgba(255,255,255,0.6);color:#fff;border-radius:6px;padding:2px 10px;font:inherit;cursor:pointer;">Reset demo</button>' +
-    `<a href="${demo.returnUrl}" style="color:#fff;text-decoration:underline;">Return to HitterLoop</a>`;
+    '<span><strong>Demo mode</strong><span aria-hidden="true"> · </span>changes reset</span>' +
+    '<button type="button" id="hitterloopDemoReset">Reset</button>' +
+    `<a href="${demo.returnUrl}">Exit</a>`;
   document.body.prepend(bar);
   document.getElementById("hitterloopDemoReset").addEventListener("click", async (e) => {
     const btn = e.currentTarget;

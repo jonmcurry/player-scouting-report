@@ -1,6 +1,6 @@
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>HitterLoop — Compare</title>
-<link rel="stylesheet" href="./coach.css?v=86c225d02a"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
+<link rel="stylesheet" href="./coach.css?v=28f2e5405e"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
 </head><body><header class="app-bar" id="appBar"></header><main class="wrap wide"><nav id="devTabs"></nav>
 <p class="hint" id="loading">Loading swings…</p><div id="content" hidden><section id="suggestions"></section><section id="selection"></section>
 <nav class="bt-segmented-tabs bt-compare-tabs" id="modeTabs" hidden aria-label="Comparison mode"><button data-mode="video">Video</button><button data-mode="frames">Frames</button><button data-mode="progress">Progress</button><button data-mode="metrics">Metrics</button></nav>
@@ -12,11 +12,11 @@ import { L, emptyState, fmtDate, getVideoUrl, videoTimeFor, loadContext, loadObs
 import { openObservationSheet } from "./components/devActions.js";
 import { sharedPhase, suggestedComparePairs } from "./components/comparePairs.js";
 import { loadSwingMetrics } from "./components/swingMetricsPanel.js";
-import { loadClipSkeletonData, renderSkeletonComparison } from "./components/skeletonComparison.js";
-import { button, disclosure, icon, openBottomSheet, showSnackbar, statusChip } from "./components/ui.js";
+import { hasPublishedMetrics } from "./components/playerDevelopmentSummary.js";
+import { button, icon, openBottomSheet, showSnackbar, statusChip } from "./components/ui.js";
 
 let ctx, swings = [], priorities = [], suggestions = [], A = null, B = null, mode = "video", phaseSlug = "contact", pickerSelection = [];
-const cache = new Map(); let viewers = [];
+const cache = new Map();
 // The single spot every "no video element" render decides its message -
 // demo mode never has a.url/b.url at all (getVideoUrl() short-circuits
 // before ever calling get-video-url, which isn't deployed to the demo
@@ -73,15 +73,18 @@ function openPicker(replace = null) {
 }
 async function detail(s) {
   if (cache.has(s.clipId)) return cache.get(s.clipId);
-  const [phases, metrics, pose, url] = await Promise.all([loadPhases(s.clipId), loadSwingMetrics(s.clipId), supabase.from("video_clip_pose3d").select("id").eq("video_clip_id",s.clipId).maybeSingle(), getVideoUrl(s.clipId)]);
-  const quality = L.analysisQualityLabels(metrics?.analysis_quality ?? L.deriveQualityFromPhases(phases, Boolean(pose.data))); const row = { phases, metrics, hasPose3d: Boolean(pose.data), quality, url, clipId: s.clipId }; cache.set(s.clipId,row); return row;
+  const [phases, metrics, url] = await Promise.all([loadPhases(s.clipId), loadSwingMetrics(s.clipId), getVideoUrl(s.clipId)]);
+  const quality = L.analysisQualityLabels(metrics?.analysis_quality ?? L.deriveQualityFromPhases(phases, false)); const row = { phases, metrics, quality, url, clipId: s.clipId }; cache.set(s.clipId,row); return row;
 }
 async function renderMode() {
-  viewers.forEach((v)=>v.dispose?.()); viewers=[];
-  document.querySelectorAll("#modeTabs [data-mode]").forEach((tab)=>tab.setAttribute("aria-current",String(tab.dataset.mode===mode)));
   const body=document.getElementById("modeBody"); body.innerHTML='<div class="bt-loading-state">Loading comparison…</div>'; const [a,b]=await Promise.all([detail(A),detail(B)]);
+  const available = new Set(["video", "frames"]);
+  if (priorities.some((p)=>p.status!=="resolved") || [...(A.priorityIds??[]),...(B.priorityIds??[])].length) available.add("progress");
+  if (hasPublishedMetrics(a.metrics) && hasPublishedMetrics(b.metrics)) available.add("metrics");
+  if (!available.has(mode)) mode="video";
+  document.querySelectorAll("#modeTabs [data-mode]").forEach((tab)=>{tab.hidden=!available.has(tab.dataset.mode);tab.setAttribute("aria-current",String(tab.dataset.mode===mode));});
   if(mode==="video") await renderVideo(body,a,b); else if(mode==="frames") await renderFrames(body,a,b); else if(mode==="progress") await renderProgress(body); else renderMetrics(body,a,b);
-  render3D(a,b); renderProgressAction();
+  document.getElementById("threeDHost").innerHTML=""; renderProgressAction();
 }
 async function renderVideo(body,a,b){
   phaseSlug=sharedPhase(a.phases,b.phases,phaseSlug)||"start"; const align=phaseSlug==="start"?null:L.alignAroundPhase(a.phases,b.phases,phaseSlug,0.4);
@@ -102,7 +105,6 @@ async function renderFrames(body,a,b){ const common=L.PHASES.filter((p)=>a.phase
 async function renderProgress(body){const pid=qs("priority")||[...(A.priorityIds??[]),...(B.priorityIds??[])][0]||priorities.find((p)=>p.status!=="resolved")?.id; const p=priorities.find((row)=>row.id===pid); if(!p){body.innerHTML=emptyState("No active priority yet","Review a swing and track an observation first.");return;} const observations=await loadObservations([p.id]); const onSwings=observations.filter((o)=>[A.clipId,B.clipId].includes(o.video_clip_id)); body.innerHTML=`<section class="bt-card"><div>${statusChip(p.status,{domain:"priority",label:p.title})}</div><h2>Coach observations</h2>${onSwings.length?`<ul class="bt-progress-list">${onSwings.map((o)=>`<li>${statusChip(o.status,{domain:"progress"})}<span>${fmtDate(o.observed_at)}${o.coach_note?` · “${escapeHtml(o.coach_note)}”`:""}</span></li>`).join("")}</ul>`:'<p class="bt-supporting">No coach notes on these swings yet.</p>'}</section>`;}
 function renderMetrics(body,a,b){const rows=L.metricComparison(a.metrics,b.metrics,a.quality,b.quality); const visible=rows.slice(0,6); body.innerHTML=rows.length?`<div class="bt-metric-list">${visible.map(metricRow).join("")}${rows.length>6?`<div id="moreMetrics" hidden>${rows.slice(6).map(metricRow).join("")}</div><button class="bt-button bt-button-tertiary" id="showMetrics">Show all</button>`:""}</div>`:(a.metrics&&b.metrics?emptyState("No reliable measurements for these swings","This footage didn't support measurements worth showing. Compare the video and frames instead."):emptyState("No comparable metrics yet","Metrics appear once both swings finish processing.")); body.querySelector("#showMetrics")?.addEventListener("click",(e)=>{body.querySelector("#moreMetrics").hidden=false;e.currentTarget.remove();});}
 function metricRow(row){const value=(v)=>v==null?"—":`${Number(v).toFixed(1)}${row.unit==="°"?"°":row.unit?` ${row.unit}`:""}`;return `<div class="bt-metric-row"><span><strong>${escapeHtml(row.label)}</strong><small>${escapeHtml(row.source)}${row.note?` · ${escapeHtml(row.note)}`:""}</small></span><b>A ${value(row.a)}</b><b>B ${value(row.b)}</b></div>`;}
-function render3D(a,b){const host=document.getElementById("threeDHost"); if(!a.hasPose3d||!b.hasPose3d){host.innerHTML="";return;} host.innerHTML=disclosure("Explain in 3D",'<p class="bt-caption">Reconstructed estimate from one camera. Use it to explain movement, not as an exact measurement.</p><div class="compare-grid"><div id="tdA"></div><div id="tdB"></div></div>',{attrs:'id="compare3D"'}); const details=host.querySelector("details");details.addEventListener("toggle",async()=>{if(!details.open||details.dataset.loaded)return;details.dataset.loaded="1";const [sa,sb]=await Promise.all([loadClipSkeletonData(A.clipId),loadClipSkeletonData(B.clipId)]);for(const [id,data,d] of [["tdA",sa,a],["tdB",sb,b]]){const el=host.querySelector(`#${id}`);if(!data?.frames?.length){el.innerHTML="<p>3D unavailable.</p>";continue;}viewers.push(await renderSkeletonComparison(el,{realFrames:data.frames,correctedFrames:null,phases:d.phases,note:"Reconstructed estimate",trailControls:true}));}});if(qs("mode")==="3d")details.open=true;}
 async function renderProgressAction(){const pid=qs("priority")||[...(A.priorityIds??[]),...(B.priorityIds??[])][0];const priority=priorities.find((p)=>p.id===pid&&p.status!=="resolved");const host=document.getElementById("compareActions");if(!priority){host.innerHTML="";return;}const obs=await loadObservations([priority.id]);if(obs.some((o)=>o.video_clip_id===B.clipId)){host.innerHTML="";return;}host.innerHTML=`<div class="bt-sticky-action-bar">${button("Mark progress from this comparison",{variant:"primary",attrs:'id="markProgress"'})}</div>`;host.querySelector("#markProgress").onclick=()=>openObservationSheet(ctx,priority,{clipId:B.clipId,pitchId:B.pitchId,repId:B.repId,sessionId:B.sessionId,phase:phaseSlug},()=>renderMode());}
 main().catch((error)=>{document.getElementById("loading").textContent=`Couldn't load: ${error.message}`;showSnackbar("Couldn't load comparisons. Try again.");});
 </script></body></html>

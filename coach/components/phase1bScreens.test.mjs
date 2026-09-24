@@ -67,8 +67,8 @@ test("Review summary: zero findings are never labelled a draft; only real unrevi
   assert.match(review, /This swing has not been analyzed\./, "unanalyzed heading");
   assert.match(review, /Findings appear here once analysis finishes\./, "unanalyzed explanation");
   assert.match(review, /Coach-verified across reviewed swings/);
-  assert.match(review, /not independent verification of this specific swing/);
-  assert.match(review, /Experimental 3D reconstruction/);
+  assert.match(review, /not independent judgments of this single swing/);
+  assert.doesNotMatch(review, /Experimental 3D reconstruction|Explain in 3D/);
   assert.match(review, /No reliable measurements are published for this swing/);
   // At least one actual unreviewed AI draft finding.
   assert.equal(reviewSummary([{ review_status: "draft" }]).label, "1 finding · Draft from analysis · Not reviewed");

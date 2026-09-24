@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Player Development</title>
-<link rel="stylesheet" href="./coach.css?v=86c225d02a">
+<link rel="stylesheet" href="./coach.css?v=28f2e5405e">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -17,16 +17,14 @@
   <div id="content" hidden>
     <div id="nextFocus"></div>
 
-    <div class="p2a-section-head"><h2>Active priorities</h2>
+    <div class="p2a-section-head" id="priorityHeading"><h2>Active priorities</h2>
       <button class="bt-button bt-button-tertiary tap-target" id="addPriorityBtn">Add priority</button></div>
     <div id="priorities"></div>
 
-    <h2 class="p2a-section-label">Findings to review</h2>
-    <div id="aiSuggestionsWrap"></div>
+    <section id="findingsSection"><h2 class="p2a-section-label">Findings to review</h2><div id="aiSuggestionsWrap"></div></section>
 
-    <h2 class="p2a-section-label">Development history</h2>
-    <div id="timelineWrap"></div>
-    <button class="bt-button bt-button-tertiary tap-target" id="moreTimeline" hidden>Show earlier</button>
+    <details class="bt-disclosure" id="priorityHistory"><summary><span>Priority history</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body" id="priorityHistoryBody"></div></details>
+    <details class="bt-disclosure"><summary><span>Development history</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><div id="timelineWrap"></div><button class="bt-button bt-button-tertiary tap-target" id="moreTimeline" hidden>Show earlier</button></div></details>
 
     <details class="bt-disclosure p2a-insights" id="insightsDrawer"><summary><span>Insights</span><span class="bt-disclosure-chevron">⌄</span></summary>
       <div class="bt-disclosure-body"><h3>Game vs practice</h3><div id="mix"></div>
@@ -50,6 +48,7 @@
   } from "./components/devActions.js";
   import { button, errorState, icon, openOverflowMenu } from "./components/ui.js";
   import { developmentFocusModel, transferModel } from "./components/phase2aScreens.js";
+  import { DEFAULT_CAPTURE_GUIDANCE, derivePlayerDevelopmentSummary } from "./components/playerDevelopmentSummary.js";
 
   let ctx;
   let library = [];
@@ -74,15 +73,16 @@
     try {
       const priorities = await loadPriorities(ctx.player.id);
       const ids = priorities.map((p) => p.id);
-      const [observations, assignments, followCtx, aiIssues] = await Promise.all([
+      const [observations, assignments, followCtx, aiIssues, checklistResult] = await Promise.all([
         loadObservations(ids),
         loadDrillAssignments(ids),
         loadFollowUpContext(),
         loadAiIssues(),
+        supabase.from("checklist_scores").select("score, review_status, notes, checkpoints!inner(slug,label,sort_order)").eq("player_id", ctx.player.id).order("sort_order", { referencedTable: "checkpoints" }),
       ]);
       const obsBy = groupBy(observations, "player_priority_id");
       const asgBy = groupBy(assignments, "player_priority_id");
-      state = { priorities, observations, assignments, obsBy, asgBy, followCtx, aiIssues };
+      state = { priorities, observations, assignments, obsBy, asgBy, followCtx, aiIssues, checklist: checklistResult.data ?? [] };
       renderNextFocus();
       renderPriorities();
       renderAiSuggestions();
@@ -131,16 +131,18 @@
     const progress = Object.fromEntries(state.priorities.map((p) => [p.id, progressOf(p)]));
     const dueIds = state.priorities.filter((p) => L.isFollowUpDue(p, state.followCtx)).map((p) => p.id);
     const nf = developmentFocusModel({ priorities: state.priorities, progressById: progress, dueIds, assignments: state.assignments });
+    const summary = derivePlayerDevelopmentSummary({ checklist: state.checklist, priorities: state.priorities, assignments: state.assignments, draftFindings: state.aiIssues });
     document.getElementById("nextFocus").innerHTML = nf
       ? `<section class="bt-card p2a-next-focus" data-focus-id="${nf.priority.id}"><span class="bt-eyebrow">Next focus</span>
            <h1>${escapeHtml(nf.priority.title)}</h1>
            <p>${escapeHtml(nf.priority.description || "Add a coaching goal when you update this priority.")}</p>
            <div class="p2a-focus-meta">${statusChip(progressOf(nf.priority).status || "active", { domain: progressOf(nf.priority).status ? "progress" : "priority", label: progressOf(nf.priority).status ? null : nf.reason })}
              <span>${icon("target", { size: 18 })}${escapeHtml(nf.assignment?.drill_library?.name || "No drill assigned")}</span></div>
-           <div class="p2a-hero-actions"><a class="bt-button bt-button-primary" href="${ctx.url("session", { start: 1, priority: nf.priority.id })}">Start practice</a>
+           <div class="p2a-hero-actions">${nf.assignment ? `<a class="bt-button bt-button-primary" href="${ctx.url("session", { start: 1, priority: nf.priority.id })}">Start practice</a>` : '<button class="bt-button bt-button-secondary" data-focus-action="drill">Choose a drill</button>'}
              <button class="bt-button bt-button-tertiary" data-focus-action="progress">Update progress</button></div></section>`
-      : emptyState("No priorities yet", "Review a swing, then track a finding to build a coaching plan.", `<a class="bt-button bt-button-secondary" href="${ctx.url("player")}">Review swings</a>`, "target");
+      : `<section class="bt-card bt-unified-development-empty"><span class="bt-eyebrow">Development</span><h1>No development priority confirmed yet</h1><h2>What we know</h2>${summary.strengths.length ? `<ul class="bt-strengths">${summary.strengths.map((row) => `<li>${icon("check", { size: 18 })}<span>${escapeHtml(row.label)}</span></li>`).join("")}</ul>` : '<p class="bt-supporting">No strengths have been coach-verified yet.</p>'}<h2>What still needs better evidence</h2><p>${summary.needsBetterEvidence.length} checkpoint${summary.needsBetterEvidence.length === 1 ? "" : "s"}</p><h2>Next step</h2><p>${escapeHtml(summary.nextStep || DEFAULT_CAPTURE_GUIDANCE)}</p><a class="bt-button bt-button-primary" href="${ctx.url("player")}">Review swing evidence</a></section>`;
     document.querySelector("[data-focus-action=progress]")?.addEventListener("click", () => openObservationSheet(ctx, nf.priority, {}, refresh));
+    document.querySelector("[data-focus-action=drill]")?.addEventListener("click", () => openAssignDrillSheet(ctx, nf.priority, library, state.asgBy.get(nf.priority.id) ?? [], refresh));
   }
 
   function priorityCard(p) {
@@ -181,12 +183,9 @@
     const open = state.priorities.filter((p) => p.status === "active" || p.status === "monitoring");
     const closed = state.priorities.filter((p) => p.status === "resolved");
     const el = document.getElementById("priorities");
-    el.innerHTML = open.length
-      ? open.map(priorityCard).join("")
-      : emptyState("No active priorities yet.", "Review a swing and promote an observation to begin tracking development.", `<a class="dev-btn primary" href="${ctx.url("player")}">Review swings</a>`);
-    if (closed.length) {
-      el.innerHTML += `<details class="drawer"><summary><span>Resolved (${closed.length})</span></summary><div class="drawer-body">${closed.map((p) => `<div class="dev-row between"><b>${escapeHtml(p.title)}</b><span class="hint">resolved ${fmtDate(p.resolved_at)}</span></div>`).join("")}</div></details>`;
-    }
+    document.getElementById("priorityHeading").hidden = !open.length;
+    el.innerHTML = open.map(priorityCard).join("");
+    document.getElementById("priorityHistoryBody").innerHTML = closed.length ? closed.map((p) => `<div class="dev-row between"><b>${escapeHtml(p.title)}</b><span class="hint">resolved ${fmtDate(p.resolved_at)}</span></div>`).join("") : '<p class="bt-supporting">No earlier priorities.</p>';
     el.onclick = (e) => {
       const btn = e.target.closest("[data-act]");
       const card = e.target.closest("[data-pid]");
@@ -217,7 +216,8 @@
     const promotedIds = new Set(state.priorities.map((p) => p.source_issue_id).filter(Boolean));
     const list = state.aiIssues.filter((i) => !promotedIds.has(i.id));
     const wrap = document.getElementById("aiSuggestionsWrap");
-    if (!list.length) { wrap.innerHTML = emptyState("No findings to review", "New findings appear after a swing is analyzed."); return; }
+    document.getElementById("findingsSection").hidden = !list.length;
+    if (!list.length) { wrap.innerHTML = ""; return; }
     wrap.innerHTML = `<div class="bt-list p2a-findings">` + list.slice(0, 5).map((i) => `
       <div class="bt-list-row" data-iid="${i.id}">${icon("sparkles", { size: 20 })}<span class="bt-list-row-copy">
         <span class="bt-list-row-title">${escapeHtml(i.issue)}</span><span class="bt-list-row-supporting">${i.review_status === "draft" ? "Needs coach review" : "Approved · ready to track"}${i.confidence ? ` · ${escapeHtml(i.confidence)} confidence` : ""}</span></span>
@@ -276,7 +276,7 @@
     const shown = relevant.slice(0, timelineLimit);
     const wrap = document.getElementById("timelineWrap");
     if (!shown.length) {
-      wrap.innerHTML = emptyState("No activity yet.", "Games, practices, priorities and coach notes appear here as you add them.");
+      wrap.innerHTML = '<p class="bt-supporting">No development history yet.</p>';
       document.getElementById("moreTimeline").hidden = true;
       return;
     }

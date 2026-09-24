@@ -1274,3 +1274,8 @@ button.bt-pitch-main { min-height:48px; padding:0; border:0; background:transpar
 .p1b-advanced { margin-top:var(--space-4); }
 body:has(.p1b-finding) .wrap { padding-bottom:calc(var(--space-6) + env(safe-area-inset-bottom)); }
 @media (max-width:390px) { .p1b-decision-row .bt-button { padding-inline:var(--space-2); } }
+/* Compact public-demo chrome: one short row on desktop, at most two on mobile. */
+.bt-demo-bar{position:sticky;top:0;z-index:9999;display:flex;align-items:center;justify-content:center;gap:10px;min-height:32px;padding:3px 10px;background:#B4503A;color:#fff;font:600 12px/1.3 Inter,system-ui,sans-serif}
+.bt-demo-bar button,.bt-demo-bar a{border:1px solid rgba(255,255,255,.62);border-radius:6px;padding:2px 8px;background:transparent;color:#fff;font:inherit;text-decoration:none;cursor:pointer}
+.bt-demo-bar a{border-color:transparent;text-decoration:underline}
+@media(max-width:480px){.bt-demo-bar{flex-wrap:wrap;gap:2px 8px;padding:3px 8px}.bt-demo-bar>span{flex-basis:100%;text-align:center}}

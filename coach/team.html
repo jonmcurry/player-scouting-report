@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Team View</title>
-<link rel="stylesheet" href="./coach.css?v=86c225d02a">
+<link rel="stylesheet" href="./coach.css?v=28f2e5405e">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -266,7 +266,7 @@
     const [{ data: allScores }, { data: allGameLogs }] = await Promise.all([
       supabase
         .from("checklist_scores")
-        .select("player_id, score, reviewed_by, checkpoints!inner(slug, sort_order)")
+        .select("player_id, score, reviewed_by, review_status, checkpoints!inner(slug, sort_order)")
         .in("player_id", playerIds)
         .order("sort_order", { referencedTable: "checkpoints" }),
       // session_type='game' - "Early Read (<3 ABs)" is a real-game concept;
@@ -326,11 +326,14 @@
         }).join("");
         const reviewCount = reviewByPlayer.get(p.id) ?? 0;
         const priority = priorityByPlayer.get(p.id);
-        const status = [reviewCount ? `${reviewCount} to review` : "", priority?.title ?? "No active priority", dueIds.has(p.id) ? "Follow-up due" : priority?.status === "monitoring" ? "Monitoring" : ""].filter(Boolean).join(" · ");
+        const scoreRows = [...p.scoresBySlug.values()];
+        const strengthCount = scoreRows.filter((row) => row.review_status === "verified" && row.score === 3).length;
+        const evidenceCount = scoreRows.filter((row) => row.review_status === "insufficient_evidence").length;
+        const status = [`${strengthCount} verified strength${strengthCount === 1 ? "" : "s"}`, `${evidenceCount} checkpoint${evidenceCount === 1 ? "" : "s"} need better evidence`, priority?.title ?? "No development priority yet"].join(" · ");
         return `<a class="bt-list-row p1b-roster-row" href="./player.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(p.slug)}">
           <span class="bt-list-row-leading"><span class="jersey-badge">${escapeHtml(p.jersey_number)}</span></span>
           <span class="bt-list-row-copy"><span class="bt-list-row-title p1b-player-name">${escapeHtml(p.name)}</span><span class="bt-list-row-supporting">${escapeHtml(status)}</span><span class="mini-heatmap">${blocks}</span></span>
-          <span class="bt-list-row-trailing" aria-hidden="true">›</span></a>`;
+          <span class="bt-list-row-trailing"><span class="bt-button bt-button-secondary">Open ${escapeHtml(p.name)}</span></span></a>`;
       })
       .join("");
   }

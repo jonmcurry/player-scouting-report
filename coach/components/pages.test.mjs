@@ -193,3 +193,49 @@ test("public copy: no 'Direct video measurement' labels, no unreviewed no-action
   assert.match(read("compare.html"), /No reliable measurements for these swings/);
   assert.match(read("components/swingMetricsPanel.js"), /No reliable measurements are published for this swing/);
 });
+
+test("Overview leads with development, evidence rows, and one actionable sparse-state story", () => {
+  const player = read("player.html");
+  assert.ok(player.indexOf('id="developmentSummary"') < player.indexOf('id="swingEvidenceList"'));
+  assert.match(player, /What’s working/);
+  assert.match(player, /No development priority confirmed yet/);
+  assert.match(player, /summary\.nextStep/);
+  assert.match(read("components/playerDevelopmentSummary.js"), /Capture another swing with the full body and bat visible through contact/);
+  assert.match(player, /No drill yet/);
+  assert.match(player, /Progress will appear after a priority is tracked across later swings/);
+  assert.match(player, />Review<.*>Compare</s);
+});
+
+test("Development uses one unified empty state while preserving real priority rendering", () => {
+  const development = read("development.html");
+  assert.match(development, /No development priority confirmed yet/);
+  assert.match(development, /What we know/);
+  assert.match(development, /What still needs better evidence/);
+  assert.match(development, /Review swing evidence/);
+  assert.doesNotMatch(development, /No priorities yet|No active priorities yet|No findings to review|No activity yet/);
+  assert.match(development, /open\.map\(priorityCard\)/);
+});
+
+test("Practice requires a confirmed priority with an active drill", () => {
+  const practice = read("components/practicePage.js");
+  assert.match(practice, /No practice plan yet/);
+  assert.match(practice, /Practice is tied to a confirmed development priority/);
+  assert.match(practice, /hasGuidedPlan/);
+  assert.match(practice, /if \(!hasGuidedPlan\) \{ renderPicker\(\); return; \}/);
+  assert.match(practice, /Start practice/);
+});
+
+test("Checklist hides scoring for insufficient evidence until deliberate manual action", () => {
+  const player = read("player.html");
+  assert.match(player, /Current footage does not support a reliable score/);
+  assert.match(player, /Score manually anyway/);
+  assert.match(player, /stepper-mount" \$\{reviewedNoScore \? "hidden"/);
+  assert.match(player, /data-manual-score/);
+  assert.doesNotMatch(player, /View 3D Skeleton/);
+});
+
+test("at-bat presentation organizes swing evidence without foregrounding unknown outcomes or derived counts", () => {
+  const atbat = read("atbat.html");
+  assert.match(atbat, /<strong>Swing evidence<\/strong>/);
+  assert.doesNotMatch(atbat, /Outcome not recorded|Count unknown| · derived/);
+});

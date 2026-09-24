@@ -38,18 +38,21 @@ test("pitch deletion relies on the existing ON DELETE SET NULL relationship", ()
   assert.match(read("coach/atbat.html"), /video will stay on this at-bat as unassigned evidence/);
 });
 
-test("Compare uses suggestions and the Video, Frames, Progress, Metrics hierarchy", () => {
+test("Compare keeps Video and Frames, conditionally exposes data-backed tabs, and has no public 3D", () => {
   const compare = read("coach/compare.html");
   assert.match(compare, /suggestedComparePairs/);
   assert.match(compare, />Video<.*>Frames<.*>Progress<.*>Metrics</s);
+  assert.match(compare, /available = new Set\(\["video", "frames"\]\)/);
+  assert.match(compare, /hasPublishedMetrics\(a\.metrics\) && hasPublishedMetrics\(b\.metrics\)/);
   assert.doesNotMatch(compare, /id="fSwung"|id="fReviewed"|id="fGrouping"/);
-  assert.match(compare, /Explain in 3D/);
+  assert.doesNotMatch(compare, /Explain in 3D|renderSkeletonComparison/);
   assert.match(compare, /Original video is the source of truth/);
 });
 
 test("public report is coach-confirmed, summary-first and has the approved empty strengths copy", () => {
   const report = read("coach/report.html"); const shape = read("supabase/functions/get-player-report/shape.ts");
-  assert.match(report, /Current focus/); assert.match(report, /Your drill/); assert.match(report, /What’s going well/);
+  assert.match(report, /Current focus/); assert.match(report, /Your drill/); assert.match(report, /What’s going well/); assert.match(report, /Next step/);
+  assert.match(report, /Progress will appear once a development priority is tracked across later swings/);
   assert.match(report, /Strengths will appear here as your coach reviews more swings\./);
   assert.doesNotMatch(report, /reviewedBy|bg-score-|confidence|analysis_quality/);
   assert.match(shape, /confirmedScores/);

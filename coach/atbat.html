@@ -1,6 +1,6 @@
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>HitterLoop — At-Bat</title><link rel="stylesheet" href="./coach.css?v=86c225d02a"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
+<title>HitterLoop — At-Bat</title><link rel="stylesheet" href="./coach.css?v=28f2e5405e"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
 </head><body>
 <header class="app-bar" id="appBar"></header><main class="wrap bt-atbat-page">
 <div id="countStrip" class="bt-count-strip">Loading at-bat…</div><div id="pitches"></div><div id="facts"></div></main>
@@ -50,14 +50,12 @@ function clipState(list, pitchId) {
 }
 function render() {
   const inferred = L.inferCounts(pitches); const next = L.nextPitchNumber(pitches); const end = likelyAtBatOver(pitches);
-  const nextCount = next > 1 ? pitchCountTitle(next, pitches).replace(/^Pitch \d+ · /, "") : "0-0";
-  document.getElementById("countStrip").innerHTML = `<strong>${nextCount === "count unknown" ? "Count unknown" : `Count ${nextCount}`}</strong><span>Pitch ${next} next</span>`;
+  document.getElementById("countStrip").innerHTML = `<strong>Swing evidence</strong><span>${pitches.length ? `${pitches.length} pitch${pitches.length === 1 ? "" : "es"}` : "Game details unavailable"}</span>`;
   const host = document.getElementById("pitches");
   if (!pitches.length) host.innerHTML = emptyState("No pitches yet", "Record or log the first pitch.");
   else host.innerHTML = inferred.map(({ pitch, balls, strikes, inferred: countInferred }) => {
-    const list = clips.filter((clip) => clip.at_bat_pitch_id === pitch.id); const label = L.PITCH_OUTCOME_LABELS[pitch.pitch_outcome] ?? "Outcome not recorded"; const swung = pitch.swung ?? L.swungFromOutcome(pitch.pitch_outcome);
-    const meta = pitchMetaParts(label, swung, pitch.pitch_zone ? zoneLabel(pitch.pitch_zone) : "").join(" · ");
-    return `<article class="bt-pitch-row" data-pid="${pitch.id}" role="listitem"><span class="bt-pitch-number" aria-hidden="true">${pitch.pitch_number}</span><button type="button" class="bt-list-row-copy bt-pitch-main" data-action="details" aria-label="Pitch ${pitch.pitch_number}, ${escapeHtml(meta)}, ${L.countLabel(balls, strikes)}. Edit details"><strong>${escapeHtml(meta)}</strong><small>${L.countLabel(balls, strikes)}${countInferred ? " · derived" : ""}${pitch.pitch_location ? ` · From earlier entry: ${escapeHtml(pitch.pitch_location)}` : ""}</small>${pitch.notes ? `<small>${escapeHtml(pitch.notes)}</small>` : ""}${pitch === pitches.at(-1) && end ? '<small>At-bat likely over</small>' : ""}</button>${clipState(list, pitch.id)}<button class="bt-icon-button upload-control" data-action="camera" aria-label="Add video to pitch ${pitch.pitch_number}">${icon("camera", { size: 20 })}</button><button class="bt-icon-button" data-action="menu" aria-label="More actions for pitch ${pitch.pitch_number}">${icon("ellipsis-vertical", { size: 20 })}</button></article>`;
+    const list = clips.filter((clip) => clip.at_bat_pitch_id === pitch.id);
+    return `<article class="bt-pitch-row" data-pid="${pitch.id}" role="listitem"><span class="bt-pitch-number" aria-hidden="true">${pitch.pitch_number}</span><button type="button" class="bt-list-row-copy bt-pitch-main" data-action="details" aria-label="Pitch ${pitch.pitch_number}. Edit details"><strong>Pitch ${pitch.pitch_number}</strong>${pitch.notes ? `<small>${escapeHtml(pitch.notes)}</small>` : ""}</button>${clipState(list, pitch.id)}<button class="bt-icon-button upload-control" data-action="camera" aria-label="Add video to pitch ${pitch.pitch_number}">${icon("camera", { size: 20 })}</button><button class="bt-icon-button" data-action="menu" aria-label="More actions for pitch ${pitch.pitch_number}">${icon("ellipsis-vertical", { size: 20 })}</button></article>`;
   }).join("");
   host.setAttribute("role", "list"); host.onclick = onPitchClick;
   const summary = L.summarizeAtBat(entry, pitches, clips);

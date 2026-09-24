@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=86c225d02a">
+<link rel="stylesheet" href="./coach.css?v=28f2e5405e">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -513,21 +513,26 @@
           ${state === "verified" ? `<span class="verified-pill">✓ Verified</span>` : ""}
           ${reviewedNoScore ? `<span class="review-pill ${state === "rejected" ? "rejected" : "insufficient"}">${stateLabel(state)}</span>` : ""}
         </div>
-        <div class="stepper-mount"></div>
+        ${state === "insufficient_evidence" ? '<p class="bt-supporting">Current footage does not support a reliable score.</p><button type="button" class="bt-button bt-button-tertiary" data-manual-score>Score manually anyway</button>' : ""}
+        ${state === "rejected" ? '<p class="bt-supporting">The earlier draft was rejected and is not a current score.</p><button type="button" class="bt-button bt-button-tertiary" data-manual-score>Score manually</button>' : ""}
+        <div class="stepper-mount" ${reviewedNoScore ? "hidden" : ""}></div>
         ${showsNote(row) ? `<p class="cp-notes">${escapeHtml(row.notes ?? "")}</p>` : ""}
         ${unconfirmed ? `<div class="cp-review-actions"><button type="button" class="link-btn" data-review="insufficient">Insufficient evidence</button><button type="button" class="link-btn" data-review="reject">Reject draft</button></div>` : ""}
-        <div class="cp-actions">
-          <button type="button" class="view-skeleton-btn tap-target" data-comp="${cp.slug}" data-label="${cp.label}">📐 View 3D Skeleton</button>
-          <span class="cp-meta">${row.reviewed_by ? `Reviewed by ${escapeHtml(row.reviewed_by)}` : ""}</span>
-        </div>
+        <div class="cp-actions"><span class="cp-meta">${row.reviewed_by ? `Reviewed by ${escapeHtml(row.reviewed_by)}` : ""}</span></div>
         <div class="trend-mount"></div>
       `;
       container.appendChild(card);
 
       const mount = card.querySelector(".stepper-mount");
-      renderStepper(mount, row, coachDisplayName, () => {
+      const mountStepper = () => renderStepper(mount, row, coachDisplayName, () => {
         loadChecklist();
         refreshConfirmedPill();
+      });
+      if (!reviewedNoScore) mountStepper();
+      card.querySelector("[data-manual-score]")?.addEventListener("click", (event) => {
+        event.currentTarget.remove();
+        mount.hidden = false;
+        mountStepper();
       });
       card.querySelectorAll("[data-review]").forEach((btn) => btn.addEventListener("click", async () => {
         btn.disabled = true;
@@ -538,10 +543,6 @@
         loadChecklist();
         refreshConfirmedPill();
       }));
-      card.querySelector("[data-comp]").addEventListener("click", (e) => {
-        openCompModal(e.currentTarget.dataset.comp, e.currentTarget.dataset.label, firstClipContext);
-      });
-
       const scoreHistory = row.id ? verifiedHistory(historyByScoreId.get(row.id)) : null;
       if (scoreHistory && scoreHistory.length >= 2) {
         renderTrendChart(card.querySelector(".trend-mount"), scoreHistory);
@@ -571,7 +572,7 @@
       : `<p class="bt-supporting">No strengths have been coach-verified yet.</p>`;
     const focusHtml = summary.currentPriority
       ? `<h3>${escapeHtml(summary.currentPriority.title)}</h3><p>${escapeHtml(summary.currentPriority.description || "Current coach-confirmed development priority.")}</p><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Open development plan</a>`
-      : `<h3>No development priority confirmed yet.</h3><p>The current footage does not provide enough reliable evidence to confidently identify the next mechanical priority.</p>`;
+      : `<h3>No development priority confirmed yet.</h3><p>The current footage supports ${summary.strengths.length ? summary.strengths.map((row) => escapeHtml(row.label.toLowerCase())).join(" and ") : "the reviewed strengths"}, but more reliable evidence is needed before choosing the next thing to work on.</p>`;
     const nextHtml = summary.draftFindingCount
       ? `<h3>${summary.draftFindingCount} finding${summary.draftFindingCount === 1 ? "" : "s"} awaiting coach review</h3><p>Review the swing evidence before setting a development priority.</p><a class="bt-button bt-button-primary" href="./review.html?clip=${encodeURIComponent(drafts[0].video_clip_id)}&${devQuery}">Review swing</a>`
       : summary.nextStep
@@ -582,13 +583,14 @@
       ? `<h3>${escapeHtml(drill.name || "Assigned drill")}</h3>${drill.purpose ? `<p>${escapeHtml(drill.purpose)}</p>` : ""}${drill.instructions ? `<details class="p1b-inline-disclosure"><summary>How to run it</summary><p>${escapeHtml(drill.instructions)}</p></details>` : ""}`
       : summary.currentPriority
         ? `<h3>No drill selected yet.</h3><p>HitterLoop can recommend a drill for the coach to choose for this confirmed priority.</p><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Choose a drill</a>`
-        : `<h3>No drill yet.</h3><p>Once a coach confirms a development priority, HitterLoop can recommend a drill for the coach to choose.</p><p class="bt-caption">There is not enough reviewed history yet to show progress.</p>`;
+        : `<h3>No drill yet.</h3><p>Once the coach confirms a development priority, HitterLoop can recommend a drill for the coach to choose.</p>`;
     document.getElementById("technicalSummary").textContent = `${summary.strengths.length} verified checkpoints · ${summary.needsBetterEvidence.length} need better evidence`;
     document.getElementById("developmentSummary").innerHTML = `<div class="bt-development-hero">
       <div class="bt-development-heading"><div><span class="bt-eyebrow">Player development summary</span><h1 id="developmentSummaryTitle">${escapeHtml(player.name)}</h1><p>${escapeHtml(player.teams.name)}</p></div><p class="bt-review-count" id="reviewedSwingCount">Reviewing swing evidence…</p></div>
       <section class="bt-summary-section bt-summary-strengths"><span class="bt-eyebrow">What’s working</span><h2>Coach-verified strengths</h2>${strengthHtml}</section>
       <div class="bt-summary-grid"><section class="bt-summary-section"><span class="bt-eyebrow">Current focus</span>${focusHtml}</section><section class="bt-summary-section"><span class="bt-eyebrow">Next step</span>${nextHtml}</section></div>
       <section class="bt-summary-section bt-summary-plan"><span class="bt-eyebrow">Development plan</span>${planHtml}</section>
+      <section class="bt-summary-section bt-summary-progress"><span class="bt-eyebrow">Progress</span><p>${summary.currentPriority ? "Progress appears here as later swings are evaluated against this priority." : "Progress will appear after a priority is tracked across later swings."}</p></section>
     </div>`;
   }
 
@@ -721,8 +723,7 @@
       .order("position");
     const el = document.getElementById("gameLogList");
     const rows = (logs ?? []).map((g) => {
-        const zoneBits = [zoneLabel(g.pitch_zone), outcomeLabel(g.pitch_outcome)].filter(Boolean).join(" · ");
-        return listRow({ href: `./atbat.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}&entry=${g.id}`, leading: icon("video", { size: 20 }), title: `${g.date}${g.opponent ? ` vs ${g.opponent}` : ""} · AB ${g.ab}`, supporting: `${g.result || "No result"}${zoneBits ? ` · ${zoneBits}` : ""}`, trailing: icon("chevron-right", { size: 20 }) });
+        return listRow({ href: `./atbat.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}&entry=${g.id}`, leading: icon("video", { size: 20 }), title: `${g.date}${g.opponent ? ` vs ${g.opponent}` : ""} · AB ${g.ab}`, supporting: "Swing evidence", trailing: icon("chevron-right", { size: 20 }) });
       });
     el.innerHTML = rows.length ? rows.join("") : emptyState("No recent game", "Log the next at-bat when game evidence is available.");
     recentGameHtml = rows.at(-1) ?? "";
