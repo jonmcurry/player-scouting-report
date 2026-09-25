@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildInputManifest, type AnalysisInput } from "./analysisContext.js";
-import { ANALYSIS_POLICY, findingIdentity, renderSwingAnalysisPrompt, validateSwingAnalysisResult } from "./swingAnalysisShared.js";
+import { ANALYSIS_POLICY, findingIdentity, renderSwingAnalysisPrompt, validateSwingAnalysisResult, validationContext } from "./swingAnalysisShared.js";
+import { SemanticValidationError } from "./semanticValidation.js";
 import { renderKnowledgePack, validateKnowledgeClaims, type KnowledgeClaim } from "../knowledge/knowledgePack.js";
 
 const input = (overrides: Partial<AnalysisInput> = {}): AnalysisInput => ({
@@ -56,18 +57,20 @@ test("unknown context remains explicitly unknown in prompt and manifest", () => 
 });
 
 test("noActionNeeded and zero issues are valid", () => {
-  const result = validateSwingAnalysisResult(validNoAction, { source: "gemini", aiModel: "configured-model" });
+  const result = validateSwingAnalysisResult(validNoAction, { source: "gemini", aiModel: "configured-model", ...validationContext(input()) });
   assert.equal(result.noActionNeeded, true);
   assert.deepEqual(result.issues, []);
 });
 
 test("more than two issues and malformed output are rejected", () => {
-  assert.throws(() => validateSwingAnalysisResult({ ...validNoAction, noActionNeeded: false, noActionReason: null, issues: [issue(), issue(), issue()] }, { source: "gemini", aiModel: "m" }), /at most 2/);
-  assert.throws(() => validateSwingAnalysisResult({ issues: [] }, { source: "gemini", aiModel: "m" }), /noActionNeeded/);
+  assert.throws(() => validateSwingAnalysisResult({ ...validNoAction, noActionNeeded: false, noActionReason: null, issues: [issue(), issue(), issue()] }, { source: "gemini", aiModel: "m", ...validationContext(input()) }), /at most 2/);
+  assert.throws(() => validateSwingAnalysisResult({ issues: [] }, { source: "gemini", aiModel: "m", ...validationContext(input()) }), /noActionNeeded/);
 });
 
-test("emergency context is represented and context-explained findings cannot be suggested priorities", () => {
-  const result = validateSwingAnalysisResult({ ...validNoAction, noActionNeeded: false, noActionReason: null, issues: [issue()] }, { source: "gemini", aiModel: "m" });
+test("emergency context is represented, and a context-explained finding suggested as a priority is rejected, not rewritten", () => {
+  const draft = (extra: Record<string, unknown>) => ({ ...validNoAction, noActionNeeded: false, noActionReason: null, issues: [issue(extra)] });
+  assert.throws(() => validateSwingAnalysisResult(draft({ suggestPriority: true }), { source: "gemini", aiModel: "m", ...validationContext(input()) }), SemanticValidationError);
+  const result = validateSwingAnalysisResult(draft({ suggestPriority: false }), { source: "gemini", aiModel: "m", ...validationContext(input()) });
   assert.equal(result.issues[0]!.emergencySwingSuspected, true);
   assert.equal(result.issues[0]!.contextExplainsIt, true);
   assert.equal(result.issues[0]!.suggestPriority, false);

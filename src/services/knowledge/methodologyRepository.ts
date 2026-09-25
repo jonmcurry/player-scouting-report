@@ -12,7 +12,8 @@
  * treating that as a clearly-recorded, non-fatal-to-the-clip failure - see
  * analyzeAndSync()'s methodology-load handling.
  */
-import type { AgeBand, Sport } from "../ai/analysisContext.js";
+import type { AgeBand, Sport, SwingContext } from "../ai/analysisContext.js";
+import { methodologyExcludedForContext } from "../ai/semanticValidation.js";
 import { getSupabaseClient } from "../db/supabaseClient.js";
 import { neutralize, youthBands } from "./knowledgePack.js";
 import { parseMethodologyItem, type MethodologyItem, type MethodologySnapshot } from "./methodologyTypes.js";
@@ -49,10 +50,14 @@ export async function loadActiveMethodologySnapshot(): Promise<MethodologySnapsh
  * Same conservative applicability filtering renderKnowledgePack() applies
  * to the file-backed pack: unknown/youth age bands only get
  * youth_appropriate items, and sport must be known and match (or "both").
+ * Items whose own "does not apply when" excludes this swing's context are
+ * dropped too (see methodologyExcludedForContext; an unknown context is
+ * treated as possibly a game swing). A dropped item never reaches the
+ * prompt, so validateSwingAnalysisResult rejects any citation of it.
  */
 export function filterApplicableMethodology(
   items: MethodologyItem[],
-  args: { sport: Sport | null; ageBand: AgeBand | null; concepts?: string[] },
+  args: { sport: Sport | null; ageBand: AgeBand | null; concepts?: string[]; swingContext?: SwingContext },
 ): MethodologyItem[] {
   const conceptSet = args.concepts?.length ? new Set(args.concepts) : null;
   const conservativeYouth = args.ageBand === null || youthBands.has(args.ageBand);
@@ -60,6 +65,7 @@ export function filterApplicableMethodology(
     .filter((c) => args.sport !== null && (c.sportScope === args.sport || c.sportScope === "both"))
     .filter((c) => !conceptSet || conceptSet.has(c.concept))
     .filter((c) => !conservativeYouth || c.ageGuardrail === "youth_appropriate")
+    .filter((c) => !methodologyExcludedForContext(c.doesNotApplyWhen, args.swingContext))
     .sort((a, b) => a.claimId.localeCompare(b.claimId));
 }
 

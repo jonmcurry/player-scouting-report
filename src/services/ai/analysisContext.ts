@@ -25,8 +25,13 @@ export interface PitchContext {
   pitchType: string | null;
 }
 
+/** Where the swing happened: a game at-bat, a practice repetition, or not known.
+ * Used to respect methodology "does not apply when" scope. Absent = "unknown". */
+export type SwingContext = "game" | "practice" | "unknown";
+
 export interface SwingEvidence {
   frameNames: string[];
+  context?: SwingContext;
   pipelineVersion: string | null;
   metrics: Record<string, unknown>;
   reconstructionSupplied: boolean;
@@ -40,6 +45,8 @@ export interface AnalysisInput {
   coachReviewedDecisions: { concept: string | null; phase: string | null; videoClipId: string | null; status: string }[];
   knowledgePack: string;
   knowledgeClaimIds: string[];
+  /** Each offered claim's own "does not apply when", keyed by claim id (checked against the response). */
+  knowledgeClaimExclusions?: Record<string, string>;
   /** The active methodology_versions.version_label this run's knowledgePack was rendered from. */
   knowledgeVersion: string;
 }
@@ -74,6 +81,7 @@ export function buildInputManifest(input: AnalysisInput): Record<string, unknown
     },
     swing_evidence: {
       frames: [...input.swing.frameNames],
+      swing_context: input.swing.context ?? "unknown",
       metrics: Object.keys(input.swing.metrics).sort(),
       reconstruction_supplied: input.swing.reconstructionSupplied,
       excluded_measurements: input.swing.excludedMeasurements,

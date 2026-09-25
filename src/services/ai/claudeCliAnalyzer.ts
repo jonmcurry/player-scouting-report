@@ -38,6 +38,7 @@ import {
   SWING_ANALYSIS_JSON_SHAPE_INSTRUCTIONS,
   renderSwingAnalysisPrompt,
   validateSwingAnalysisResult,
+  validationContext,
   type SwingAnalysisResult,
 } from "./swingAnalysisShared.js";
 
@@ -215,7 +216,6 @@ export async function analyzeSwingViaClaudeCli(
     source: "claude",
     aiModel: model,
     aiModelVersion: resolvedModelIds(envelope),
-    allowedKnowledgeClaimIds: input.knowledgeClaimIds,
-    availableBases: ["video", ...(Object.keys(input.swing.metrics).length ? ["metric" as const] : []), ...(input.swing.reconstructionSupplied ? ["reconstruction" as const] : [])],
+    ...validationContext(input),
   });
 }

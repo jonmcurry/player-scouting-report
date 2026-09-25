@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=38d03ad25c">
+<link rel="stylesheet" href="./coach.css?v=5fa8e47625">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -31,7 +31,7 @@
       <details class="bt-disclosure" id="checklistDrawer">
         <summary><span>Detailed checklist <span class="hint" id="checklistHint">11 checkpoints · advanced</span></span></summary>
         <div class="drawer-body">
-          <p class="hint">Optional detail. You don't need to confirm every score—use the development summary for the current coaching story.</p>
+          <p class="hint">AI drafts require coach review. You don't need to confirm every score.</p>
           <div id="checklistCards"></div>
         </div>
       </details>
@@ -78,6 +78,7 @@
   import { openLogAtBatSheet } from "./components/logAtBatSheet.js";
   import { mountSegmentedTabs, card, confirmDialog, emptyState, icon, listRow, showSnackbar } from "./components/ui.js";
   import { derivePlayerDevelopmentSummary } from "./components/playerDevelopmentSummary.js";
+  import { isDemoMode } from "./demoConfig.js";
   import { renderZonePicker, zoneLabel, outcomeLabel } from "./components/pitchZonePicker.js";
 
   const MIN_ATBATS_FOR_PATTERN = 3;
@@ -583,7 +584,7 @@
     document.getElementById("technicalSummary").textContent = `${summary.strengths.length} verified checkpoints · ${summary.needsBetterEvidence.length} need better evidence`;
     document.getElementById("developmentSummary").innerHTML = `<div class="bt-development-hero">
       <div class="bt-development-heading"><div><span class="bt-eyebrow">Player development summary</span><h1 id="developmentSummaryTitle">${escapeHtml(player.name)}</h1><p>${escapeHtml(player.teams.name)}</p></div><p class="bt-review-count" id="reviewedSwingCount">Reviewing swing evidence…</p></div>
-      <section class="bt-summary-section bt-summary-strengths"><span class="bt-eyebrow">What’s working</span><h2>Coach-verified strengths</h2>${strengthHtml}</section>
+      <section class="bt-summary-section bt-summary-strengths"><span class="bt-eyebrow">What’s working</span><h2>Coach-verified strengths</h2>${isDemoMode() ? '<p class="bt-supporting">AI helped prepare drafts; the coach’s review determines what appears here.</p>' : ""}${strengthHtml}</section>
       <div class="bt-summary-grid"><section class="bt-summary-section"><span class="bt-eyebrow">Current Priority</span>${focusHtml}</section><section class="bt-summary-section"><span class="bt-eyebrow">Next step</span>${nextHtml}</section></div>
       <section class="bt-summary-section bt-summary-plan"><span class="bt-eyebrow">Development plan</span>${planHtml}</section>
       <section class="bt-summary-section bt-summary-progress"><span class="bt-eyebrow">Progress</span><p>${summary.currentPriority ? "Progress appears here as later swings are checked against this Priority." : "No progress claim yet - there is no tracked Priority to measure against."}</p></section>

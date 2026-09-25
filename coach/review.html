@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Review Swing</title>
-<link rel="stylesheet" href="./coach.css?v=38d03ad25c">
+<link rel="stylesheet" href="./coach.css?v=5fa8e47625">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -194,7 +194,7 @@
   function renderVerificationSummary() {
     const summary = derivePlayerDevelopmentSummary({ checklist: playerChecklist, priorities, assignments });
     const verified = document.getElementById("verifiedSummary");
-    verified.innerHTML = `<section class="bt-card bt-review-verified"><span class="bt-eyebrow">What's going well</span><h2>Coach-reviewed strengths</h2><p class="bt-caption">Player-level scores from the coach's review of available swings - not an independent check of this clip.</p>${summary.strengths.length ? `<div class="bt-verified-list">${summary.strengths.map((row) => `<article><div class="bt-summary-title">${icon("check", { size: 18 })}<h3>${escapeHtml(row.label)}</h3><span class="bt-score-word">${escapeHtml(row.scoreWord ?? "")}</span></div>${row.note ? `<p>${escapeHtml(row.note)}</p>` : ""}</article>`).join("")}</div>` : `<p class="bt-supporting">No checkpoint has been coach-verified yet.</p>`}</section>`;
+    verified.innerHTML = `<section class="bt-card bt-review-verified"><span class="bt-eyebrow">What's going well</span><h2>Coach-reviewed strengths</h2><p class="bt-caption">${isDemoMode() ? "AI helped prepare drafts; the coach’s review determines what appears here. " : ""}These player-level scores are not an independent check of this clip.</p>${summary.strengths.length ? `<div class="bt-verified-list">${summary.strengths.map((row) => `<article><div class="bt-summary-title">${icon("check", { size: 18 })}<h3>${escapeHtml(row.label)}</h3><span class="bt-score-word">${escapeHtml(row.scoreWord ?? "")}</span></div>${row.note ? `<p>${escapeHtml(row.note)}</p>` : ""}</article>`).join("")}</div>` : `<p class="bt-supporting">No checkpoint has been coach-verified yet.</p>`}</section>`;
     const needs = document.getElementById("evidenceNeeds");
     needs.innerHTML = summary.needsBetterEvidence.length ? `<details class="bt-card bt-evidence-needs"><summary><span><span class="bt-eyebrow">What needs better evidence</span><strong>${summary.needsBetterEvidence.length} checkpoint${summary.needsBetterEvidence.length === 1 ? "" : "s"} need better evidence</strong></span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><ul>${summary.needsBetterEvidence.map((row) => `<li>${escapeHtml(row.label)}</li>`).join("")}</ul></div></details>` : "";
   }

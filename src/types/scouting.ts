@@ -137,3 +137,28 @@ export const CHECKPOINTS: { slug: string; label: string }[] = [
   { slug: "follow-through", label: "Follow-through & finish" },
   { slug: "swing-decisions", label: "Swing decisions (pitch selection)" },
 ];
+
+export type CheckpointEvidenceTier = "single-angle" | "single-instant" | "whole-swing";
+
+/** What kind of evidence each checkpoint is judged from - the Node/TypeScript side's one
+ * definition, used by the analysis validator (src/services/ai/semanticValidation.ts).
+ * Mirrors coach/components/checkpointEvidence.js, the coach app's definition: the plain-JS app
+ * cannot import TypeScript and this side's Docker image ships src/ only, so the two cannot share a
+ * file. semanticValidation.test.ts imports the coach module and fails if they ever differ.
+ *   single-angle   - a genuine single-angle correspondence in pose_3d.json's angles dict
+ *   single-instant - corresponds to one real swing instant; `phase` is its swing_phase_types slug
+ *   whole-swing    - evaluated across the whole swing, not one frame or one angle
+ * `phase` on a single-angle checkpoint is the instant its angle is read at, when there is one. */
+export const CHECKPOINT_EVIDENCE_TIERS: Record<string, { tier: CheckpointEvidenceTier; phase: string | null }> = {
+  "stance-setup": { tier: "single-instant", phase: "stance" },
+  load: { tier: "single-instant", phase: "load" },
+  stride: { tier: "single-instant", phase: "stride" },
+  "hip-shoulder-sep": { tier: "single-angle", phase: null },
+  "hand-path": { tier: "whole-swing", phase: null },
+  "bat-path": { tier: "whole-swing", phase: null },
+  "contact-point": { tier: "single-instant", phase: "contact" },
+  extension: { tier: "single-angle", phase: "extension" },
+  "head-eyes": { tier: "whole-swing", phase: null },
+  "follow-through": { tier: "single-instant", phase: "follow-through" },
+  "swing-decisions": { tier: "whole-swing", phase: null },
+};

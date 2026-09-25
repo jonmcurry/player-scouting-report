@@ -5,9 +5,9 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { analyzeSwing, type FrameImage } from "../services/ai/geminiAnalyzer.js";
 import { analyzeSwingViaClaudeCli } from "../services/ai/claudeCliAnalyzer.js";
-import { buildInputManifest, type AnalysisInput, type PitchContext } from "../services/ai/analysisContext.js";
+import { buildInputManifest, type AnalysisInput, type PitchContext, type SwingContext } from "../services/ai/analysisContext.js";
 import { ANALYSIS_POLICY_VERSION, PROMPT_VERSION } from "../services/ai/analysisVersions.js";
-import { findingIdentity, validateSwingAnalysisResult, type SwingAnalysisResult } from "../services/ai/swingAnalysisShared.js";
+import { findingIdentity, validateSwingAnalysisResult, validationContext, type SwingAnalysisResult } from "../services/ai/swingAnalysisShared.js";
 import { loadActiveMethodologySnapshot, filterApplicableMethodology, renderMethodologyPack } from "../services/knowledge/methodologyRepository.js";
 import { findPlayerId, loadCheckpointSlugToId, upsertChecklistScore } from "../services/db/checklistUpsert.js";
 import { getSupabaseClient } from "../services/db/supabaseClient.js";
@@ -54,13 +54,16 @@ export async function buildAnalysisInput(args: {
   if (playerErr || !player) throw new Error(`Loading player analysis context: ${playerErr?.message ?? "not found"}`);
   const team = player.teams as unknown as { sport: "baseball" | "softball" | null; level_label: string | null };
   let pitch = emptyPitch();
+  let swingContext: SwingContext = "unknown";
   if (args.videoClipId) {
     const { data: clip, error: clipErr } = await supabase
       .from("video_clips")
-      .select("at_bat_pitches(pitch_location,pitch_zone,count_before_balls,count_before_strikes,pitch_outcome,swung,pitch_type)")
+      .select("game_log_entry_id,at_bat_pitch_id,practice_repetition_id,at_bat_pitches(pitch_location,pitch_zone,count_before_balls,count_before_strikes,pitch_outcome,swung,pitch_type)")
       .eq("id", args.videoClipId)
       .single();
     if (clipErr) throw new Error(`Loading structured pitch context: ${clipErr.message}`);
+    // A clip hangs off either a game at-bat or a practice repetition (video_clips_one_source).
+    swingContext = clip?.practice_repetition_id ? "practice" : clip?.at_bat_pitch_id || clip?.game_log_entry_id ? "game" : "unknown";
     const p = clip?.at_bat_pitches as unknown as {
       pitch_location: string | null; pitch_zone: number | null; count_before_balls: number | null;
       count_before_strikes: number | null; pitch_outcome: string | null; swung: boolean | null; pitch_type: string | null;
@@ -95,18 +98,19 @@ export async function buildAnalysisInput(args: {
     bats: player.bats as AnalysisInput["player"]["bats"],
     throws: player.throws as AnalysisInput["player"]["throws"],
   };
-  const applicable = filterApplicableMethodology(snapshot.items, { sport: playerContext.sport, ageBand: playerContext.ageBand });
+  const applicable = filterApplicableMethodology(snapshot.items, { sport: playerContext.sport, ageBand: playerContext.ageBand, swingContext });
   const pack = renderMethodologyPack(applicable);
   return {
     player: playerContext,
     pitch,
     coachReviewedDecisions: (decisions ?? []).map((d) => ({ concept: d.concept, phase: d.phase, videoClipId: d.video_clip_id, status: d.review_status })),
     swing: {
-      frameNames: frameNames(args.framesDir), pipelineVersion: args.pipelineVersion, metrics: {},
+      frameNames: frameNames(args.framesDir), context: swingContext, pipelineVersion: args.pipelineVersion, metrics: {},
       reconstructionSupplied: false, excludedMeasurements: [...TILT_EXCLUSIONS, ...(args.extraExclusions ?? [])],
     },
     knowledgePack: pack.text,
     knowledgeClaimIds: pack.claimIds,
+    knowledgeClaimExclusions: Object.fromEntries(applicable.filter((c) => pack.claimIds.includes(c.claimId)).map((c) => [c.claimId, c.doesNotApplyWhen])),
     knowledgeVersion: snapshot.versionLabel,
   };
 }
@@ -154,7 +158,7 @@ export async function analyzeAndSync(
   if (claudeDraftPath) {
     console.log(`Loading Claude-drafted analysis from ${claudeDraftPath} (Gemini not called)...`);
     result = validateSwingAnalysisResult(JSON.parse(fs.readFileSync(claudeDraftPath, "utf-8")), {
-      source: "claude", aiModel: "claude-draft-file", allowedKnowledgeClaimIds: input.knowledgeClaimIds, availableBases: ["video"],
+      source: "claude", aiModel: "claude-draft-file", ...validationContext(input), availableBases: ["video"],
     });
   } else if (useClaudeCli) {
     console.log(`Running analysis via the local claude CLI on ${framesDir} (Gemini not called)...`);

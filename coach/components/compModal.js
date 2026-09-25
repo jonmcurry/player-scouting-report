@@ -11,6 +11,7 @@
 // existing, fact-checked convention, not re-derived here.
 import { buildExtensionCorrectedFrames, renderSkeletonComparison, renderSkeletonFrameToCanvas } from "./skeletonComparison.js";
 import { registerModalOverlay } from "./ui.js";
+import { CHECKPOINT_EVIDENCE_TIERS } from "./checkpointEvidence.js";
 
 const COMP_BY_CHECKPOINT = {
   "hip-shoulder-sep": {
@@ -70,26 +71,24 @@ const COMP_BY_CHECKPOINT = {
   },
 };
 
-// Tier 1: the only 2 checkpoints with a genuine single-angle correspondence
-// in pose_3d.json's angles dict (see the approved plan's section 3) - get
-// the live real-vs-corrected skeleton comparison, not a static split.
-const TIER_1_CHECKPOINTS = new Set(["extension", "hip-shoulder-sep"]);
+// Tiers come from checkpointEvidence.js (shared with the analysis validator).
+// Tier 1 (single-angle): a genuine single-angle correspondence in
+// pose_3d.json's angles dict (see the approved plan's section 3) - gets the
+// live real-vs-corrected skeleton comparison, not a static split.
+const TIER_1_CHECKPOINTS = new Set(
+  Object.entries(CHECKPOINT_EVIDENCE_TIERS).filter(([, e]) => e.tier === "single-angle").map(([slug]) => slug),
+);
 
-// Tier 2: the 5 remaining checkpoints that correspond to one real instant
-// in the swing (a real phase timestamp), get a static real-skeleton
-// snapshot at that phase - not a live comparison (no single-angle target
-// exists for these), not illustration-only either. Tier 3 (everything not
-// listed here or in TIER_1_CHECKPOINTS: hand-path, bat-path, head-eyes,
-// swing-decisions) evaluates across the whole swing, not one frame or one
-// angle - illustration-only, unchanged, an honest scope boundary rather
-// than an invented mapping.
-const CHECKPOINT_TO_PHASE_SLUG = {
-  "stance-setup": "stance",
-  load: "load",
-  stride: "stride",
-  "contact-point": "contact",
-  "follow-through": "follow-through",
-};
+// Tier 2 (single-instant): corresponds to one real instant in the swing (a
+// real phase timestamp), gets a static real-skeleton snapshot at that phase -
+// not a live comparison (no single-angle target exists for these), not
+// illustration-only either. Tier 3 (whole-swing: hand-path, bat-path,
+// head-eyes, swing-decisions) evaluates across the whole swing, not one frame
+// or one angle - illustration-only, unchanged, an honest scope boundary
+// rather than an invented mapping.
+const CHECKPOINT_TO_PHASE_SLUG = Object.fromEntries(
+  Object.entries(CHECKPOINT_EVIDENCE_TIERS).filter(([, e]) => e.tier === "single-instant").map(([slug, e]) => [slug, e.phase]),
+);
 
 // onClose disposes any live WebGL scene(s) mounted inside the modal
 // (skeletonScene.js) - a real GPU context per canvas, not just DOM nodes, so

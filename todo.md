@@ -148,3 +148,11 @@ Do not claim future knowledge tables, ingestion, QA, analytics, promotion automa
 - Confirm a failed AI diagnosis leaves the processed clip `ready`.
 - Confirm no candidate Gemini research appears in the rendered knowledge pack or `input_manifest`.
 - Produce the requested 12-part final report and end with the exact architecture question from the original request.
+
+## Semantic validation follow-ups (2026-09-25, not started)
+
+Non-blocking test gaps from the Codex pass-7 review of `src/services/ai/semanticValidation.ts`, deferred by the owner:
+
+- Known zone + response text claiming the pitch location is unknown.
+- Database-derived swing context: `buildAnalysisInput` game (at-bat pitch) vs practice (practice repetition) clips.
+- More wording cases where inside/outside/high/low describe body position rather than pitch location.

@@ -197,6 +197,42 @@ test("minimal player export: one allowlisted clip produces a valid, self-contain
   assert.ok(!JSON.stringify(fixture).includes("Real Athlete Name"), "the real name must never be exported");
 });
 
+test("reviewed demo curation can omit 3D and provide capture guidance without changing source evidence", () => {
+  const snap = snapshot();
+  const guidance = "Capture clearer, time-sequenced swings with better phase visibility and pitch context before setting a development Priority.";
+  const { fixture, findings } = build(snap, manifest({
+    player: { publicName: "Player A.", publicSlug: "player-a", whatToCheckNext: guidance },
+    analysis: { includePose3d: false, scrubInputManifest: true, scrubDerivedEvidence: true },
+    expect: { requirePose3d: false },
+  }));
+  assert.deepEqual(errors(findings), []);
+  assert.equal(fixture.tables.players[0]!.what_to_check_next, guidance);
+  assert.equal(snap.player.what_to_check_next, "Front side at plant");
+  assert.equal(fixture.tables.video_clip_pose3d.length, 0);
+  assert.deepEqual(fixture.tables.analysis_runs[0]!.input_manifest, {}, "raw model input stays out of the reviewed fixture");
+  assert.deepEqual(fixture.tables.video_clip_metrics[0]!.analysis_quality, {}, "derived quality metrics stay out");
+  assert.ok(fixture.tables.swing_phases.every((phase) => Object.keys(phase.detail as object).length === 0));
+  assert.ok(fixture.tables.swing_phases.length > 0, "approved phase markers remain available");
+});
+
+test("reviewed phase allowlist omits unsupported markers and corrects a contact frame only in the demo copy", () => {
+  const snap = snapshot();
+  const original = snap.rows.swing_phases.find((p) => p.video_clip_id === snap.ids.c1 && p.frame === 180)!;
+  const { fixture, findings } = build(snap, manifest({
+    clips: [{ clipSlug: "c1-slug", trim: { startS: 1, endS: 9 }, analysisWindowStartS: 1,
+      phaseReview: { include: ["contact"], overrides: { contact: { frame: 141, timeS: 4.7203, method: "audio-contact-redetect-1", confidence: "low", reconstructionReliable: false } } } }],
+    priorities: "none", expect: {},
+  }));
+  assert.deepEqual(errors(findings), []);
+  assert.equal(fixture.tables.swing_phases.length, 1);
+  const contact = fixture.tables.swing_phases[0]!;
+  assert.equal(contact.frame, 141);
+  assert.equal(contact.time_s, 4.7203);
+  assert.equal(contact.reconstruction_reliable, false);
+  assert.deepEqual(contact.detail, {});
+  assert.equal(original.frame, 180, "the source phase is untouched");
+});
+
 // 2 ---------------------------------------------------------------------------
 test("approved and edited findings are exported with provenance and an aliased reviewer", () => {
   const { fixture } = build();
@@ -609,6 +645,21 @@ test("checklist review states: verified exports, insufficient exports without AI
   const drafty = structuredClone(fixture);
   drafty.tables.checklist_scores.find((r) => r.review_status === "insufficient_evidence")!.ai_draft = 2;
   assert.ok(validateFixture(drafty).some((f) => f.code === "INSUFFICIENT_LEAKS_DRAFT"));
+
+  const reviewed = buildFixture(snap, manifest({ checklist: { includeRejectedStates: true } }), { mediaMode: "planned" });
+  assert.deepEqual(errors(reviewed.findings), []);
+  const rejected = reviewed.fixture.tables.checklist_scores.find((r) => r.review_status === "rejected")!;
+  assert.ok(rejected);
+  assert.equal(rejected.reviewed_by, "Coach Demo");
+  assert.equal(rejected.score, null);
+  assert.equal(rejected.ai_draft, null);
+  assert.equal(rejected.notes, "");
+  assert.equal(rejected.source, null);
+  assert.equal(rejected.analysis_run_id, null);
+  assert.ok(!JSON.stringify(reviewed.fixture).includes("rejected AI text"));
+  const unsanitized = structuredClone(reviewed.fixture);
+  unsanitized.tables.checklist_scores.find((r) => r.review_status === "rejected")!.ai_draft = 1;
+  assert.ok(validateFixture(unsanitized).some((f) => f.code === "REJECTED_SCORE"));
 });
 
 test("publishAsUnknown: declared-unverified fields export as null with a warning; undeclared missing fields still fail", () => {

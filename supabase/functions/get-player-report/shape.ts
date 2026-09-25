@@ -29,7 +29,7 @@ export interface RawScore { score: number | null; reviewed_by: string | null; re
 const isVerified = (s: RawScore) => (s.review_status ? s.review_status === "verified" : Boolean(s.reviewed_by) && s.score != null);
 
 export function shapePlayerReport(input: {
-  player: { name: string; jersey_number: string | number | null; teamName: string };
+  player: { name: string; jersey_number: string | number | null; teamName: string; whatToCheckNext?: string | null };
   scores: RawScore[];
   priorities: RawPriority[];
   drills: RawDrillAssignment[];
@@ -48,6 +48,7 @@ export function shapePlayerReport(input: {
     playerName: player.name,
     jerseyNumber: player.jersey_number,
     teamName: player.teamName,
+    nextStep: player.whatToCheckNext ?? null,
     loggedAtBats,
     // Only checkpoints a coach confirmed at the top score - never an unreviewed AI draft.
     strengths: confirmedScores.filter((s) => s.score === 3).map((s) => s.checkpoints.label),

@@ -137,6 +137,7 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
 
   // ---- 2. Clip allowlist ------------------------------------------------------
   const requirePose3d = manifest.expect?.requirePose3d !== false;
+  const includePose3d = manifest.analysis?.includePose3d !== false;
   const requireMetrics = manifest.expect?.requireMetrics === true;
   const clipById = new Map(R.video_clips.map((c) => [s(c.id), c]));
   const phasesByClip = groupBy(R.swing_phases, "video_clip_id");
@@ -298,6 +299,7 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
 
   // ---- 4. Findings / scores / runs --------------------------------------------
   const includeDrafts = manifest.findings?.includeDrafts === true;
+  const includeRejectedChecklistStates = manifest.checklist?.includeRejectedStates === true;
   const exportedIssues: Row[] = [];
   for (const i of R.issues) {
     const id = s(i.id);
@@ -315,8 +317,8 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
     // 00040 review state. Rows read before it carry no review_status: fall back to reviewed_by.
     const state = sc.review_status ?? (sc.reviewed_by ? "verified" : "ai_draft");
     if (state === "ai_draft") { exclusions.push({ table: "checklist_scores", sourceId: s(sc.id), reason: "AI draft score, not coach-reviewed" }); continue; }
-    if (state === "rejected") { exclusions.push({ table: "checklist_scores", sourceId: s(sc.id), reason: "coach rejected the AI draft - never exported as a coaching conclusion" }); continue; }
-    if (state !== "verified" && state !== "insufficient_evidence") { exclusions.push({ table: "checklist_scores", sourceId: s(sc.id), reason: `unknown review state ${String(state)}` }); continue; }
+    if (state === "rejected" && !includeRejectedChecklistStates) { exclusions.push({ table: "checklist_scores", sourceId: s(sc.id), reason: "coach rejected the AI draft - never exported as a coaching conclusion" }); continue; }
+    if (!["verified", "insufficient_evidence", "rejected"].includes(String(state))) { exclusions.push({ table: "checklist_scores", sourceId: s(sc.id), reason: `unknown review state ${String(state)}` }); continue; }
     exportedScores.push({ ...sc, review_status: state });
   }
   const exportedScoreIds = new Set(exportedScores.map((x) => s(x.id)));
@@ -396,7 +398,11 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
     age_band: manifest.player.ageBand ?? player.age_band ?? null,
     bats: manifest.player.bats ?? player.bats ?? null,
     throws: manifest.player.throws ?? player.throws ?? null,
+    what_to_check_next: manifest.player.whatToCheckNext ?? player.what_to_check_next ?? null,
   }));
+  if (manifest.player.whatToCheckNext !== undefined && manifest.player.whatToCheckNext !== player.what_to_check_next) {
+    overrides.push({ table: "players", id: fxPlayer, column: "what_to_check_next", from: player.what_to_check_next ?? null, to: manifest.player.whatToCheckNext });
+  }
 
   for (const e of R.game_log_entries.filter((x) => entryIds.has(s(x.id))).sort(byCreated)) {
     const src = entryById.get(s(e.id))!;
@@ -467,28 +473,48 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
       const withheld = mc.publishAsUnknown?.videoClipMetrics ?? [];
       for (const col of withheld) applyOverride("video_clip_metrics", m, col, col === "movement_flags" ? {} : null, true);
       if (withheld.length) warn("HUMAN_METADATA_DECLARED_UNKNOWN", `clip "${s(clip.clip_slug)}": ${withheld.length} swing metric field(s) withheld as unverified`, "video_clip_metrics", ids.idFor("video_clip_metrics", s(m.id)));
-      out.video_clip_metrics.push(buildTargetRow("video_clip_metrics", m, { id: ids.idFor("video_clip_metrics", s(m.id)), video_clip_id: fxClip }));
+      const metricRow = buildTargetRow("video_clip_metrics", m, { id: ids.idFor("video_clip_metrics", s(m.id)), video_clip_id: fxClip });
+      if (manifest.analysis?.scrubDerivedEvidence) metricRow.analysis_quality = {};
+      out.video_clip_metrics.push(metricRow);
     }
-    for (const p of poseByClip.get(sourceClipId) ?? []) {
+    if (!includePose3d) for (const p of poseByClip.get(sourceClipId) ?? []) exclusions.push({ table: "video_clip_pose3d", sourceId: s(p.id), reason: "3D excluded by the reviewed manifest" });
+    for (const p of includePose3d ? poseByClip.get(sourceClipId) ?? [] : []) {
       out.video_clip_pose3d.push(buildTargetRow("video_clip_pose3d", p, { id: ids.idFor("video_clip_pose3d", s(p.id)), video_clip_id: fxClip }));
     }
     const phaseSlug = new Map(R.swing_phase_types.map((t) => [s(t.id), s(t.slug)]));
+    const approvedPhases = mc.phaseReview?.include ? new Set(mc.phaseReview.include) : null;
     for (const ph of (phasesByClip.get(sourceClipId) ?? []).slice().sort((a, b) => s(phaseSlug.get(s(a.phase_type_id))).localeCompare(s(phaseSlug.get(s(b.phase_type_id)))))) {
       const slug = phaseSlug.get(s(ph.phase_type_id));
+      if (approvedPhases && (!slug || !approvedPhases.has(slug))) { exclusions.push({ table: "swing_phases", sourceId: s(ph.id), reason: "phase not in the human-audited allowlist" }); continue; }
       const id = ids.idFor("swing_phases", s(ph.id));
       if (!slug) err("REF_MISSING", "swing phase has an unknown phase type", "swing_phases", id);
-      out.swing_phases.push(buildTargetRow("swing_phases", ph, { id, video_clip_id: fxClip, phase_type_id: null },
+      const correction = slug ? mc.phaseReview?.overrides?.[slug] : undefined;
+      if (correction) for (const [column, to] of Object.entries({ frame: correction.frame, time_s: correction.timeS, method: correction.method ?? ph.method, confidence: correction.confidence ?? ph.confidence, reconstruction_reliable: correction.reconstructionReliable ?? ph.reconstruction_reliable, detail: {} })) {
+        if (JSON.stringify(ph[column]) !== JSON.stringify(to)) overrides.push({ table: "swing_phases", id, column, from: column === "detail" ? "<withheld: superseded phase detail>" : ph[column] ?? null, to });
+      }
+      out.swing_phases.push(buildTargetRow("swing_phases", ph, {
+        id, video_clip_id: fxClip, phase_type_id: null,
+        frame: correction?.frame ?? ph.frame,
+        time_s: correction?.timeS ?? ph.time_s,
+        method: correction?.method ?? ph.method,
+        confidence: correction?.confidence ?? ph.confidence,
+        reconstruction_reliable: correction?.reconstructionReliable ?? ph.reconstruction_reliable,
+        detail: correction || manifest.analysis?.scrubDerivedEvidence ? {} : ph.detail,
+      },
         { phase_type_id: { table: "swing_phase_types", slug: slug ?? "" } }));
     }
+    if (approvedPhases) for (const slug of approvedPhases) if (!out.swing_phases.some((p) => p.video_clip_id === fxClip && (p._refs as Record<string, { slug: string }> | undefined)?.phase_type_id?.slug === slug)) err("REF_MISSING", `approved phase ${slug} has no source row`, "swing_phases", fxClip);
   }
 
   const manifestClipBySource = new Map(selected.map(({ mc, clip }) => [s(clip.id), mc]));
   for (const r of R.analysis_runs.filter((x) => runIds.has(s(x.id))).sort(byCreated)) {
     for (const col of manifestClipBySource.get(s(r.video_clip_id))?.publishAsUnknown?.analysisRun ?? []) applyOverride("analysis_runs", r, col, col === "no_action_needed" ? false : null, true);
-    out.analysis_runs.push(buildTargetRow("analysis_runs", r, {
+    const runRow = buildTargetRow("analysis_runs", r, {
       id: ids.idFor("analysis_runs", s(r.id)), player_id: fxPlayer,
       video_clip_id: ids.lookup("video_clips", r.video_clip_id as string | null),
-    }));
+    });
+    if (manifest.analysis?.scrubInputManifest) runRow.input_manifest = {};
+    out.analysis_runs.push(runRow);
   }
 
   const checkpointSlug = new Map(R.checkpoints.map((c) => [s(c.id), s(c.slug)]));
@@ -501,7 +527,8 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
       id, player_id: fxPlayer, checkpoint_id: null, reviewed_by: alias(sc.reviewed_by),
       ai_draft: verified ? sc.ai_draft : null,
       notes: verified ? sc.notes : "",
-      analysis_run_id: softRef("analysis_runs", sc.analysis_run_id, { table: "checklist_scores", id, column: "analysis_run_id" }),
+      source: sc.review_status === "rejected" ? null : sc.source,
+      analysis_run_id: sc.review_status === "rejected" ? null : softRef("analysis_runs", sc.analysis_run_id, { table: "checklist_scores", id, column: "analysis_run_id" }),
     }, { checkpoint_id: { table: "checkpoints", slug: slug ?? "" } }));
   }
   // Only coach-verified history of verified scores: AI-draft entries and
@@ -581,6 +608,7 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
       ...(manifest.localValidationOnly ? { localValidationOnly: true } : {}),
       consentConfirmedAt: manifest.publication?.consentConfirmedAt ?? "",
       includeDrafts,
+      includeRejectedChecklistStates,
       reviewerAliasApplied: reviewerNeeded,
       overrides,
       expect: { comparePairs: [...(manifest.expect?.comparePairs ?? [])] },
@@ -647,4 +675,3 @@ function byCreated(a: Row, b: Row): number {
 function round6(n: number): number {
   return Math.round(n * 1e6) / 1e6;
 }
-

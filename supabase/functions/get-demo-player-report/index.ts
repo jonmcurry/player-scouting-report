@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
 
     const { data: player, error: playerError } = await supabase
       .from("players")
-      .select("name, jersey_number, teams!inner(name)")
+      .select("name, jersey_number, what_to_check_next, teams!inner(name)")
       .eq("id", link.player_id)
       .single();
     if (playerError || !player) {
@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
 
     return jsonResponse(
       shapePlayerReport({
-        player: { name: player.name, jersey_number: player.jersey_number, teamName: (player.teams as unknown as { name: string }).name },
+        player: { name: player.name, jersey_number: player.jersey_number, teamName: (player.teams as unknown as { name: string }).name, whatToCheckNext: player.what_to_check_next },
         // deno-lint-ignore no-explicit-any
         scores: (scores ?? []) as any,
         priorities: priorities ?? [],

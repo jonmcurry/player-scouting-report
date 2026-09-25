@@ -42,6 +42,7 @@ import {
   SOFTBALL_COMP_BANK,
   renderSwingAnalysisPrompt,
   validateSwingAnalysisResult,
+  validationContext,
   type ChecklistDraft,
   type IssueDraft,
   type CompDraft,
@@ -104,7 +105,8 @@ const RESPONSE_SCHEMA = {
           coachingCue: { type: Type.STRING },
           suggestedDrill: { type: Type.STRING },
           lookForNext: { type: Type.STRING },
-          confidence: { type: Type.STRING, enum: ["high", "medium", "low"] },
+          // "high" is never valid for a single swing (policy rule 4; rejected by the shared validator).
+          confidence: { type: Type.STRING, enum: ["medium", "low"] },
           phase: { type: Type.STRING, enum: ISSUE_PHASES },
           concept: { type: Type.STRING, enum: CONCEPTS },
           basis: { type: Type.STRING, enum: ISSUE_BASES },
@@ -143,6 +145,58 @@ const RESPONSE_SCHEMA = {
   required: ["noActionNeeded", "noActionReason", "checklist", "issues", "comps", "compNotes", "drills"],
 };
 
+// Transient provider failures (timeouts, rate limits, server/capacity errors) are retried a bounded
+// number of times. Everything else - 400/401/402/403, other statuses, network errors with no HTTP
+// status, and anything after the provider call (empty/blocked response, JSON or schema validation)
+// - fails on the first attempt. First live run (2026-09-25) hit 503 "high demand" twice in a row.
+export const GEMINI_RETRYABLE_STATUSES: ReadonlySet<number> = new Set([408, 429, 500, 502, 503, 504]);
+export const GEMINI_MAX_ATTEMPTS = 4;
+const GEMINI_BASE_DELAY_MS = 1000; // before attempt 2; doubles each attempt (~1s, ~2s, ~4s)
+const GEMINI_JITTER_MS = 500;
+
+export interface GeminiRetryDeps {
+  sleep?: (ms: number) => Promise<void>;
+  random?: () => number;
+  log?: (line: string) => void;
+}
+
+function providerStatus(err: unknown): number | null {
+  const status = (err as { status?: unknown } | null)?.status;
+  return typeof status === "number" ? status : null;
+}
+
+function redactKey(text: string, apiKey: string | undefined): string {
+  return apiKey ? text.split(apiKey).join("[REDACTED]") : text;
+}
+
+export async function withGeminiRetry<T>(call: () => Promise<T>, apiKey: string | undefined, deps: GeminiRetryDeps = {}): Promise<T> {
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const random = deps.random ?? Math.random;
+  const log = deps.log ?? ((line: string) => console.warn(line));
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await call();
+    } catch (err) {
+      const status = providerStatus(err);
+      // Scrub in place so the caller still receives the original provider error object.
+      if (err instanceof Error) {
+        err.message = redactKey(err.message, apiKey);
+        // V8 materialises .stack (which embeds the original message) on first access, so scrub it too.
+        if (typeof err.stack === "string") err.stack = redactKey(err.stack, apiKey);
+      }
+      const errorClass = status === null ? (err instanceof Error ? err.name : "unknown") : `HTTP ${status}`;
+      const retryable = status !== null && GEMINI_RETRYABLE_STATUSES.has(status);
+      if (!retryable || attempt >= GEMINI_MAX_ATTEMPTS) {
+        log(`Gemini attempt ${attempt}/${GEMINI_MAX_ATTEMPTS} failed: ${errorClass}; ${retryable ? "retries exhausted" : "not retryable"}.`);
+        throw err;
+      }
+      const delay = Math.round(GEMINI_BASE_DELAY_MS * 2 ** (attempt - 1) + random() * GEMINI_JITTER_MS);
+      log(`Gemini attempt ${attempt}/${GEMINI_MAX_ATTEMPTS} failed: ${errorClass}; retrying in ${delay}ms.`);
+      await sleep(delay);
+    }
+  }
+}
+
 let client: GoogleGenAI | null = null;
 function getClient(): GoogleGenAI {
   if (client) return client;
@@ -163,26 +217,29 @@ function getClient(): GoogleGenAI {
 export async function analyzeSwing(
   frames: FrameImage[],
   input: AnalysisInput,
+  // Test seam only: production callers pass nothing and get the real client and timers.
+  deps: GeminiRetryDeps & { client?: Pick<GoogleGenAI, "models"> } = {},
 ): Promise<GeminiAnalysisResult> {
   if (frames.length === 0) {
     throw new Error("analyzeSwing requires at least one frame image");
   }
 
-  const ai = getClient();
+  const ai = deps.client ?? getClient();
   const model = getConfiguredGeminiModel();
   const contents = [
     { text: renderSwingAnalysisPrompt(input) },
     ...frames.map((f) => ({ inlineData: { data: f.data.toString("base64"), mimeType: f.mimeType } })),
   ];
 
-  const response = await ai.models.generateContent({
+  // Only the provider call is retried; parsing and validation below run once on the final response.
+  const response = await withGeminiRetry(() => ai.models.generateContent({
     model,
     contents,
     config: {
       responseMimeType: "application/json",
       responseSchema: RESPONSE_SCHEMA,
     },
-  });
+  }), process.env.GEMINI_API_KEY, deps);
 
   const text = response.text;
   if (!text) {
@@ -193,7 +250,6 @@ export async function analyzeSwing(
     source: "gemini",
     aiModel: model,
     aiModelVersion: modelVersion,
-    allowedKnowledgeClaimIds: input.knowledgeClaimIds,
-    availableBases: ["video", ...(Object.keys(input.swing.metrics).length ? ["metric" as const] : []), ...(input.swing.reconstructionSupplied ? ["reconstruction" as const] : [])],
+    ...validationContext(input),
   });
 }

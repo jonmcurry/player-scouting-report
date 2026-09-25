@@ -61,4 +61,4 @@ Otherwise return:
 
 Write-Host "Running AGY visual QA..." -ForegroundColor Cyan
 
-agy run $prompt
+agy --mode plan --print-timeout 180s -p $prompt

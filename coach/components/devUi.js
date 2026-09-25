@@ -64,7 +64,7 @@ export function buildContext(session, coachName, player) {
   };
 }
 
-export const PLAYER_SELECT = "id, name, jersey_number, slug, teams!inner(id, slug, name)";
+export const PLAYER_SELECT = "id, name, jersey_number, slug, what_to_check_next, teams!inner(id, slug, name)";
 
 /** Loads session, current player/team, coach name from ?team=&player=. Redirects when signed out. */
 export async function loadContext() {

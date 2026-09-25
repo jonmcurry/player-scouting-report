@@ -38,6 +38,8 @@ export interface CuratedClip {
   allowLongMedia?: boolean;
   /** Privacy-treated media for this clip: <dir>/<name>.{mp4,summary.json,validation.json} from scripts/privacy/. */
   privacy?: { name: string; dir?: string };
+  /** Human-audited phase allowlist and corrections for the demo copy only. */
+  phaseReview?: { include: string[]; overrides?: Record<string, { frame: number; timeS: number; method?: string; confidence?: "low" | "medium" | "high"; reconstructionReliable?: boolean }> };
   overrides?: { gameLogEntry?: GameLogOverrides; atBatPitch?: PitchOverrides; practiceRepetition?: RepOverrides };
   /**
    * Fields the human explicitly declares UNVERIFIED for publication: exported as
@@ -96,13 +98,16 @@ export interface CurationManifest {
   publication?: { consentConfirmedBy: string; consentConfirmedAt: string; note?: string };
   /** The visitor's demo team, exactly as publication permission allows (e.g. the real team name, or a neutral label). */
   team: { publicName: string; sport?: "softball" | "baseball"; levelLabel?: string };
-  player: { publicName: string; publicSlug: string; jerseyNumber?: string; ageBand?: string; bats?: "L" | "R" | "S"; throws?: "L" | "R" };
+  player: { publicName: string; publicSlug: string; jerseyNumber?: string; ageBand?: string; bats?: "L" | "R" | "S"; throws?: "L" | "R"; whatToCheckNext?: string };
   /** Replaces every coach name in reviewed_by/changed_by. Required when any reviewed row is exported. */
   reviewerDisplayName?: string;
   clips: CuratedClip[];
   /** "all" = every non-archived priority; or an explicit list of source priority ids. */
   priorities: "all" | "none" | string[];
   findings?: { includeDrafts?: boolean };
+  checklist?: { includeRejectedStates?: boolean };
+  /** Optional presentation exclusions for evidence the reviewed demo will not show. */
+  analysis?: { includePose3d?: boolean; scrubInputManifest?: boolean; scrubDerivedEvidence?: boolean };
   report?: { shareLink?: boolean };
   expect?: {
     requirePose3d?: boolean;
@@ -189,6 +194,7 @@ export function parseCurationManifest(raw: unknown): { manifest: CurationManifes
     if (player.bats !== undefined && !["L", "R", "S"].includes(String(player.bats))) add("player.bats", "must be L, R, or S");
     if (player.throws !== undefined && !["L", "R"].includes(String(player.throws))) add("player.throws", "must be L or R");
     if (player.ageBand !== undefined && !["u8", "8-10", "11-12", "13-14", "15-18", "adult"].includes(String(player.ageBand))) add("player.ageBand", "not a valid age band");
+    if (player.whatToCheckNext !== undefined && !nonEmpty(player.whatToCheckNext)) add("player.whatToCheckNext", "must be a non-empty string when present");
   }
   if (raw.reviewerDisplayName !== undefined && !nonEmpty(raw.reviewerDisplayName)) add("reviewerDisplayName", "must be a non-empty string when present");
 
@@ -214,6 +220,15 @@ export function parseCurationManifest(raw: unknown): { manifest: CurationManifes
       if (c.analysisWindowStartS !== undefined && !(typeof c.analysisWindowStartS === "number" && c.analysisWindowStartS >= 0)) add(`${at}.analysisWindowStartS`, "must be a number >= 0");
       if (c.sourceVideo !== undefined && !nonEmpty(c.sourceVideo)) add(`${at}.sourceVideo`, "must be a non-empty path");
       if (c.overrides !== undefined && !isObj(c.overrides)) add(`${at}.overrides`, "must be an object");
+      if (c.phaseReview !== undefined) {
+        const pr = c.phaseReview;
+        const allowed = ["stance", "load", "stride", "contact", "extension", "follow-through"];
+        if (!isObj(pr) || !Array.isArray(pr.include) || pr.include.length === 0 || pr.include.some((x) => !allowed.includes(String(x))) || new Set(pr.include).size !== pr.include.length) {
+          add(`${at}.phaseReview.include`, "must list unique known phases");
+        } else if (pr.overrides !== undefined && (!isObj(pr.overrides) || Object.entries(pr.overrides).some(([slug, v]) => !(pr.include as string[]).includes(slug) || !isObj(v) || !Number.isInteger(v.frame) || (v.frame as number) < 0 || typeof v.timeS !== "number" || v.timeS < 0 || (v.method !== undefined && !nonEmpty(v.method)) || (v.confidence !== undefined && !["low", "medium", "high"].includes(String(v.confidence))) || (v.reconstructionReliable !== undefined && typeof v.reconstructionReliable !== "boolean")))) {
+          add(`${at}.phaseReview.overrides`, "must contain valid corrections for included phases only");
+        }
+      }
       if (c.publishAsUnknown !== undefined) {
         const u = c.publishAsUnknown;
         const okList = (v: unknown, allowed: string[]) => v === undefined || (Array.isArray(v) && v.every((x) => allowed.includes(String(x))));
@@ -235,6 +250,17 @@ export function parseCurationManifest(raw: unknown): { manifest: CurationManifes
   const pr = raw.priorities;
   if (!(pr === "all" || pr === "none" || (Array.isArray(pr) && pr.every((x) => typeof x === "string" && UUID.test(x))))) {
     add("priorities", 'required: "all", "none", or a list of source priority uuids (priorities are coach conclusions - include them deliberately)');
+  }
+  if (raw.analysis !== undefined) {
+    if (!isObj(raw.analysis)) add("analysis", "must be an object when present");
+    else {
+      if (raw.analysis.includePose3d !== undefined && typeof raw.analysis.includePose3d !== "boolean") add("analysis.includePose3d", "must be a boolean when present");
+      if (raw.analysis.scrubInputManifest !== undefined && typeof raw.analysis.scrubInputManifest !== "boolean") add("analysis.scrubInputManifest", "must be a boolean when present");
+      if (raw.analysis.scrubDerivedEvidence !== undefined && typeof raw.analysis.scrubDerivedEvidence !== "boolean") add("analysis.scrubDerivedEvidence", "must be a boolean when present");
+    }
+  }
+  if (raw.checklist !== undefined && (!isObj(raw.checklist) || (raw.checklist.includeRejectedStates !== undefined && typeof raw.checklist.includeRejectedStates !== "boolean"))) {
+    add("checklist.includeRejectedStates", "must be a boolean when present");
   }
   if (raw.mediaFileVersion !== undefined && !(nonEmpty(raw.mediaFileVersion) && /^[A-Za-z0-9][A-Za-z0-9._-]{0,40}$/.test(String(raw.mediaFileVersion)))) add("mediaFileVersion", "must be a version tag like 2026-09-24.2");
   if (raw.mediaPolicy !== undefined && !["privacy-treated", "raw-transcode"].includes(String(raw.mediaPolicy))) add("mediaPolicy", 'must be "privacy-treated" or "raw-transcode"');

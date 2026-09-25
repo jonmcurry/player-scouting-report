@@ -30,6 +30,7 @@ export interface Fixture {
     localValidationOnly?: boolean;
     consentConfirmedAt: string;
     includeDrafts: boolean;
+    includeRejectedChecklistStates?: boolean;
     reviewerAliasApplied: boolean;
     overrides: Array<{ table: string; id: string; column: string; from: unknown; to: unknown }>;
     expect: { comparePairs: string[] };
@@ -195,7 +196,11 @@ export function validateFixture(fx: Fixture, opts: ValidateOptions = {}): Findin
   for (const s of rows("checklist_scores")) {
     const id = String(s.id);
     if (!s.reviewed_by) err("UNAPPROVED_SCORE", "checklist score without a coach review (AI draft) must not be exported", "checklist_scores", id);
-    if (s.review_status === "rejected") err("REJECTED_SCORE", "a rejected AI checklist draft must never be exported", "checklist_scores", id);
+    if (s.review_status === "rejected") {
+      if (!fx.curation?.includeRejectedChecklistStates || s.score != null || s.ai_draft != null || (s.notes ?? "") !== "" || s.source != null || s.analysis_run_id != null) {
+        err("REJECTED_SCORE", "a rejected checklist state may export only as a scrubbed, coach-reviewed no-score marker", "checklist_scores", id);
+      }
+    }
     else if (s.review_status === "verified") { if (s.score == null) err("UNAPPROVED_SCORE", "a verified checklist score must carry a score", "checklist_scores", id); }
     else if (s.review_status === "insufficient_evidence") {
       if (s.score != null || s.ai_draft != null || (s.notes ?? "") !== "") err("INSUFFICIENT_LEAKS_DRAFT", "an insufficient-evidence checkpoint must export no score, AI draft or AI note", "checklist_scores", id);

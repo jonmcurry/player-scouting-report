@@ -56,7 +56,7 @@ const AI_UNREVIEWED = "unreviewed AI output with no coach review state of its ow
 export const ENTITY_SPECS: Readonly<Record<FixtureTable, EntitySpec>> = {
   players: {
     source: "public.players", target: "players",
-    copy: ["refilm_by", "what_to_check_next", "created_at"],
+    copy: ["refilm_by", "created_at"],
     transformed: {
       id: "deterministic fixture id",
       team_id: "per-clone demo team (placeholder)",
@@ -66,6 +66,7 @@ export const ENTITY_SPECS: Readonly<Record<FixtureTable, EntitySpec>> = {
       age_band: "curation manifest player.ageBand, else source",
       bats: "curation manifest player.bats, else source",
       throws: "curation manifest player.throws, else source",
+      what_to_check_next: "curation manifest player.whatToCheckNext, else source",
     },
     omitted: {},
     defaulted: {},
@@ -187,10 +188,16 @@ export const ENTITY_SPECS: Readonly<Record<FixtureTable, EntitySpec>> = {
   },
   swing_phases: {
     source: "public.swing_phases", target: "swing_phases",
-    copy: ["frame", "time_s", "method", "confidence", "detail", "reconstruction_reliable", "created_at"],
+    copy: ["created_at"],
     transformed: {
       id: "deterministic fixture id", video_clip_id: "fixture clip",
       phase_type_id: "resolved by swing_phase_types slug at clone time",
+      frame: "source, or human-audited phase correction",
+      time_s: "source, or human-audited phase correction",
+      method: "source, or human-audited phase correction",
+      confidence: "source, or human-audited phase correction",
+      detail: "source, or empty for a corrected phase",
+      reconstruction_reliable: "source, or human-audited phase correction",
     },
     omitted: {},
     defaulted: {},
@@ -213,12 +220,13 @@ export const ENTITY_SPECS: Readonly<Record<FixtureTable, EntitySpec>> = {
     required: ["id", "player_id", "backend", "ai_model", "prompt_version", "analysis_policy_version", "knowledge_version", "input_manifest", "no_action_needed", "created_at"],
   },
   checklist_scores: {
-    source: "public.checklist_scores (verified and insufficient_evidence rows only; ai_draft and rejected never)", target: "checklist_scores",
-    copy: ["score", "source", "review_status", "updated_at"],
+    source: "public.checklist_scores (verified and insufficient_evidence rows; optionally scrubbed rejected state; ai_draft never)", target: "checklist_scores",
+    copy: ["score", "review_status", "updated_at"],
     transformed: {
       id: "deterministic fixture id", player_id: "fixture player",
-      ai_draft: "source for verified rows; null for insufficient_evidence (the AI's number is never published as that checkpoint's value)",
-      notes: "source for verified rows; empty for insufficient_evidence (the AI's rationale is not a coaching conclusion)",
+      ai_draft: "source for verified rows; null for insufficient_evidence and rejected states",
+      notes: "source for verified rows; empty for insufficient_evidence and rejected states",
+      source: "source for verified/insufficient rows; null for rejected states",
       checkpoint_id: "resolved by checkpoints slug at clone time",
       reviewed_by: "curation manifest reviewerDisplayName (null-ness preserved)",
       analysis_run_id: "fixture run, or null (warned) when that run isn't exported",
