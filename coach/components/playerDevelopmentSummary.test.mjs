@@ -39,6 +39,17 @@ test("player summary preserves a real priority and its active drill", () => {
   assert.equal(summary.nextStep, null);
 });
 
+test("verified strengths follow checkpoint order even when score rows arrive reversed", () => {
+  const load = verified("load", "Load", "Load note");
+  load.checkpoints.sort_order = 1;
+  const stance = verified("stance-setup", "Stance & setup", "Stance note");
+  stance.checkpoints.sort_order = 0;
+  const summary = derivePlayerDevelopmentSummary({ checklist: [load, stance] });
+  assert.deepEqual(summary.strengths.map((row) => [row.label, row.note]), [
+    ["Stance & setup", "Stance note"], ["Load", "Load note"],
+  ]);
+});
+
 test("review states distinguish unanalyzed, analyzed-empty, and real findings", () => {
   assert.equal(reviewFindingState(), "unanalyzed");
   assert.equal(reviewFindingState({ hasAnalysisRun: true }), "analyzed-empty");

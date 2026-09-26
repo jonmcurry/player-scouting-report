@@ -160,6 +160,21 @@ test("public report: active outranks monitoring, drills and progress are determi
   assert.ok(!JSON.stringify(a).includes("Draft only"), "unconfirmed checklist rows stay out");
 });
 
+test("public report strengths follow canonical checkpoint order despite reversed score rows", async () => {
+  const { shapePlayerReport } = await import(pathToFileURL(path.resolve("supabase/functions/get-player-report/shape.ts")).href);
+  const report = shapePlayerReport({
+    player: { name: "P", jersey_number: null, teamName: "T" },
+    scores: [
+      { score: null, reviewed_by: "Coach", review_status: "insufficient_evidence", checkpoints: { label: "Stride", sort_order: 2 } },
+      { score: 3, reviewed_by: "Coach", review_status: "verified", checkpoints: { label: "Load", sort_order: 1 } },
+      { score: 3, reviewed_by: "Coach", review_status: "verified", checkpoints: { label: "Stance & setup", sort_order: 0 } },
+    ],
+    priorities: [], drills: [], observations: [], loggedAtBats: 0,
+  });
+  assert.deepEqual(report.strengths, ["Stance & setup", "Load"]);
+  assert.deepEqual(report.checkpoints.map((row: { label: string }) => row.label), ["Stance & setup", "Load", "Stride"]);
+});
+
 test("analysis quality: real coverage numbers, honest nulls, no fabricated handedness certainty", () => {
   const kp = (c: number) => Array.from({ length: 17 }, () => [0, 0, c]);
   const frames = [...Array(8)].map(() => ({ keypoints: kp(0.9) })).concat([...Array(2)].map(() => ({ keypoints: kp(0.05) })));

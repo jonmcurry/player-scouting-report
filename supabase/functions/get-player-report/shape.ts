@@ -23,10 +23,11 @@ export interface RawDrillAssignment {
   player_priority_id: string; active: boolean; coach_note: string | null; assigned_at?: string | null;
   drill_library: { name: string; purpose: string | null; instructions: string | null; equipment: string | null } | null;
 }
-export interface RawScore { score: number | null; reviewed_by: string | null; review_status?: string | null; checkpoints: { label: string } }
+export interface RawScore { score: number | null; reviewed_by: string | null; review_status?: string | null; checkpoints: { label: string; sort_order?: number } }
 
 /** Coach-confirmed score (00040 review_status; rows read without it fall back to reviewed_by + a score). */
 const isVerified = (s: RawScore) => (s.review_status ? s.review_status === "verified" : Boolean(s.reviewed_by) && s.score != null);
+const byCheckpointOrder = (a: RawScore, b: RawScore) => (a.checkpoints.sort_order ?? Number.MAX_SAFE_INTEGER) - (b.checkpoints.sort_order ?? Number.MAX_SAFE_INTEGER);
 
 export function shapePlayerReport(input: {
   player: { name: string; jersey_number: string | number | null; teamName: string; whatToCheckNext?: string | null };
@@ -37,7 +38,7 @@ export function shapePlayerReport(input: {
   loggedAtBats: number;
 }) {
   const { player, scores, priorities, drills, observations, loggedAtBats } = input;
-  const confirmedScores = scores.filter(isVerified);
+  const confirmedScores = scores.filter(isVerified).sort(byCheckpointOrder);
   // Reviewed "can't tell from this footage" checkpoints are shown as such; rejected AI drafts never appear.
   const insufficient = scores.filter((s) => s.review_status === "insufficient_evidence");
   const visible = priorities
@@ -79,10 +80,11 @@ export function shapePlayerReport(input: {
       };
     }),
     // The complete checklist stays available, but the page tucks it away.
-    checkpoints: [
-      ...confirmedScores.map((s) => ({ label: s.checkpoints.label, score: s.score, state: "verified" })),
-      ...insufficient.map((s) => ({ label: s.checkpoints.label, score: null, state: "insufficient_evidence" })),
-    ],
+    checkpoints: [...confirmedScores, ...insufficient]
+      .sort(byCheckpointOrder)
+      .map((s) => isVerified(s)
+        ? { label: s.checkpoints.label, score: s.score, state: "verified" }
+        : { label: s.checkpoints.label, score: null, state: "insufficient_evidence" }),
   };
 }
 

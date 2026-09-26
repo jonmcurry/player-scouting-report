@@ -12,7 +12,9 @@ export function derivePlayerDevelopmentSummary({
   draftFindings = [],
   captureGuidance = null,
 } = {}) {
-  const strengths = checklist.filter(isVerifiedStrength).map((row) => ({
+  const strengths = checklist.filter(isVerifiedStrength)
+    .sort((a, b) => (a.checkpoints?.sort_order ?? Number.MAX_SAFE_INTEGER) - (b.checkpoints?.sort_order ?? Number.MAX_SAFE_INTEGER))
+    .map((row) => ({
     slug: row.checkpoints?.slug ?? row.slug ?? "",
     // The checkpoint's own name - never a re-worded characterization nobody reviewed.
     label: row.checkpoints?.label ?? row.label ?? "Checkpoint",
