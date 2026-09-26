@@ -360,8 +360,38 @@ export function countLabel(b, s) {
   return b == null || s == null ? "count unknown" : `${b}-${s}`;
 }
 
+/** Stamp each clip with `analyzed`, from the ids of clips that have an
+ * analysis_runs row (the same signal player.html and review.html use - there
+ * is no `analyzed` column on video_clips). `analyzedClipIds` null means that
+ * lookup failed or wasn't made: ready clips then get `analyzed: null`
+ * (unknown), never false. A clip that isn't ready can't have been analyzed. */
+export function markClipsAnalyzed(clips, analyzedClipIds) {
+  const known = analyzedClipIds == null ? null : new Set(analyzedClipIds);
+  return (clips ?? []).map((c) => ({
+    ...c,
+    analyzed: c.status !== "ready" ? false : known ? known.has(c.id) : null,
+  }));
+}
+
+/** Per-pitch analysis state: true if any ready clip is known analyzed, false
+ * only if every ready clip is known not analyzed (or there is none), null
+ * when that can't be established from the loaded rows. */
+function pitchAnalyzed(cs) {
+  const ready = cs.filter((c) => c.status === "ready");
+  if (ready.some((c) => c.analyzed === true)) return true;
+  if (ready.every((c) => c.analyzed === false)) return false;
+  return null;
+}
+
+/** `clips` null/undefined means the clip rows didn't load: analysis state is
+ * then unknown (all analyzed* counts null) rather than "none analyzed" - even
+ * for an at-bat with no pitches. Analyzed video is only an "analyzed swing"
+ * when the pitch is explicitly recorded as a swing - analysis never proves a
+ * swing happened. Analyzed video on a recorded take, on a pitch whose
+ * swing/take isn't recorded, or not attached to any pitch is counted apart. */
 export function summarizeAtBat(entry, pitches, clips) {
   const sorted = sortPitches(pitches);
+  const clipsKnown = Array.isArray(clips);
   const clipsByPitch = new Map();
   for (const c of clips ?? []) {
     if (!c.at_bat_pitch_id) continue;
@@ -378,29 +408,56 @@ export function summarizeAtBat(entry, pitches, clips) {
       swung: pitch.swung ?? swungFromOutcome(pitch.pitch_outcome),
       clips: cs,
       hasVideo: cs.length > 0,
-      swingAnalyzed: cs.some((c) => c.status === "ready" && c.analyzed),
+      videoAnalyzed: clipsKnown ? pitchAnalyzed(cs) : null,
       videoStatus: cs.length === 0 ? "none" : cs.some((c) => c.status === "failed") ? "failed" : cs.some((c) => c.status !== "ready") ? "processing" : "ready",
     };
   });
+  const unassignedReady = (clips ?? []).filter((c) => !c.at_bat_pitch_id && c.status === "ready");
+  const analysisKnown = clipsKnown && rows.every((r) => r.videoAnalyzed != null) && unassignedReady.every((c) => typeof c.analyzed === "boolean");
+  const analyzedWhere = (swung) => (analysisKnown ? rows.filter((r) => r.videoAnalyzed && swung(r.swung)).length : null);
   return {
     result: entry?.result ?? null,
     pitchCount: sorted.length,
     swings: rows.filter((r) => r.swung === true).length,
     takes: rows.filter((r) => r.swung === false).length,
-    analyzedSwings: rows.filter((r) => r.swingAnalyzed).length,
+    swingUnknown: rows.filter((r) => r.swung == null).length,
+    analyzedSwings: analyzedWhere((swung) => swung === true),
+    analyzedTakes: analyzedWhere((swung) => swung === false),
+    analyzedUnrecorded: analyzedWhere((swung) => swung == null),
+    unassignedAnalyzed: analysisKnown ? unassignedReady.filter((c) => c.analyzed).length : null,
     rows,
   };
 }
 
+/** True when every clause atBatFactsSummary would state is backed by loaded
+ * data - the gate for persisting it as ai_summary. */
+export function atBatSummaryComplete(summary) {
+  return summary.analyzedSwings != null;
+}
+
 /** At-bat-level AI-free summary from known metadata only. It states what is
  * recorded and what is not; it never invents pitch type, location, intent or
- * strategy, and says plainly when only one swing exists. `swingFacts` is an
- * optional array of per-analyzed-swing { phaseTimes: {stance, load, contact} } */
+ * strategy, and says plainly when only one swing exists. Unknown swing/take
+ * or analysis state is said to be unknown or left out - never counted as 0.
+ * `swingFacts` is an optional array of per-analyzed-swing
+ * { phaseTimes: {stance, load, contact} } */
 export function atBatFactsSummary(summary, swingFacts = []) {
   const lines = [];
-  lines.push(`${summary.pitchCount} pitch${summary.pitchCount === 1 ? "" : "es"} recorded: ${summary.swings} swing${summary.swings === 1 ? "" : "s"}, ${summary.takes} take${summary.takes === 1 ? "" : "s"}.`);
-  if (summary.analyzedSwings === 0) {
-    lines.push("No swings in this at-bat have been analyzed yet.");
+  const n = summary.pitchCount;
+  const pitchesLabel = `${n} pitch${n === 1 ? "" : "es"} recorded`;
+  if (n > 0 && summary.swingUnknown === n) {
+    lines.push(`${pitchesLabel}. Swing or take is not recorded for ${n === 1 ? "it" : "these pitches"}.`);
+  } else {
+    const known = `${summary.swings} swing${summary.swings === 1 ? "" : "s"}, ${summary.takes} take${summary.takes === 1 ? "" : "s"}`;
+    lines.push(summary.swingUnknown > 0
+      ? `${pitchesLabel}: ${known}; swing or take not recorded for ${summary.swingUnknown}.`
+      : `${pitchesLabel}: ${known}.`);
+  }
+  const otherAnalyzed = (summary.analyzedTakes ?? 0) + (summary.analyzedUnrecorded ?? 0) + (summary.unassignedAnalyzed ?? 0);
+  if (summary.analyzedSwings == null) {
+    // Analysis state couldn't be confirmed - withhold the claim.
+  } else if (summary.analyzedSwings === 0) {
+    if (otherAnalyzed === 0) lines.push("No video in this at-bat has been analyzed yet.");
   } else if (summary.analyzedSwings === 1) {
     lines.push("Only one swing was analyzed in this at-bat, so there is nothing to compare across swings.");
   } else {
@@ -414,9 +471,46 @@ export function atBatFactsSummary(summary, swingFacts = []) {
       lines.push(`Load-to-contact time ranged ${min.toFixed(2)}-${max.toFixed(2)}s across those swings (automated timing, low confidence).`);
     }
   }
+  if (summary.analyzedUnrecorded > 0) lines.push(`${summary.analyzedUnrecorded} pitch${summary.analyzedUnrecorded === 1 ? " has" : "es have"} analyzed video.`);
+  if (summary.analyzedTakes > 0) lines.push(`${summary.analyzedTakes} pitch${summary.analyzedTakes === 1 ? " recorded as a take has" : "es recorded as takes have"} analyzed video.`);
+  if (summary.unassignedAnalyzed > 0) lines.push(`${summary.unassignedAnalyzed} analyzed video${summary.unassignedAnalyzed === 1 ? " is" : "s are"} not attached to a pitch.`);
   const unrecorded = summary.rows.filter((r) => r.pitch.pitch_outcome == null).length;
   if (unrecorded > 0) lines.push(`${unrecorded} pitch outcome${unrecorded === 1 ? " is" : "s are"} not recorded.`);
   return lines.join(" ");
+}
+
+/** A finite numeric score, or null. Missing data stays missing: null,
+ * undefined, "", NaN, Infinity and non-numeric values are never coerced to 0
+ * (Number(null) === 0 made a team with two 3s and nine unscored checkpoints
+ * average 0.5). Numeric strings are accepted because Postgres numeric can
+ * arrive as a string. */
+function validScore(v) {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string" && /^\s*-?\d+(\.\d+)?\s*$/.test(v) && Number.isFinite(Number(v))) return Number(v);
+  return null;
+}
+
+/** Mean of the valid scores in `values` (see validScore), or null if none. */
+export function averageValidScores(values) {
+  const valid = (values ?? []).map(validScore).filter((v) => v != null);
+  return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+}
+
+/** Player history "Team Avg": mean of per-checkpoint averages over
+ * coach-verified checklist scores only. `rows` are checklist_scores rows
+ * ({ checkpoint_id, score, review_status }). review_status is the authority -
+ * ai_draft, rejected and insufficient_evidence rows never participate, and a
+ * score's value is never used to guess its review state. null when no
+ * verified score exists. */
+export function teamAverageFromChecklistRows(rows) {
+  const byCheckpoint = new Map();
+  for (const row of rows ?? []) {
+    const score = validScore(row?.score);
+    if (row?.review_status !== "verified" || score == null || !row.checkpoint_id) continue;
+    if (!byCheckpoint.has(row.checkpoint_id)) byCheckpoint.set(row.checkpoint_id, []);
+    byCheckpoint.get(row.checkpoint_id).push(score);
+  }
+  return averageValidScores([...byCheckpoint.values()].map(averageValidScores));
 }
 
 // ---------------------------------------------------------------------------

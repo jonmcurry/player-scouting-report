@@ -355,6 +355,10 @@ test("PLAYER: player.html's exact queries (game log incl. `pitch`, priorities, d
   const runs = await c.from("analysis_runs").select("id").eq("player_id", pid).order("created_at", { ascending: false }).limit(1);
   assert.equal(runs.error, null);
   assert.equal(runs.data?.length, 1);
+  // Player history Team Avg: coach-verified scores only (the head-eyes AI draft never counts).
+  const teamScores = must(await c.from("checklist_scores").select("checkpoint_id, score, review_status, players!inner(team_id)").eq("players.team_id", teamId).eq("review_status", "verified"), "team avg scores") as Array<{ score: number; review_status: string }>;
+  assert.ok(teamScores.every((r) => r.review_status === "verified"));
+  assert.deepEqual(teamScores.map((r) => r.score).sort(), [2, 3], "verified load 2 + stride 3; draft head-eyes 1 excluded");
 });
 
 test("AT-BAT: atbat.html's exact entry/pitches/clips queries return the real at-bat", async () => {
@@ -367,9 +371,14 @@ test("AT-BAT: atbat.html's exact entry/pitches/clips queries return the real at-
   const pitches = must(await c.from("at_bat_pitches").select("*").eq("game_log_entry_id", entryId).order("pitch_number"), "pitches") as Array<{ pitch_outcome: string; count_before_balls: number }>;
   assert.deepEqual(pitches.map((p) => p.pitch_outcome), ["ball", "ball_in_play"]);
   assert.equal(pitches[1]!.count_before_balls, 1);
-  const clips = must(await c.from("video_clips").select("id,status,error_message,at_bat_pitch_id,created_at").eq("game_log_entry_id", entryId).order("created_at"), "clips") as Array<{ at_bat_pitch_id: string | null }>;
+  const clips = must(await c.from("video_clips").select("id,status,error_message,at_bat_pitch_id,created_at").eq("game_log_entry_id", entryId).order("created_at"), "clips") as Array<{ id: string; status: string; at_bat_pitch_id: string | null }>;
   assert.equal(clips.length, 1, "only the allowlisted clip of this at-bat (the second angle stays local)");
   assert.ok(clips[0]!.at_bat_pitch_id);
+  // atbat.html's analyzed lookup: the exported analysis run is visible to the
+  // visitor, so the at-bat summary counts this swing as analyzed.
+  const readyIds = clips.filter((clip) => clip.status === "ready").map((clip) => clip.id);
+  const runs = must(await c.from("analysis_runs").select("video_clip_id").in("video_clip_id", readyIds), "at-bat analysis runs") as Array<{ video_clip_id: string }>;
+  assert.deepEqual([...new Set(runs.map((r) => r.video_clip_id))], [clips[0]!.id]);
 });
 
 test("REVIEW: review.html/devUi.js/skeletonComparison.js exact queries return real findings, phases, metrics and pose", async () => {

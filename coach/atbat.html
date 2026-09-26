@@ -1,6 +1,6 @@
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>HitterLoop — At-Bat</title><link rel="stylesheet" href="./coach.css?v=5fa8e47625"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
+<title>HitterLoop — At-Bat</title><link rel="stylesheet" href="./coach.css?v=c2c534a6a5"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
 </head><body>
 <header class="app-bar" id="appBar"></header><main class="wrap bt-atbat-page">
 <div id="countStrip" class="bt-count-strip">Loading at-bat…</div><div id="pitches"></div><div id="facts"></div></main>
@@ -15,7 +15,7 @@ import { insertPitchCollisionSafe, likelyAtBatOver, pitchCountTitle, pitchMetaPa
 import { zoneLabel } from "./components/pitchZonePicker.js";
 import { uploadRawClip } from "./components/videoUpload.js";
 
-const entryId = qs("entry"); let ctx, entry, pitches = [], clips = []; const uploads = new Map();
+const entryId = qs("entry"); let ctx, entry, pitches = [], clips = [], clipsLoaded = false; const uploads = new Map();
 const failedUploadKey = `bt:failed-pitch-uploads:${entryId}`;
 const outcomes = [["ball","Ball"],["called_strike","Called strike"],["swinging_strike","Swinging strike"],["foul","Foul"],["ball_in_play","In play"],["hit_by_pitch","Hit by pitch"]];
 
@@ -36,7 +36,12 @@ async function main() {
 async function loadPitches() { const { data, error } = await supabase.from("at_bat_pitches").select("*").eq("game_log_entry_id", entryId).order("pitch_number"); if (error) throw error; return data ?? []; }
 async function reload() {
   const [p, c] = await Promise.all([loadPitches(), supabase.from("video_clips").select("id,status,error_message,at_bat_pitch_id,created_at").eq("game_log_entry_id", entryId).order("created_at")]);
-  pitches = p; clips = c.data ?? [];
+  // "Analyzed" = the clip has an analysis_runs row (as on player/review). If
+  // either lookup fails, analysis state stays unknown for the summary.
+  clipsLoaded = !c.error;
+  const readyIds = (c.data ?? []).filter((clip) => clip.status === "ready").map((clip) => clip.id);
+  const runs = readyIds.length ? await supabase.from("analysis_runs").select("video_clip_id").in("video_clip_id", readyIds) : { data: [] };
+  pitches = p; clips = L.markClipsAnalyzed(c.data, runs.error ? null : (runs.data ?? []).map((row) => row.video_clip_id));
   try { for (const id of JSON.parse(sessionStorage.getItem(failedUploadKey) ?? "[]")) if (!uploads.has(id)) uploads.set(id, { state: "failed_lost" }); } catch { /* ignore corrupt session state */ }
   render();
 }
@@ -44,8 +49,10 @@ function clipState(list, pitchId) {
   const local = uploads.get(pitchId); if (local?.state === "uploading") return statusChip("pending", { domain: "processing", label: "Uploading…" });
   if (local?.state === "failed") return `<button class="bt-evidence-chip failed" data-action="retry">Failed · Retry</button>`;
   if (local?.state === "failed_lost") return `<button class="bt-evidence-chip failed upload-control" data-action="camera">Re-record to try again</button>`;
+  if (!clipsLoaded) return '<span class="bt-evidence-chip">Video status unavailable</span>';
   if (!list.length) return '<span class="bt-evidence-chip">No video</span>';
   // A recorded swing is the point of this screen: its Review link is visible in the row, not only in the menu.
+  // TODO(separate UX patch): a pitch explicitly recorded as a take (or with swing/take not recorded) still shows "Review swing" here and in its menu - correct the terminology.
   const ready = list.find((clip) => clip.status === "ready");
   if (ready) return `<a class="bt-button bt-button-secondary bt-review-swing" href="${ctx.url("review", { clip: ready.id })}">Review swing</a>`;
   if (list.length > 1) return `<span class="bt-evidence-chip">${list.length} clips</span>`;
@@ -61,8 +68,9 @@ function render() {
     return `<article class="bt-pitch-row" data-pid="${pitch.id}" role="listitem"><span class="bt-pitch-number" aria-hidden="true">${pitch.pitch_number}</span><button type="button" class="bt-list-row-copy bt-pitch-main" data-action="details" aria-label="Pitch ${pitch.pitch_number}. Edit details"><strong>Pitch ${pitch.pitch_number}</strong>${pitch.notes ? `<small>${escapeHtml(pitch.notes)}</small>` : ""}</button>${clipState(list, pitch.id)}<button class="bt-icon-button upload-control" data-action="camera" aria-label="Add video to pitch ${pitch.pitch_number}">${icon("camera", { size: 20 })}</button><button class="bt-icon-button" data-action="menu" aria-label="More actions for pitch ${pitch.pitch_number}">${icon("ellipsis-vertical", { size: 20 })}</button></article>`;
   }).join("");
   host.setAttribute("role", "list"); host.onclick = onPitchClick;
-  const summary = L.summarizeAtBat(entry, pitches, clips);
-  document.getElementById("facts").innerHTML = `<details class="bt-disclosure" id="factsDisclosure"><summary><span>At-bat summary</span><span class="bt-caption">${summary.pitchCount} pitch${summary.pitchCount === 1 ? "" : "es"}${pitches.every((pitch) => pitch.swung != null) ? ` · ${summary.swings} swing${summary.swings === 1 ? "" : "s"}` : ""}</span></summary><div class="bt-disclosure-body"><p>${escapeHtml(L.atBatFactsSummary(summary))}</p>${button("Save summary", { variant: "secondary", attrs: 'id="saveSummary"' })}</div></details>`;
+  const summary = currentSummary();
+  const saveAction = L.atBatSummaryComplete(summary) ? button("Save summary", { variant: "secondary", attrs: 'id="saveSummary"' }) : `<p class="bt-caption">Analysis status couldn't be confirmed, so this summary can't be saved yet. Reload the page to try again.</p>`;
+  document.getElementById("facts").innerHTML = `<details class="bt-disclosure" id="factsDisclosure"><summary><span>At-bat summary</span><span class="bt-caption">${summary.pitchCount} pitch${summary.pitchCount === 1 ? "" : "es"}${pitches.every((pitch) => pitch.swung != null) ? ` · ${summary.swings} swing${summary.swings === 1 ? "" : "s"}` : ""}</span></summary><div class="bt-disclosure-body"><p>${escapeHtml(L.atBatFactsSummary(summary))}</p>${saveAction}</div></details>`;
   document.getElementById("saveSummary")?.addEventListener("click", saveSummary);
   document.getElementById("pitchActions").innerHTML = end
     ? `<div class="bt-sticky-action-bar"><a class="bt-button bt-button-primary" href="${ctx.url("player")}">Done</a>${button(`Record pitch ${next}`, { variant: "tertiary", className: "upload-control", attrs: 'id="recordPitch"' })}${button("Log without video", { variant: "tertiary", attrs: 'id="logPitch"' })}</div>`
@@ -134,8 +142,10 @@ function openDetails(pitch, priorSheet = null) {
   sheet.querySelector("#changeOutcome").onclick = () => { sheet.remove(); sheet.whenClosed.then(() => openOutcome(pitch)); };
   sheet.querySelector("#savePitchDetails").onclick = async () => { const swung = sheet.querySelector("#detailSwung").value; const patch = { pitch_zone: zone, swung: swung === "" ? null : swung === "true", ...pitchPatchForCountOverride(Number(sheet.querySelector("#detailBalls").value), Number(sheet.querySelector("#detailStrikes").value), inferred), notes: sheet.querySelector("#detailNote").value.trim() || null }; const { error } = await supabase.from("at_bat_pitches").update(patch).eq("id", pitch.id); if (error) return showSnackbar("Couldn't save pitch details."); sheet.remove(); await reload(); showSnackbar("Pitch details saved"); };
 }
-function openUnassigned() { const loose = clips.filter((clip) => !clip.at_bat_pitch_id); const sheet = openBottomSheet({ title: "Unassigned video", bodyHtml: loose.length ? loose.map((clip) => `<section class="bt-card" data-unassigned="${clip.id}"><strong>Video evidence · ${escapeHtml(clip.status)}</strong><p class="bt-caption">Attach to a pitch</p><div class="bt-inline-actions">${pitches.map((pitch)=>`<button class="bt-button bt-button-secondary" data-assign="${pitch.id}">Pitch ${pitch.pitch_number}</button>`).join("")}</div></section>`).join("") : emptyState("No unassigned video", "Every clip is attached to a pitch.") }); sheet.querySelectorAll("[data-assign]").forEach((el)=>el.onclick=async()=>{const clipId=el.closest("[data-unassigned]").dataset.unassigned;const {error}=await supabase.from("video_clips").update({at_bat_pitch_id:el.dataset.assign}).eq("id",clipId);if(error)return showSnackbar("Couldn't attach the video.");sheet.remove();await reload();showSnackbar("Video attached");}); }
+function openUnassigned() { const loose = clips.filter((clip) => !clip.at_bat_pitch_id); const sheet = openBottomSheet({ title: "Unassigned video", bodyHtml: !clipsLoaded ? emptyState("Video couldn't be loaded", "Reload the page to try again.") : loose.length ? loose.map((clip) => `<section class="bt-card" data-unassigned="${clip.id}"><strong>Video evidence · ${escapeHtml(clip.status)}</strong><p class="bt-caption">Attach to a pitch</p><div class="bt-inline-actions">${pitches.map((pitch)=>`<button class="bt-button bt-button-secondary" data-assign="${pitch.id}">Pitch ${pitch.pitch_number}</button>`).join("")}</div></section>`).join("") : emptyState("No unassigned video", "Every clip is attached to a pitch.") }); sheet.querySelectorAll("[data-assign]").forEach((el)=>el.onclick=async()=>{const clipId=el.closest("[data-unassigned]").dataset.unassigned;const {error}=await supabase.from("video_clips").update({at_bat_pitch_id:el.dataset.assign}).eq("id",clipId);if(error)return showSnackbar("Couldn't attach the video.");sheet.remove();await reload();showSnackbar("Video attached");}); }
 function openEditAtBat() { const sheet = openBottomSheet({ title: "Edit at-bat", bodyHtml: `<div class="dev-field"><label>Opponent</label><input id="editOpponent" value="${escapeHtml(entry.opponent ?? "")}"></div><div class="dev-field"><label>Date</label><input type="date" id="editDate" value="${entry.date}"></div>`, footerHtml: '<button class="bt-button bt-button-primary" id="saveAtBat">Save</button>' }); sheet.querySelector("#saveAtBat").onclick = async () => { const patch = { opponent: sheet.querySelector("#editOpponent").value.trim() || null, date: sheet.querySelector("#editDate").value }; const { error } = await supabase.from("game_log_entries").update(patch).eq("id", entryId); if (error) return showSnackbar("Couldn't save the at-bat."); Object.assign(entry, patch); sheet.remove(); location.reload(); }; }
-async function saveSummary() { const summary = L.atBatFactsSummary(L.summarizeAtBat(entry, pitches, clips)); const { error } = await supabase.from("game_log_entries").update({ ai_summary: summary, ai_summary_generated_at: new Date().toISOString() }).eq("id", entryId); showSnackbar(error ? "Couldn't save the summary." : "Summary saved"); }
+// Clips not loaded -> analysis state unknown (null), never "none analyzed".
+function currentSummary() { return L.summarizeAtBat(entry, pitches, clipsLoaded ? clips : null); }
+async function saveSummary() { const facts = currentSummary(); if (!L.atBatSummaryComplete(facts)) { showSnackbar("Analysis status couldn't be confirmed - summary not saved."); return; } const summary = L.atBatFactsSummary(facts); const { error } = await supabase.from("game_log_entries").update({ ai_summary: summary, ai_summary_generated_at: new Date().toISOString() }).eq("id", entryId); showSnackbar(error ? "Couldn't save the summary." : "Summary saved"); }
 main();
 </script></body></html>

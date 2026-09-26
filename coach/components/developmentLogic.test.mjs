@@ -51,9 +51,172 @@ test("at-bat summary: counts swings/takes/analyzed swings and video status per p
   assert.equal(s.rows[0].videoStatus, "none");
   assert.match(L.atBatFactsSummary(s), /Only one swing was analyzed/);
   const none = L.summarizeAtBat({}, pitches, []);
-  assert.match(L.atBatFactsSummary(none), /No swings in this at-bat have been analyzed/);
+  assert.match(L.atBatFactsSummary(none), /No video in this at-bat has been analyzed yet/);
   assert.match(L.atBatFactsSummary(none), /3 pitch(es)? recorded/);
   assert.doesNotMatch(L.atBatFactsSummary(s), /pitch type|location|intent|strategy/i);
+});
+
+test("markClipsAnalyzed: analysis_runs ids decide analyzed; a failed lookup is unknown, not false", () => {
+  const clips = [{ id: "c1", status: "ready" }, { id: "c2", status: "ready" }, { id: "c3", status: "processing" }];
+  assert.deepEqual(L.markClipsAnalyzed(clips, ["c1"]).map((c) => c.analyzed), [true, false, false]);
+  assert.deepEqual(L.markClipsAnalyzed(clips, null).map((c) => c.analyzed), [null, null, false]);
+  assert.deepEqual(L.markClipsAnalyzed(null, ["c1"]), []);
+});
+
+const analyzedClips = (pitchIds, analyzedIds = pitchIds.map((pid) => `c-${pid}`)) =>
+  L.markClipsAnalyzed(pitchIds.map((pid) => ({ id: `c-${pid}`, at_bat_pitch_id: pid, status: "ready" })), analyzedIds);
+const SWING_CLAIM = /swing was analyzed|swings were analyzed|analyzed swing/i;
+
+test("at-bat summary A: an explicitly recorded swing with an analysis run is an analyzed swing", () => {
+  const s = L.summarizeAtBat({}, [pitch(1, { swung: true }), pitch(2, { pitch_outcome: "foul" })], analyzedClips(["p1", "p2"]));
+  assert.equal(s.analyzedSwings, 2);
+  assert.equal(s.analyzedUnrecorded, 0);
+  assert.match(L.atBatFactsSummary(s), /2 pitches recorded: 2 swings, 0 takes\. 2 swings were analyzed/);
+});
+
+test("at-bat summary B: an explicitly recorded take with an analysis run is never an analyzed swing", () => {
+  const s = L.summarizeAtBat({}, [pitch(1, { swung: false })], analyzedClips(["p1"]));
+  assert.equal(s.takes, 1);
+  assert.equal(s.analyzedSwings, 0);
+  assert.equal(s.analyzedTakes, 1);
+  const text = L.atBatFactsSummary(s);
+  assert.doesNotMatch(text, SWING_CLAIM);
+  assert.doesNotMatch(text, /No video in this at-bat has been analyzed/);
+  assert.match(text, /1 pitch recorded: 0 swings, 1 take\. 1 pitch recorded as a take has analyzed video\./);
+});
+
+test("at-bat summary C: unknown swing/take with analyzed video (live AB shape) gets neutral wording, not zero", () => {
+  const s = L.summarizeAtBat({}, [pitch(1), pitch(2), pitch(3)], analyzedClips(["p1", "p2", "p3"]));
+  assert.equal(s.analyzedSwings, 0);
+  assert.equal(s.analyzedUnrecorded, 3);
+  assert.equal(s.swingUnknown, 3);
+  assert.equal(L.atBatSummaryComplete(s), true);
+  const text = L.atBatFactsSummary(s);
+  assert.equal(text, "3 pitches recorded. Swing or take is not recorded for these pitches. 3 pitches have analyzed video. 3 pitch outcomes are not recorded.");
+  assert.doesNotMatch(text, SWING_CLAIM);
+  assert.doesNotMatch(text, /0 swings|0 takes|No video in this at-bat has been analyzed/);
+  assert.doesNotMatch(text, /\bhit\b|\bout\b|walk|strikeout|single|double/i, "no batting-outcome inference");
+  const one = L.atBatFactsSummary(L.summarizeAtBat({}, [pitch(1), pitch(2)], analyzedClips(["p2"])));
+  assert.match(one, /1 pitch has analyzed video\./);
+  assert.doesNotMatch(one, SWING_CLAIM);
+});
+
+test("at-bat summary D: unknown-pitch video is never merged into the explicit swing count", () => {
+  const pitches = [pitch(1, { swung: true }), pitch(2, { swung: true }), pitch(3)];
+  const s = L.summarizeAtBat({}, pitches, analyzedClips(["p1", "p2", "p3"]));
+  assert.equal(s.swings, 2);
+  assert.equal(s.analyzedSwings, 2);
+  assert.equal(s.analyzedUnrecorded, 1);
+  const text = L.atBatFactsSummary(s);
+  assert.match(text, /3 pitches recorded: 2 swings, 0 takes; swing or take not recorded for 1\. 2 swings were analyzed - .* 1 pitch has analyzed video\./);
+  assert.doesNotMatch(text, /3 swings were analyzed/);
+});
+
+test("at-bat summary E: unknown swing/take without analysis stays unknown, never zero", () => {
+  const pitches = [pitch(1)];
+  // Analysis lookup failed: withheld, not saveable.
+  const failed = L.summarizeAtBat({}, pitches, analyzedClips(["p1"], null));
+  assert.equal(failed.analyzedUnrecorded, null);
+  assert.equal(failed.analyzedSwings, null);
+  assert.equal(L.atBatSummaryComplete(failed), false);
+  assert.doesNotMatch(L.atBatFactsSummary(failed), /analyzed|0 swings|0 takes/);
+  // Known not analyzed: swing/take is still "not recorded", never "0 swings".
+  const notAnalyzed = L.summarizeAtBat({}, pitches, analyzedClips(["p1"], []));
+  assert.equal(notAnalyzed.analyzedUnrecorded, 0);
+  assert.equal(L.atBatFactsSummary(notAnalyzed), "1 pitch recorded. Swing or take is not recorded for it. No video in this at-bat has been analyzed yet. 1 pitch outcome is not recorded.");
+});
+
+test("at-bat summary: a no-video pitch stays no-video, not a swing, alongside one analyzed swing", () => {
+  const s = L.summarizeAtBat({}, [pitch(1), pitch(2, { swung: true })], analyzedClips(["p2"]));
+  assert.equal(s.rows[0].videoStatus, "none");
+  assert.equal(s.rows[0].swung, null);
+  assert.equal(s.rows[0].videoAnalyzed, false);
+  assert.equal(s.swings, 1);
+  assert.equal(s.analyzedSwings, 1);
+  assert.match(L.atBatFactsSummary(s), /Only one swing was analyzed/);
+});
+
+test("at-bat summary: takes and swings are counted only from recorded data; partial knowledge says so", () => {
+  const pitches = [pitch(1, { pitch_outcome: "called_strike" }), pitch(2, { swung: false }), pitch(3, { swung: true }), pitch(4)];
+  const s = L.summarizeAtBat({}, pitches, []);
+  assert.equal(s.takes, 2);
+  assert.equal(s.swings, 1);
+  assert.equal(s.swingUnknown, 1);
+  assert.match(L.atBatFactsSummary(s), /4 pitches recorded: 1 swing, 2 takes; swing or take not recorded for 1\./);
+});
+
+test("at-bat summary: missing analysis data withholds the analyzed claim and blocks saving", () => {
+  const pitches = [pitch(1, { swung: true })];
+  // Ready clip whose analyzed state was never loaded (undefined) or is unknown (null).
+  for (const analyzed of [undefined, null]) {
+    const s = L.summarizeAtBat({}, pitches, [{ id: "c1", at_bat_pitch_id: "p1", status: "ready", analyzed }]);
+    assert.equal(s.analyzedSwings, null);
+    assert.equal(L.atBatSummaryComplete(s), false);
+    assert.doesNotMatch(L.atBatFactsSummary(s), /analyzed/);
+  }
+  // Clip rows failed to load at all - including on an at-bat with no pitches.
+  for (const ps of [pitches, []]) {
+    const noClips = L.summarizeAtBat({}, ps, null);
+    assert.equal(noClips.analyzedSwings, null);
+    assert.equal(L.atBatSummaryComplete(noClips), false);
+    assert.doesNotMatch(L.atBatFactsSummary(noClips), /analyzed/);
+  }
+  // Known state with no ready clips is a real, saveable "none analyzed".
+  const pending = L.summarizeAtBat({}, pitches, [{ id: "c1", at_bat_pitch_id: "p1", status: "processing" }]);
+  assert.equal(pending.analyzedSwings, 0);
+  assert.equal(L.atBatSummaryComplete(pending), true);
+});
+
+test("at-bat summary: analyzed video not attached to a pitch is reported, never hidden behind 'none analyzed'", () => {
+  const pitches = [pitch(1)];
+  const s = L.summarizeAtBat({}, pitches, L.markClipsAnalyzed([{ id: "c9", at_bat_pitch_id: null, status: "ready" }], ["c9"]));
+  assert.equal(s.unassignedAnalyzed, 1);
+  const text = L.atBatFactsSummary(s);
+  assert.doesNotMatch(text, /No video in this at-bat has been analyzed/);
+  assert.doesNotMatch(text, SWING_CLAIM);
+  assert.match(text, /1 analyzed video is not attached to a pitch/);
+  // Unassigned clip whose analysis state is unknown withholds the claim and blocks saving.
+  const unknown = L.summarizeAtBat({}, pitches, L.markClipsAnalyzed([{ id: "c9", at_bat_pitch_id: null, status: "ready" }], null));
+  assert.equal(unknown.analyzedSwings, null);
+  assert.equal(L.atBatSummaryComplete(unknown), false);
+});
+
+test("averageValidScores: only finite numeric scores participate; missing stays missing", () => {
+  assert.equal(L.averageValidScores(["9".repeat(400)]), null, "numeric string overflowing to Infinity is rejected");
+  assert.equal(L.averageValidScores([3, 2, 1]), 2);
+  assert.equal(L.averageValidScores([3, null, 3, null, null]), 3, "nulls skipped, not zero");
+  assert.equal(L.averageValidScores([3, 3, ...Array(9).fill(null)]), 3, "the live 0.5 case");
+  assert.equal(L.averageValidScores(["2.50", 1.5]), 2, "numeric strings from Postgres numeric");
+  assert.equal(L.averageValidScores([null, null]), null);
+  assert.equal(L.averageValidScores([]), null);
+  assert.equal(L.averageValidScores(null), null);
+  assert.equal(L.averageValidScores([undefined, "", "  ", NaN, Infinity, -Infinity, "abc", "3x", {}, [], true, false]), null);
+  assert.equal(L.averageValidScores([2, undefined, "", NaN, Infinity, "abc", false]), 2, "malformed values never become 0");
+});
+
+test("teamAverageFromChecklistRows: only coach-verified scores participate, averaged per checkpoint", () => {
+  const row = (checkpoint_id, score, review_status) => ({ checkpoint_id, score, review_status });
+  // 1. reviewed score participates
+  assert.equal(L.teamAverageFromChecklistRows([row("load", 3, "verified")]), 3);
+  // 2. unreviewed AI draft does not participate
+  assert.equal(L.teamAverageFromChecklistRows([row("load", 1, "ai_draft")]), null);
+  // 3. rejected does not participate, even if a score were somehow present
+  assert.equal(L.teamAverageFromChecklistRows([row("load", null, "rejected"), row("stride", 1, "rejected")]), null);
+  // 4. insufficient evidence / null do not participate
+  assert.equal(L.teamAverageFromChecklistRows([row("load", null, "insufficient_evidence"), row("stride", 2, "insufficient_evidence"), row("hand-path", null, "verified")]), null);
+  // 5. mixed reviewed + draft averages only reviewed (per-checkpoint mean, then mean across checkpoints)
+  assert.equal(L.teamAverageFromChecklistRows([
+    row("load", 3, "verified"), row("load", 2, "verified"), row("stride", 2, "verified"),
+    row("stride", 1, "ai_draft"), row("head-eyes", 1, "ai_draft"), row("extension", null, "rejected"),
+  ]), 2.25);
+  // 6. no reviewed scores -> null (rendered as "—")
+  assert.equal(L.teamAverageFromChecklistRows([]), null);
+  assert.equal(L.teamAverageFromChecklistRows(null), null);
+  // 7. valid numeric strings still work; malformed/non-finite values never become 0
+  assert.equal(L.teamAverageFromChecklistRows([row("load", "3.00", "verified"), row("stride", "2", "verified")]), 2.5);
+  assert.equal(L.teamAverageFromChecklistRows([row("load", "", "verified"), row("stride", "abc", "verified"), row("bat-path", Infinity, "verified")]), null);
+  // Review state is never inferred from the score: a missing review_status is not verified.
+  assert.equal(L.teamAverageFromChecklistRows([{ checkpoint_id: "load", score: 3 }, row("stride", 3, undefined)]), null);
 });
 
 test("priority status transitions: coach only, real statuses only, no no-ops", () => {

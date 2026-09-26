@@ -286,6 +286,28 @@ test("At-bat: a recorded swing's Review link is visible in its row; unknown swin
   assert.match(atbat, /pitches\.every\(\(pitch\) => pitch\.swung != null\)/);
 });
 
+test("At-bat: analyzed state comes from analysis_runs, and an incomplete summary can be neither offered nor saved", () => {
+  const atbat = read("atbat.html");
+  assert.match(atbat, /from\("analysis_runs"\)\.select\("video_clip_id"\)\.in\("video_clip_id", readyIds\)/);
+  assert.match(atbat, /L\.markClipsAnalyzed\(c\.data, runs\.error \? null :/);
+  assert.match(atbat, /summarizeAtBat\(entry, pitches, clipsLoaded \? clips : null\)/);
+  assert.match(atbat, /const saveAction = L\.atBatSummaryComplete\(summary\) \? button\("Save summary"/);
+  assert.match(atbat, /async function saveSummary\(\) \{ const facts = currentSummary\(\); if \(!L\.atBatSummaryComplete\(facts\)\) \{[^}]*return; \}/);
+  // A failed clip query is not evidence of "No video" or "every clip is attached".
+  const unavailable = atbat.indexOf(`if (!clipsLoaded) return '<span class="bt-evidence-chip">Video status unavailable</span>';`);
+  assert.ok(unavailable > 0 && unavailable < atbat.indexOf(`if (!list.length) return '<span class="bt-evidence-chip">No video</span>';`));
+  assert.match(atbat, /bodyHtml: !clipsLoaded \? emptyState\("Video couldn't be loaded"/);
+});
+
+test("Player history Team Avg uses coach-verified checklist scores only (no drafts, null is missing)", () => {
+  const player = read("player.html");
+  // team_summary_stats averages every score, AI drafts included - not used for Team Avg.
+  assert.doesNotMatch(player, /from\("team_summary_stats"\)/);
+  assert.match(player, /from\("checklist_scores"\)\s*\.select\("checkpoint_id, score, review_status, players!inner\(team_id\)"\)\s*\.eq\("players\.team_id", teamId\)\s*\.eq\("review_status", "verified"\)/);
+  assert.match(player, /teamStatsError \? null : teamAverageFromChecklistRows\(teamScores\)/);
+  assert.doesNotMatch(player, /Number\(r\.avg_score\)/);
+});
+
 test("secondary Development/Practice history only renders when real history exists", () => {
   const development = read("development.html");
   for (const id of ["priorityHistory", "developmentHistory", "insightsDrawer"]) assert.match(development, new RegExp(`id="${id}" hidden`), id);

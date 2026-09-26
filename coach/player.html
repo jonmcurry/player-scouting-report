@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=5fa8e47625">
+<link rel="stylesheet" href="./coach.css?v=c2c534a6a5">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -74,6 +74,7 @@
   import { loadExtensionScore } from "./components/skeletonComparison.js";
   import { uploadRawClip } from "./components/videoUpload.js";
   import { getVideoUrl, videoTimeFor } from "./components/devUi.js";
+  import { teamAverageFromChecklistRows } from "./components/developmentLogic.js";
   import { renderPlayerAppBar, renderBottomNav, loadRosterWithProgress, setLastPlayerSlug } from "./components/appShell.js";
   import { openLogAtBatSheet } from "./components/logAtBatSheet.js";
   import { mountSegmentedTabs, card, confirmDialog, emptyState, icon, listRow, showSnackbar } from "./components/ui.js";
@@ -368,10 +369,15 @@
       .eq("player_id", playerId)
       .eq("session_type", "game");
 
-    const { data: teamStats, error: teamStatsError } =
-      await supabase.from("team_summary_stats").select("avg_score").eq("team_id", teamId);
-    const scores = (teamStats ?? []).map((r) => Number(r.avg_score)).filter((n) => !Number.isNaN(n));
-    const teamAvg = teamStatsError ? "—" : scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
+    // Coach-verified scores only. team_summary_stats averages every score,
+    // AI drafts included, so Team Avg reads checklist_scores' review_status.
+    const { data: teamScores, error: teamStatsError } = await supabase
+      .from("checklist_scores")
+      .select("checkpoint_id, score, review_status, players!inner(team_id)")
+      .eq("players.team_id", teamId)
+      .eq("review_status", "verified");
+    const avg = teamStatsError ? null : teamAverageFromChecklistRows(teamScores);
+    const teamAvg = avg == null ? "—" : avg.toFixed(1);
 
     // A failed count query used to fall back to 0 with no indication - a
     // coach could read "Logged ABs: 0" as "this player's whole game log is
