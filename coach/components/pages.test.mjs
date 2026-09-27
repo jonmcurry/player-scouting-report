@@ -308,6 +308,20 @@ test("Player history Team Avg uses coach-verified checklist scores only (no draf
   assert.doesNotMatch(player, /Number\(r\.avg_score\)/);
 });
 
+test("coach/ holds no video: webDir ships all of it into native builds and the demo sync never sources media here", () => {
+  const found = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "node_modules") continue;
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(p);
+      else if (/\.(mp4|mov|m4v|webm|avi)$/i.test(entry.name)) found.push(path.relative(coach, p));
+    }
+  };
+  walk(coach);
+  assert.deepEqual(found, [], `remove video from coach/ (local demo clips belong in demo-export/): ${found.join(", ")}`);
+});
+
 test("secondary Development/Practice history only renders when real history exists", () => {
   const development = read("development.html");
   for (const id of ["priorityHistory", "developmentHistory", "insightsDrawer"]) assert.match(development, new RegExp(`id="${id}" hidden`), id);

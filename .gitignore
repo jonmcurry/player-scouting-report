@@ -69,6 +69,12 @@ coach/config.local.js
 # config.local.js not being committed.
 coach/demo.local.js
 
+# Never put video under coach/ (pages.test.mjs enforces it): webDir ships
+# all of coach/ into native builds, and this is a public repo. Local demo
+# clips live in demo-export/; the public demo's media comes only from a
+# validated demo-export via the website sync's --media.
+coach/media/
+
 # Real-data demo promotion (docs/research/demo-real-data-promotion.md):
 # exported fixtures, transcoded real media, and real curation manifests
 # (consent records, source slugs/ids) carry real athlete data - this is a

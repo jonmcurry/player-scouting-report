@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.26.1] - 2026-09-26
+
+No fixture, schema or data changes. Public demo fixture stays `emily@2026-09-26.1`.
+
+### Fixed
+
+- At-bat summary said "0 swings, 0 takes. No swings in this at-bat have been analyzed yet" for every at-bat, because the page never loaded analysis state. "Analyzed" now comes from `analysis_runs`, and the summary only states what the data supports:
+  - only a pitch recorded as a swing counts as an analyzed swing; video on a recorded take, a pitch with swing/take not recorded, or an unattached clip reads as "analyzed video";
+  - unrecorded swing/take reads as not recorded, never as 0;
+  - if the clip or analysis lookup fails, the analysis claim is withheld, Save summary is blocked, and pitch rows say "Video status unavailable" instead of "No video".
+- Player history "Team Avg" showed 0.5 for a team with two verified 3s (null scores were averaged as 0), and counted unreviewed AI draft scores. It now averages coach-verified checklist scores only, per checkpoint and then across checkpoints, and shows "—" when there are none.
+
+### Changed
+
+- Verified checkpoints are listed in standard checklist order (Stance & setup before Load) in player summaries and reports.
+
+### Security
+
+- Removed the local-validation demo clips from `coach/media/` (byte-identical copies remain in `demo-export/`). `coach/` ships into native builds, so it is gitignored and a test now fails if any video file appears under `coach/`.
+- The website demo sync (`personal/scripts/sync-hitterloop-demo.mjs`) now fails closed:
+  - `--media` must be `demo-export/public-<date>/<fixtureId>`, `--fixture <id@version>` (the live fixture) is required, and changing the published media set also needs `--allow-media-change`;
+  - local-only or unconsented exports, links in the media path or `media/` directory, and unapproved, superseded or hash-mismatched media are refused before anything is written, using the same approval rule as the exporter's privacy gate;
+  - only `coach/` files committed to HitterLoop's git, with no uncommitted changes, ship, and their bytes are read from `HEAD`, not the working tree. `coach/media/` and symlinks are never copied, and any file that isn't html/js/css/json/svg/fbx (video included) fails the sync;
+  - the new tree is staged and verified, then swapped in, with the previous tree restored on failure;
+  - `--dry-run` runs the source checks without writing.
+
 ## [0.26.0] - 2026-09-24
 
 ### Changed
