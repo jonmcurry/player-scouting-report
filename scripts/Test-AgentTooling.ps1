@@ -1,28 +1,14 @@
-﻿[CmdletBinding()]
-param()
-
-$ErrorActionPreference = "Stop"
-
-Write-Host "Repo: $(Get-Location)"
-Write-Host ""
-
-foreach ($name in @("claude","codex","agy")) {
-    $cmd = Get-Command $name -ErrorAction SilentlyContinue
-
-    if (-not $cmd) {
-        Write-Host "$name : MISSING" -ForegroundColor Red
-        continue
-    }
-
-    try {
-        $v = & $name --version 2>&1 | Select-Object -First 1
-        Write-Host ("{0,-8} {1}" -f $name, $v) -ForegroundColor Green
-    } catch {
-        Write-Host "$name : FOUND, VERSION CHECK FAILED - $($_.Exception.Message)" -ForegroundColor Yellow
-    }
+﻿$ErrorActionPreference = "Stop"
+$required = @("claude", "agy")
+$missing = @()
+foreach ($tool in $required) {
+    if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { $missing += $tool }
 }
-
+if ($missing.Count -gt 0) { throw "Required tool(s) not found: $($missing -join ', ')" }
+Write-Host "Claude and Gemini/AGY tooling available." -ForegroundColor Green
 Write-Host ""
-Write-Host "Git:"
-git status --short
-git branch --show-current
+Write-Host "Claude:" -ForegroundColor Cyan
+claude --version
+Write-Host ""
+Write-Host "Gemini/AGY:" -ForegroundColor Cyan
+agy --version
