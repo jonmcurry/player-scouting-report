@@ -372,3 +372,10 @@ test("Polish: one chevron icon, compare from one swing, honest empty queue, SW l
   assert.match(crossOrigin.slice(0, crossOrigin.indexOf("}")), /\n\s*return;\s*$/, "cross-origin GETs are not relayed through the worker's fetch()");
   assert.doesNotMatch(sw, /evt\.respondWith\(fetch\(evt\.request\)\);/);
 });
+
+test("Overview progress shows only a recorded coach observation on the current Priority", () => {
+  const player = read("player.html");
+  assert.match(player, /from\("player_priority_observations"\)\.select\("status, coach_note, observed_at"\)\.eq\("player_priority_id", priorityIds\[0\]\)/);
+  assert.match(player, /OBSERVATION_LABELS\[latestObservation\.status\]/);
+  assert.match(player, /No progress check yet\. Progress appears here as later swings are checked against this Priority\./);
+});

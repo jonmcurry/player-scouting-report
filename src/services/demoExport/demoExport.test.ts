@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildFixture, fixtureContentSha256, mediaVersionTag, type SourceSnapshot } from "./buildFixture.js";
+import { buildFixture, fixtureContentSha256, mediaVersionTag, publicPhaseDetail, type SourceSnapshot } from "./buildFixture.js";
 import { parseCurationManifest, type CurationManifest } from "./curationManifest.js";
 import { fixtureUuid } from "./ids.js";
 import { buildFfmpegArgs, readStage0Context } from "./media.js";
@@ -211,7 +211,8 @@ test("reviewed demo curation can omit 3D and provide capture guidance without ch
   assert.equal(fixture.tables.video_clip_pose3d.length, 0);
   assert.deepEqual(fixture.tables.analysis_runs[0]!.input_manifest, {}, "raw model input stays out of the reviewed fixture");
   assert.deepEqual(fixture.tables.video_clip_metrics[0]!.analysis_quality, {}, "derived quality metrics stay out");
-  assert.ok(fixture.tables.swing_phases.every((phase) => Object.keys(phase.detail as object).length === 0));
+  // Scrubbed: nothing but a validated batter box survives in a phase detail.
+  assert.ok(fixture.tables.swing_phases.every((phase) => Object.keys(phase.detail as object).every((k) => k === "subject_box")));
   assert.ok(fixture.tables.swing_phases.length > 0, "approved phase markers remain available");
 });
 
@@ -725,4 +726,14 @@ test("mediaFileVersion: a new fixture version can keep an earlier version's publ
   assert.ok(paths.length && paths.every((p) => p.includes("-2026-09-24.2-clip-")), paths.join(","));
   assert.equal(fixture.fixtureVersion, "2026-09-24.3");
   assert.ok(parseCurationManifest({ ...manifest(), mediaFileVersion: "../x" }).problems.some((p) => p.path === "mediaFileVersion"));
+});
+
+test("public phase detail keeps only a valid batter box", () => {
+  assert.deepEqual(publicPhaseDetail({ source: "pose3d", subject_box: { x: 0.1, y: 0.2, w: 0.1, h: 0.3, method: "pose2d-keypoints+bat-v1", extra: "x" } }),
+    { subject_box: { x: 0.1, y: 0.2, w: 0.1, h: 0.3, method: "pose2d-keypoints+bat-v1" } });
+  assert.deepEqual(publicPhaseDetail({ source: "pose3d" }), {}, "other evidence never survives");
+  assert.deepEqual(publicPhaseDetail({ subject_box: { x: 0.95, y: 0, w: 0.2, h: 0.3 } }), {}, "out of frame");
+  assert.deepEqual(publicPhaseDetail({ subject_box: { x: "0.1", y: 0, w: 0.1, h: 0.1 } }), {}, "not numbers");
+  assert.deepEqual(publicPhaseDetail({ subject_box: { x: 0.1, y: 0.1, w: 0.1, h: 0.1, method: "C:/Users/x" } }), { subject_box: { x: 0.1, y: 0.1, w: 0.1, h: 0.1 } }, "no free-text method");
+  assert.deepEqual(publicPhaseDetail(null), {});
 });

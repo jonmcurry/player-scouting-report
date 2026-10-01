@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.29.1] - 2026-10-01
+
+Prepared with public demo fixture `emily@2026-10-01.1` (same four approved media files as `emily@2026-09-26.1`).
+
+### Fixed
+
+- With a Priority set, the Overview's Progress section always said "Progress appears here as later swings are checked" even when the coach had recorded a progress check. It now shows the newest recorded observation on the current Priority (status, date and the coach's note), and only that.
+
+### Changed
+
+- The demo exporter's `scrubDerivedEvidence` keeps one field of a phase's derived evidence: the batter's normalized position (`subject_box`), strictly validated. That makes "Zoom on player" work on the public demo. Every other detail field stays withheld, and a corrected phase keeps none, because its stored box describes the superseded frame.
+
 ## [0.29.0] - 2026-10-01
 
 No schema or data change. Public demo fixture stays `emily@2026-09-26.1`; nothing was deployed.

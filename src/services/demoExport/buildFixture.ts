@@ -26,6 +26,22 @@ import { IdRemapper } from "./ids.js";
 import { buildTargetRow, FIXTURE_TABLE_ORDER, unaccountedSourceColumns, type FixtureTable, type RefTable, type Row } from "./translation.js";
 import { FIXTURE_FORMAT, FIXTURE_FORMAT_VERSION, validateFixture, type Finding, type Fixture } from "./validate.js";
 
+/**
+ * The only part of a phase's derived evidence a scrubbed (public) export keeps: the batter's
+ * normalized position in the frame (swing_phases.detail.subject_box, from the pose pipeline), which
+ * drives the app's "Zoom on player" view. It is geometry only - where the batter already visibly is
+ * in the published video - and is validated strictly; every other detail field (detector signals,
+ * paths, methods) stays withheld.
+ */
+export function publicPhaseDetail(detail: unknown): Record<string, unknown> {
+  const b = (detail as { subject_box?: Record<string, unknown> } | null)?.subject_box;
+  const n = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+  if (!b || ![b.x, b.y, b.w, b.h].every(n)) return {};
+  const x = b.x as number, y = b.y as number, w = b.w as number, h = b.h as number;
+  if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > 1.0001 || y + h > 1.0001) return {};
+  return { subject_box: { x, y, w, h, ...(typeof b.method === "string" && /^[a-z0-9.+-]{1,40}$/.test(b.method) ? { method: b.method } : {}) } };
+}
+
 export const EXPORTER = { name: "hitterloop-export-demo-fixture", version: 1 } as const;
 
 /** Everything the local DB holds for ONE player (see sourceLoader.ts), keyed by public table name. */
@@ -499,7 +515,8 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
         method: correction?.method ?? ph.method,
         confidence: correction?.confidence ?? ph.confidence,
         reconstruction_reliable: correction?.reconstructionReliable ?? ph.reconstruction_reliable,
-        detail: correction || manifest.analysis?.scrubDerivedEvidence ? {} : ph.detail,
+        // A corrected phase's stored detail (including its batter box) describes the superseded frame.
+        detail: correction ? {} : manifest.analysis?.scrubDerivedEvidence ? publicPhaseDetail(ph.detail) : ph.detail,
       },
         { phase_type_id: { table: "swing_phase_types", slug: slug ?? "" } }));
     }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=f5273d438e">
+<link rel="stylesheet" href="./coach.css?v=f9eb46aa49">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -75,8 +75,8 @@
   import { checklistState, isPendingDraft, showsNote, stateLabel, reviewPayload, verifiedHistory } from "./components/checklistReview.js";
   import { loadExtensionScore } from "./components/skeletonComparison.js";
   import { uploadRawClip } from "./components/videoUpload.js";
-  import { getVideoUrl, videoTimeFor } from "./components/devUi.js";
-  import { teamAverageFromChecklistRows } from "./components/developmentLogic.js";
+  import { fmtDate, getVideoUrl, videoTimeFor } from "./components/devUi.js";
+  import { OBSERVATION_LABELS, teamAverageFromChecklistRows } from "./components/developmentLogic.js";
   import { renderPlayerAppBar, renderBottomNav, loadRosterWithProgress, setLastPlayerSlug } from "./components/appShell.js";
   import { openLogAtBatSheet } from "./components/logAtBatSheet.js";
   import { mountSegmentedTabs, card, confirmDialog, emptyState, icon, listRow, showSnackbar } from "./components/ui.js";
@@ -566,6 +566,10 @@
       supabase.from("issues").select("id, video_clip_id").eq("player_id", playerId).eq("review_status", "draft"),
     ]);
     const priorityIds = (priorities ?? []).map((row) => row.id);
+    // Newest coach progress check on the current Priority, if any - shown as recorded, never inferred.
+    const { data: latestObservation } = priorityIds.length
+      ? await supabase.from("player_priority_observations").select("status, coach_note, observed_at").eq("player_priority_id", priorityIds[0]).order("observed_at", { ascending: false }).limit(1).maybeSingle()
+      : { data: null };
     const { data: assignments } = priorityIds.length
       ? await supabase.from("player_priority_drills").select("player_priority_id, active, drill_library(name, purpose, instructions)").in("player_priority_id", priorityIds).eq("active", true).order("assigned_at", { ascending: false })
       : { data: [] };
@@ -589,7 +593,9 @@
         : `<h3>Keep working on the current Priority.</h3><p>Use the Drill below, then film another swing to check progress.</p>`;
       planHtml = `<div class="bt-summary-grid"><section class="bt-summary-section"><span class="bt-eyebrow">Current Priority</span><h3>${escapeHtml(summary.currentPriority.title)}</h3><p>${escapeHtml(summary.currentPriority.description || "Current coach-confirmed development priority.")}</p><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Open development plan</a></section><section class="bt-summary-section"><span class="bt-eyebrow">Next step</span>${nextHtml}</section></div>
       <section class="bt-summary-section bt-summary-plan"><span class="bt-eyebrow">Drill</span>${drillHtml}</section>
-      <section class="bt-summary-section bt-summary-progress"><span class="bt-eyebrow">Progress</span><p>Progress appears here as later swings are checked against this Priority.</p></section>`;
+      <section class="bt-summary-section bt-summary-progress"><span class="bt-eyebrow">Progress</span>${latestObservation && summary.currentPriority.id === priorityIds[0]
+        ? `<h3>${escapeHtml(OBSERVATION_LABELS[latestObservation.status] ?? latestObservation.status)} · ${escapeHtml(fmtDate(latestObservation.observed_at))}</h3>${latestObservation.coach_note ? `<p>“${escapeHtml(latestObservation.coach_note)}” - coach</p>` : ""}`
+        : `<p>No progress check yet. Progress appears here as later swings are checked against this Priority.</p>`}</section>`;
     } else {
       // No Priority yet: one card instead of four empty ones (Priority, Next step, Drill, Progress).
       // Nothing here is invented - no Priority, Drill or progress claim until the coach confirms one.
