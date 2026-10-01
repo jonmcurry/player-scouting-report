@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=c2c534a6a5">
+<link rel="stylesheet" href="./coach.css?v=f5273d438e">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -19,14 +19,15 @@
     <section class="p1b-section bt-secondary-activity"><div class="p1b-section-head"><h2>Recent activity</h2></div><div id="recentActivity" class="bt-list"></div></section>
   </div>
 
-  <details class="bt-disclosure" id="moreGame"><summary><span>Game log</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><div id="gameLogList" class="bt-list"></div></div></details>
-  <details class="bt-disclosure" id="morePractice"><summary><span>Practice log</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><div id="practiceLogList" class="bt-list"></div></div></details>
-  <details class="bt-disclosure" id="earlierAnalysis"><summary><span>Notes from earlier analysis</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body">
+  <details class="bt-disclosure bt-more-drawer" id="moreForCoach"><summary><span>More: logs, history, settings</span><span class="bt-disclosure-chevron"><svg class="bt-icon " width="20" height="20" aria-hidden="true" focusable="false"><use href="./assets/icons.svg#chevron-down"></use></svg></span></summary><div class="bt-disclosure-body">
+  <details class="bt-disclosure" id="moreGame"><summary><span>Game log</span><span class="bt-disclosure-chevron"><svg class="bt-icon " width="20" height="20" aria-hidden="true" focusable="false"><use href="./assets/icons.svg#chevron-down"></use></svg></span></summary><div class="bt-disclosure-body"><div id="gameLogList" class="bt-list"></div></div></details>
+  <details class="bt-disclosure" id="morePractice"><summary><span>Practice log</span><span class="bt-disclosure-chevron"><svg class="bt-icon " width="20" height="20" aria-hidden="true" focusable="false"><use href="./assets/icons.svg#chevron-down"></use></svg></span></summary><div class="bt-disclosure-body"><div id="practiceLogList" class="bt-list"></div></div></details>
+  <details class="bt-disclosure" id="earlierAnalysis"><summary><span>Notes from earlier analysis</span><span class="bt-disclosure-chevron"><svg class="bt-icon " width="20" height="20" aria-hidden="true" focusable="false"><use href="./assets/icons.svg#chevron-down"></use></svg></span></summary><div class="bt-disclosure-body">
     <div id="trendBanner"></div>
     <div id="issuesList"></div><div id="compList"></div><div id="drillList"></div><div id="followUp"></div>
   </div></details>
   <details class="bt-disclosure p1b-advanced" id="technicalDetails">
-    <summary><span>Technical details</span><span class="hint" id="technicalSummary"></span><span class="bt-disclosure-chevron">⌄</span></summary>
+    <summary><span>Technical details</span><span class="hint" id="technicalSummary"></span><span class="bt-disclosure-chevron"><svg class="bt-icon " width="20" height="20" aria-hidden="true" focusable="false"><use href="./assets/icons.svg#chevron-down"></use></svg></span></summary>
     <div class="bt-disclosure-body">
       <details class="bt-disclosure" id="checklistDrawer">
         <summary><span>Detailed checklist <span class="hint" id="checklistHint">11 checkpoints · advanced</span></span></summary>
@@ -38,8 +39,8 @@
     </div>
   </details>
 
-  <details class="bt-disclosure" id="playerStats"><summary><span>Player history</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><div class="stats-row" id="statsRow"></div></div></details>
-  <details class="bt-disclosure" id="managePlayer" style="margin-top:24px;">
+  <details class="bt-disclosure" id="playerStats"><summary><span>Player history</span><span class="bt-disclosure-chevron"><svg class="bt-icon " width="20" height="20" aria-hidden="true" focusable="false"><use href="./assets/icons.svg#chevron-down"></use></svg></span></summary><div class="bt-disclosure-body"><div class="stats-row" id="statsRow"></div></div></details>
+  <details class="bt-disclosure" id="managePlayer">
     <summary><span>Manage Player</span></summary>
     <div class="drawer-body">
       <h3 style="margin-top:0;">Player Context</h3>
@@ -60,6 +61,7 @@
         at-bat, score, and clip. This can't be undone.</p>
     </div>
   </details>
+  </div></details>
 </div>
 
 <nav class="bottom-nav" id="bottomNav"></nav>
@@ -351,7 +353,7 @@
     document.getElementById("reviewedSwingCount").textContent = `${ready.length} game swing${ready.length === 1 ? "" : "s"} on file`;
     host.innerHTML = ready.length ? ready.map((row) => {
       const statuses = reviewByClip.get(row.id) ?? [];
-      const reviewLabel = statuses.includes("draft") ? "Observation needs review" : statuses.length ? "Observations reviewed" : analyzed.has(row.id) ? "Analyzed · no reviewed observation" : "Not analyzed";
+      const reviewLabel = statuses.includes("draft") ? "Waiting for coach review" : statuses.length ? "Coach reviewed" : analyzed.has(row.id) ? "Analyzed · nothing flagged" : "Not analyzed";
       const entry = row.game_log_entries;
       const pitch = row.at_bat_pitches?.pitch_number;
       const query = `team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}`;
@@ -573,28 +575,59 @@
     const strengthHtml = summary.strengths.length
       ? `<div class="bt-strength-grid">${summary.strengths.map((strength) => `<article class="bt-strength-card"><div class="bt-summary-title">${icon("check", { size: 18 })}<h3>${escapeHtml(strength.label)}</h3><span class="bt-score-word">${escapeHtml(strength.scoreWord ?? "")}</span></div>${strength.note ? `<p>${escapeHtml(strength.note)}</p>` : ""}</article>`).join("")}</div>`
       : `<p class="bt-supporting">No strengths have been coach-verified yet.</p>`;
-    const focusHtml = summary.currentPriority
-      ? `<h3>${escapeHtml(summary.currentPriority.title)}</h3><p>${escapeHtml(summary.currentPriority.description || "Current coach-confirmed development priority.")}</p><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Open development plan</a>`
-      : `<h3>No Priority confirmed yet.</h3><p>${summary.strengths.length ? `The coach has verified ${summary.strengths.map((row) => escapeHtml(row.label)).join(" and ")}. ` : ""}More reliable swing evidence is needed before choosing what to work on next.</p>`;
-    const nextHtml = summary.draftFindingCount
-      ? `<h3>${summary.draftFindingCount} observation${summary.draftFindingCount === 1 ? "" : "s"} awaiting coach review</h3><p>Review the swing evidence before confirming a Priority.</p><a class="bt-button bt-button-primary" href="./review.html?clip=${encodeURIComponent(drafts[0].video_clip_id)}&${devQuery}">Review swing</a>`
-      : summary.nextStep
-        ? `<h3>${escapeHtml(summary.nextStep)}</h3><p>Better footage can support a confident coaching decision without guessing at a mechanical issue.</p>`
-        : `<h3>Continue the current development plan.</h3><p>Use the confirmed priority and reviewed evidence to guide the next session.</p>`;
-    const drill = summary.recommendedDrill?.drill_library;
-    const planHtml = drill
-      ? `<h3>${escapeHtml(drill.name || "Assigned drill")}</h3>${drill.purpose ? `<p>${escapeHtml(drill.purpose)}</p>` : ""}${drill.instructions ? `<details class="p1b-inline-disclosure"><summary>How to run it</summary><p>${escapeHtml(drill.instructions)}</p></details>` : ""}`
-      : summary.currentPriority
-        ? `<h3>No Drill selected yet.</h3><p>HitterLoop can recommend a Drill for the coach to choose for this Priority.</p><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Choose a Drill</a>`
-        : `<h3>No Drill yet.</h3><p>A Drill is chosen after a Priority is confirmed. HitterLoop can then recommend one for the coach to choose.</p>`;
-    document.getElementById("technicalSummary").textContent = `${summary.strengths.length} verified checkpoints · ${summary.needsBetterEvidence.length} need better evidence`;
+    const reviewSwingHtml = summary.draftFindingCount
+      ? `<a class="bt-button bt-button-primary" href="./review.html?clip=${encodeURIComponent(drafts[0].video_clip_id)}&${devQuery}">Review swing</a>`
+      : "";
+    let planHtml;
+    if (summary.currentPriority) {
+      const drill = summary.recommendedDrill?.drill_library;
+      const drillHtml = drill
+        ? `<h3>${escapeHtml(drill.name || "Assigned drill")}</h3>${drill.purpose ? `<p>${escapeHtml(drill.purpose)}</p>` : ""}${drill.instructions ? `<details class="p1b-inline-disclosure"><summary>How to run it</summary><p>${escapeHtml(drill.instructions)}</p></details>` : ""}`
+        : `<h3>No Drill selected yet.</h3><p>HitterLoop can recommend a Drill for the coach to choose for this Priority.</p><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Choose a Drill</a>`;
+      const nextHtml = summary.draftFindingCount
+        ? `<h3>${summary.draftFindingCount} observation${summary.draftFindingCount === 1 ? "" : "s"} waiting for the coach</h3><p>The coach looks at these before changing the plan.</p>${reviewSwingHtml}`
+        : `<h3>Keep working on the current Priority.</h3><p>Use the Drill below, then film another swing to check progress.</p>`;
+      planHtml = `<div class="bt-summary-grid"><section class="bt-summary-section"><span class="bt-eyebrow">Current Priority</span><h3>${escapeHtml(summary.currentPriority.title)}</h3><p>${escapeHtml(summary.currentPriority.description || "Current coach-confirmed development priority.")}</p><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Open development plan</a></section><section class="bt-summary-section"><span class="bt-eyebrow">Next step</span>${nextHtml}</section></div>
+      <section class="bt-summary-section bt-summary-plan"><span class="bt-eyebrow">Drill</span>${drillHtml}</section>
+      <section class="bt-summary-section bt-summary-progress"><span class="bt-eyebrow">Progress</span><p>Progress appears here as later swings are checked against this Priority.</p></section>`;
+    } else {
+      // No Priority yet: one card instead of four empty ones (Priority, Next step, Drill, Progress).
+      // Nothing here is invented - no Priority, Drill or progress claim until the coach confirms one.
+      const nowHtml = summary.draftFindingCount
+        ? `<h3>${summary.draftFindingCount} observation${summary.draftFindingCount === 1 ? "" : "s"} waiting for the coach</h3><p>The coach looks at these before choosing what ${escapeHtml(player.name)} works on next.</p>${reviewSwingHtml}`
+        : `<h3>The coach hasn't picked a Priority yet.</h3>${summary.nextStep ? `<p>${escapeHtml(summary.nextStep)}</p>` : ""}`;
+      planHtml = `<section class="bt-summary-section bt-summary-next"><span class="bt-eyebrow">What to work on next</span>${nowHtml}<p class="bt-supporting">Once the coach sets a Priority, the Drill and progress show up here.</p><a class="bt-button bt-button-tertiary" href="./development.html?${devQuery}">Set a Priority</a></section>`;
+    }
+    document.getElementById("technicalSummary").textContent = `${summary.strengths.length} checked by the coach · ${summary.needsBetterEvidence.length} need clearer video`;
     document.getElementById("developmentSummary").innerHTML = `<div class="bt-development-hero">
-      <div class="bt-development-heading"><div><span class="bt-eyebrow">Player development summary</span><h1 id="developmentSummaryTitle">${escapeHtml(player.name)}</h1><p>${escapeHtml(player.teams.name)}</p></div><p class="bt-review-count" id="reviewedSwingCount">Reviewing swing evidence…</p></div>
-      <section class="bt-summary-section bt-summary-strengths"><span class="bt-eyebrow">What’s working</span><h2>Coach-verified strengths</h2>${isDemoMode() ? '<p class="bt-supporting">AI helped prepare drafts; the coach’s review determines what appears here.</p>' : ""}${strengthHtml}</section>
-      <div class="bt-summary-grid"><section class="bt-summary-section"><span class="bt-eyebrow">Current Priority</span>${focusHtml}</section><section class="bt-summary-section"><span class="bt-eyebrow">Next step</span>${nextHtml}</section></div>
-      <section class="bt-summary-section bt-summary-plan"><span class="bt-eyebrow">Development plan</span>${planHtml}</section>
-      <section class="bt-summary-section bt-summary-progress"><span class="bt-eyebrow">Progress</span><p>${summary.currentPriority ? "Progress appears here as later swings are checked against this Priority." : "No progress claim yet - there is no tracked Priority to measure against."}</p></section>
+      <div class="bt-development-heading"><div><span class="bt-eyebrow">Player development summary</span><h1 id="developmentSummaryTitle">${escapeHtml(player.name)}</h1><p>${escapeHtml(player.teams.name)}</p></div><div class="bt-development-heading-actions"><p class="bt-review-count" id="reviewedSwingCount">Reviewing swing evidence…</p><button type="button" class="bt-button bt-button-secondary" id="parentViewBtn">${icon("link", { size: 18 })}<span>Parent view</span></button></div></div>
+      <section class="bt-summary-section bt-summary-strengths"><span class="bt-eyebrow">What’s working</span><h2>Coach-verified strengths</h2>${isDemoMode() ? '<p class="bt-supporting">Only what the coach has checked shows here. AI only helps prepare drafts.</p>' : ""}${summary.strengths.length ? `<div class="bt-strength-grid">${summary.strengths.map((strength) => `<article class="bt-strength-card"><div class="bt-summary-title">${icon("check", { size: 18 })}<h3>${escapeHtml(strength.label)}</h3><span class="bt-score-word">${escapeHtml(strength.scoreWord ?? "")}</span></div>${strength.note ? `<p>${escapeHtml(strength.note)}</p>` : ""}</article>`).join("")}</div>` : `<p class="bt-supporting">No strengths have been coach-verified yet.</p>`}</section>
+      ${planHtml}
     </div>`;
+    document.getElementById("parentViewBtn").addEventListener("click", openParentView);
+  }
+
+  // "Parent view": the read-only report a family gets from a share link. Opens the newest
+  // active link; with none, creates one first - straight away in the demo (it resets), and only
+  // after the coach confirms in the real app, since a link makes the report viewable by anyone
+  // who has it.
+  async function openParentView() {
+    const btn = document.getElementById("parentViewBtn");
+    btn.disabled = true;
+    try {
+      let { data: links } = await supabase.from("player_share_links").select("token").eq("player_id", playerId).is("revoked_at", null).gt("expires_at", new Date().toISOString()).order("created_at", { ascending: false }).limit(1);
+      let token = links?.[0]?.token;
+      if (!token) {
+        if (!isDemoMode() && !await confirmDialog({ title: "Create a parent link?", message: "This makes a read-only link to the report. Anyone with the link can view it until it expires or you revoke it (Manage player). Video isn't included.", confirmLabel: "Create link" })) return;
+        token = crypto.randomUUID();
+        const { error } = await supabase.from("player_share_links").insert({ player_id: playerId, token, created_by: coachUserId });
+        if (error) { showSnackbar(`Couldn't create the parent link: ${error.message}`); return; }
+        await loadShareLinks();
+      }
+      window.location.href = `${window.location.pathname.replace(/player(\.html)?$/, "report.html")}?token=${encodeURIComponent(token)}`;
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   async function loadIssues() {

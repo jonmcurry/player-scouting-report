@@ -123,7 +123,10 @@ export function renderPlayerAppBar(container, { player, teamName, teamSlug, rost
   const overflow = container.querySelector("#appBarOverflow");
   const openManage = () => {
     const details = document.getElementById("managePlayer");
-    if (details) { details.open = true; details.scrollIntoView({ behavior: "smooth" }); }
+    if (!details) return;
+    // Open every enclosing drawer too (Manage player sits inside the Overview's "More" drawer).
+    for (let el = details; el; el = el.parentElement?.closest("details")) el.open = true;
+    details.scrollIntoView({ behavior: "smooth" });
   };
   overflow.addEventListener("click", () => openOverflowMenu({
     title: player.name,

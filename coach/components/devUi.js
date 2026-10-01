@@ -12,6 +12,7 @@ import {
 } from "./ui.js";
 import { PLAYER_TABS } from "./shellState.js";
 import * as L from "./developmentLogic.js";
+import { readSubjectBox } from "./subjectZoom.js";
 
 export { confirmDialog, escapeHtml, showSnackbar, statusChip, supabase, qs, L };
 
@@ -227,7 +228,7 @@ export async function loadSwingRecords(playerId, { limit = 40, offset = 0 } = {}
 export async function loadPhases(clipId) {
   const { data } = await supabase
     .from("swing_phases")
-    .select("frame, time_s, confidence, reconstruction_reliable, swing_phase_types!inner(slug, label, sort_order)")
+    .select("frame, time_s, confidence, reconstruction_reliable, detail, swing_phase_types!inner(slug, label, sort_order)")
     .eq("video_clip_id", clipId)
     .order("sort_order", { referencedTable: "swing_phase_types" });
   const order = new Map(["stance", "load", "stride", "contact", "extension", "follow-through"].map((slug, index) => [slug, index]));
@@ -237,6 +238,7 @@ export async function loadPhases(clipId) {
     timeS: r.time_s,
     confidence: r.confidence,
     reconstructionReliable: r.reconstruction_reliable,
+    subjectBox: readSubjectBox(r.detail),
   })).sort((a, b) => (order.get(a.slug) ?? 99) - (order.get(b.slug) ?? 99));
 }
 

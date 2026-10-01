@@ -915,7 +915,8 @@ details.drawer .drawer-body { padding: 0 16px 16px; }
 .app-bar-left { min-height:56px; height:auto; gap:var(--space-2); flex:1; min-width:0; padding-block:4px; }
 .app-bar-titles { flex:1; min-width:0; }
 .app-bar-title-row { min-width:0; }
-.app-bar-title-row h1 { display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-family:var(--font-display); font-size:clamp(17px,1.25rem,22px); font-weight:600; line-height:normal; text-transform:none; }
+/* Up to two lines, then ellipsis: long drill-in titles ("Emily · Sep 19 · AB 2 · Pitch 3") were cut off mid-word on phones. */
+.app-bar-title-row h1 { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; white-space:normal; overflow-wrap:anywhere; font-family:var(--font-display); font-size:clamp(17px,1.25rem,22px); font-weight:600; line-height:1.2; text-transform:none; }
 .app-bar-subtitle { font-family:var(--font-body); font-size:clamp(12px,.75rem,14px); font-weight:400; line-height:normal; color:var(--text-3); }
 .app-bar-back, .app-bar-caret, .app-bar-overflow { width:48px; height:48px; min-width:48px; min-height:48px; padding:0; }
 .app-bar-back { display:inline-flex; align-items:center; justify-content:center; color:var(--text-2); }
@@ -1011,6 +1012,7 @@ body.show-team-heatmap .p1b-roster-row .mini-heatmap { display:flex; }
 .p1b-swing-context { display:flex; justify-content:space-between; gap:var(--space-2); margin-bottom:var(--space-2); color:var(--text-2); font-size:.75rem; }
 .p1b-swing-context span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .review-video { width:100%; height:auto; max-height:55vh; aspect-ratio:auto; object-fit:contain; border-radius:var(--radius-sm); background:#000; display:block; }
+.review-video.is-player-zoom { max-height:70vh; margin-inline:auto; }
 .p1b-phase-track { display:grid; grid-template-columns:repeat(auto-fit,minmax(44px,1fr)); gap:2px; margin-top:var(--space-2); border-top:2px solid var(--border-strong); }
 .p1b-phase-tick { min-width:0; min-height:48px; padding:4px 1px; border:0; background:transparent; color:var(--text-2); font-size:.6875rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .p1b-phase-tick > span { display:block; width:8px; height:8px; margin:-9px auto 4px; border-radius:50%; background:var(--brand-text); border:2px solid var(--bg); }
@@ -1021,6 +1023,8 @@ body.show-team-heatmap .p1b-roster-row .mini-heatmap { display:flex; }
 .bt-development-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-4); padding-bottom:var(--space-4); border-bottom:1px solid var(--border); }
 .bt-development-heading h1 { margin:2px 0 0; font:700 clamp(1.75rem,4vw,2.5rem)/1.1 var(--font-display); }
 .bt-development-heading p { margin:var(--space-1) 0 0; color:var(--text-2); }
+.bt-development-heading-actions { display:flex; flex-direction:column; align-items:flex-end; gap:var(--space-2); }
+.bt-development-heading-actions .bt-button { display:inline-flex; align-items:center; gap:var(--space-2); }
 .bt-review-count { flex:0 0 auto; padding:var(--space-2) var(--space-3); border-radius:999px; background:var(--surface-3); color:var(--text-1) !important; font-size:.8125rem; font-weight:700; }
 .bt-summary-section { padding:var(--space-4) 0; }
 .bt-summary-section + .bt-summary-section, .bt-summary-plan { border-top:1px solid var(--border); }
@@ -1055,10 +1059,12 @@ body.show-team-heatmap .p1b-roster-row .mini-heatmap { display:flex; }
 .bt-review-verified > .bt-caption { display:block; margin:0 0 var(--space-3); }
 .bt-verified-list { display:grid; gap:var(--space-3); }
 .bt-verified-list article + article { padding-top:var(--space-3); border-top:1px solid var(--border); }
-.bt-evidence-needs { padding:0; overflow:hidden; }
-.bt-evidence-needs > summary { min-height:64px; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-3) var(--space-4); cursor:pointer; list-style:none; }
-.bt-evidence-needs > summary::-webkit-details-marker { display:none; }
-.bt-evidence-needs > summary > span:first-child { display:grid; gap:var(--space-1); }
+.bt-evidence-needs, details.bt-review-verified { padding:0; overflow:hidden; }
+.bt-evidence-needs > summary, details.bt-review-verified > summary { min-height:64px; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-3) var(--space-4); cursor:pointer; list-style:none; }
+.bt-evidence-needs > summary::-webkit-details-marker, details.bt-review-verified > summary::-webkit-details-marker { display:none; }
+.bt-evidence-needs > summary > span:first-child, details.bt-review-verified > summary > span:first-child { display:grid; gap:var(--space-1); }
+details.bt-review-verified > .bt-disclosure-body { padding:0 var(--space-4) var(--space-4); }
+details[open] > summary .bt-disclosure-chevron { transform:rotate(180deg); }
 .bt-evidence-needs ul { columns:2; margin:0; padding-left:var(--space-4); color:var(--text-2); }
 .bt-evidence-needs li { break-inside:avoid; margin-bottom:var(--space-2); }
 .p1b-finding { padding:0; overflow:hidden; }
@@ -1077,6 +1083,7 @@ body.show-team-heatmap .p1b-roster-row .mini-heatmap { display:flex; }
 @media (max-width: 620px) {
   .bt-development-heading { display:grid; }
   .bt-review-count { justify-self:start; }
+  .bt-development-heading-actions { flex-direction:row; flex-wrap:wrap; align-items:center; }
   .bt-strength-grid, .bt-summary-grid { grid-template-columns:1fr; }
   .bt-summary-grid .bt-summary-section + .bt-summary-section { padding-left:0; border-left:0; border-top:1px solid var(--border); }
   .bt-evidence-row { grid-template-columns:1fr; }
@@ -1199,6 +1206,13 @@ button.bt-pitch-main { min-height:48px; padding:0; border:0; background:transpar
 .bt-video-unavailable span { color:var(--text-3); font-size:.75rem; }
 .bt-frame-compare video { aspect-ratio:4/3; }
 .bt-ab-chip { position:absolute; z-index:1; top:6px; left:6px; width:26px; height:26px; display:grid; place-items:center; border-radius:50%; background:rgba(18,20,24,.88); color:#fff; font-weight:800; }
+.bt-video-footer { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2) var(--space-3); margin:var(--space-2) 0; }
+.bt-video-footer .bt-caption { flex:1 1 12rem; margin:0; }
+.bt-zoom-toggle { min-height:44px; padding:0 var(--space-3); border:1px solid var(--border); border-radius:999px; background:var(--surface-2); color:var(--text-1); font-weight:700; }
+.bt-zoom-toggle[aria-pressed="true"] { border-color:var(--brand); }
+.bt-zoom-toggle[hidden] { display:none; }
+.bt-compare-pick { border-style:dashed !important; color:var(--text-2); }
+.bt-compare-selection-gap { width:44px; }
 .bt-compare-transport { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:var(--space-2); margin:var(--space-3) 0; }
 .bt-phase-chips,.bt-picker-source { display:flex; gap:var(--space-2); overflow-x:auto; margin-bottom:var(--space-3); }
 .bt-phase-chips button,.bt-picker-source button { min-height:48px; flex:1; border:1px solid var(--border); border-radius:999px; background:var(--surface-2); color:var(--text-2); }

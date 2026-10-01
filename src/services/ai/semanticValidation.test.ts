@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import type { GoogleGenAI } from "@google/genai";
 import type { AnalysisInput } from "./analysisContext.js";
 import { analyzeSwing } from "./geminiAnalyzer.js";
-import { SemanticValidationError, checkpointEvidence, methodologyExcludedForContext, suppliedPhases, zoneCell } from "./semanticValidation.js";
+import { MIN_SWING_SEQUENCE_FRAMES, SemanticValidationError, checkpointEvidence, methodologyExcludedForContext, suppliedPhases, wholeSwingSupplied, zoneCell } from "./semanticValidation.js";
 import { SWING_ANALYSIS_JSON_SHAPE_INSTRUCTIONS, renderSwingAnalysisPrompt, validateSwingAnalysisResult, validationContext } from "./swingAnalysisShared.js";
 import { CHECKPOINTS, CHECKPOINT_EVIDENCE_TIERS } from "../../types/scouting.js";
 import { filterApplicableMethodology } from "../knowledge/methodologyRepository.js";
@@ -325,6 +325,24 @@ test("5. dense/full-sequence evidence keeps allowing whole-swing checkpoints", (
     assert.doesNotThrow(() => validate(response({ checklist: [{ checkpointSlug: slug, score: 2, notes: "Consistent through the swing." }] }), dense), slug);
   }
   rejects(response({ checklist: [{ checkpointSlug: "swing-decisions", score: 2, notes: "Consistent." }] }), /pitch location is unknown/, input({}, { frameNames: ["frame_001.png"] }));
+});
+
+test("5b. a batter-zoomed swing sequence alongside phase stills counts as whole-swing evidence", () => {
+  const seq = (n: number) => Array.from({ length: n }, (_, i) => `swing_seq_${String(i + 1).padStart(2, "0")}.png`);
+  const withSeq = input({}, { frameNames: [...PHASE_STILLS, "zoom_contact.png", ...seq(MIN_SWING_SEQUENCE_FRAMES)] });
+  assert.equal(wholeSwingSupplied(withSeq.swing.frameNames), true);
+  for (const slug of ["hand-path", "bat-path", "head-eyes"]) {
+    assert.doesNotThrow(() => validate(response({ checklist: [{ checkpointSlug: slug, score: 2, notes: "Consistent through the swing." }] }), withSeq), slug);
+  }
+  // Still needs a known pitch location for swing decisions.
+  rejects(response({ checklist: [{ checkpointSlug: "swing-decisions", score: 2, notes: "Consistent." }] }), /pitch location is unknown/, withSeq);
+  // A short sequence, or zoom crops alone, is not whole-swing evidence.
+  const shortSeq = input({}, { frameNames: [...PHASE_STILLS, ...seq(MIN_SWING_SEQUENCE_FRAMES - 1)] });
+  assert.equal(wholeSwingSupplied(shortSeq.swing.frameNames), false);
+  rejects(response({ checklist: [{ checkpointSlug: "hand-path", score: 2, notes: "Direct." }] }), /whole-swing checkpoint but only phase stills were supplied/, shortSeq);
+  assert.equal(wholeSwingSupplied([...PHASE_STILLS, "zoom_contact.png", "zoom_load.png"]), false);
+  // Zoom crops add no phase coverage of their own.
+  assert.deepEqual([...suppliedPhases(["phase_load.png", "zoom_contact.png"])!], ["load"]);
 });
 
 test("6-7. hip-shoulder separation is never AI-scored; leaving it unscored is fine", () => {

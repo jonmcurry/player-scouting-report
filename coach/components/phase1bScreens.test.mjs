@@ -28,8 +28,8 @@ test("Legacy next-action model remains deterministic while Player leads with dev
   assert.ok(html.indexOf('id="developmentSummary"') < html.indexOf('id="swingEvidenceList"'));
   assert.ok(html.indexOf('id="swingEvidenceList"') < html.indexOf('id="technicalDetails"'));
   assert.match(html, /What’s working/);
-  assert.match(html, /No Priority confirmed yet\./);
-  assert.match(html, /No Drill yet\./);
+  assert.match(html, /The coach hasn't picked a Priority yet\./);
+  assert.doesNotMatch(html, /No Drill yet\./, "no empty Drill section before a Priority");
 });
 
 test("Review findings expose approval before priority tracking", () => {
@@ -63,12 +63,13 @@ test("Review summary: zero findings are never labelled a draft; only real unrevi
     assert.doesNotMatch(label, /Draft from analysis|Not reviewed/);
   }
   const review = read("review.html");
-  assert.match(review, /No reviewed observation from this swing\./, "analyzed, no draft observation");
+  assert.match(review, /Nothing flagged on this swing\./, "analyzed, no draft observation");
   assert.match(review, /This swing has not been analyzed\./, "unanalyzed heading");
   assert.match(review, /"Not analyzed"/, "unanalyzed status never reads like pending analysis");
   assert.doesNotMatch(review, /Awaiting analysis|Findings appear here once analysis finishes/);
-  assert.match(review, /Coach-reviewed strengths/);
-  assert.match(review, /not an independent check of this clip/);
+  assert.match(review, /strength\$\{summary\.strengths\.length === 1 \? "" : "s"\} the coach has checked/);
+  // Player-level strengths are labelled as such on a single swing's review.
+  assert.match(review, /From the coach's review of all of .*swings, not only this one\./);
   assert.doesNotMatch(review, /Experimental 3D reconstruction|Explain in 3D/);
   // Metrics fail closed: no published values means no Measurements drawer at all, not an empty card.
   assert.match(review, /id="metricsDrawer" hidden/);

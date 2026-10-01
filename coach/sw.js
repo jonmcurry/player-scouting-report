@@ -11,7 +11,7 @@
 // all for exactly this reason, on an already-installed app, even after a
 // full rebuild+reinstall. Confirmed the fix was correct all along; only the
 // cache-bust was missing.
-const CACHE_NAME = "hitterloop-coach-c2c534a6a5";
+const CACHE_NAME = "hitterloop-coach-f5273d438e";
 // Separate, unversioned cache for cross-origin CDN libs (currently just
 // Three.js, see skeletonScene.js) - kept apart from CACHE_NAME so a normal
 // app-shell version bump doesn't force re-downloading a large lib that
@@ -28,7 +28,7 @@ const ASSETS = [
   "./compare.html",
   "./atbat.html",
   "./session.html",
-  "./coach.css?v=c2c534a6a5",
+  "./coach.css?v=f5273d438e",
   "./shared.js",
   "./config.js",
   "./demoConfig.js",
@@ -58,6 +58,7 @@ const ASSETS = [
   "./components/reviewQueue.js",
   "./components/pitchEntry.js",
   "./components/comparePairs.js",
+  "./components/subjectZoom.js",
   "./components/logAtBatSheet.js",
   "./assets/icons.svg",
   "./assets/models/batter.fbx",
@@ -129,7 +130,13 @@ self.addEventListener("fetch", (evt) => {
     // pre-insert load) would silently serve stale data forever instead of
     // hitting the network. Confirmed real: this exact bug made a newly-added
     // player invisible in the roster until a hard refresh.
-    evt.respondWith(fetch(evt.request));
+    //
+    // Not intercepted at all (no respondWith): a fetch() made BY the worker is
+    // checked against the page's connect-src, so relaying e.g. the Google
+    // Fonts stylesheet or the host's Cloudflare analytics beacon through it
+    // failed with net::ERR_FAILED on the live demo even though the page itself
+    // may load them. Left alone, the browser loads each one natively under the
+    // rules for its own type, and still never from cache.
     return;
   }
   evt.respondWith(caches.match(evt.request).then((res) => res || fetch(evt.request)));

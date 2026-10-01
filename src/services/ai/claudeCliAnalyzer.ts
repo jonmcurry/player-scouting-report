@@ -158,7 +158,7 @@ function runClaudeCli(prompt: string, cwd: string, model: string): Promise<Claud
 
 /**
  * @param framesDir directory of frame stills (e.g. from
- *   extract.ts's extractPhaseStills) - passed as real file paths in the
+ *   extract.ts's extractAnalysisInputs) - passed as real file paths in the
  *   prompt, not read into memory here, since the CLI reads them itself.
  * @param pitchContext same shape as geminiAnalyzer.ts's analyzeSwing.
  */

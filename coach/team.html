@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Team View</title>
-<link rel="stylesheet" href="./coach.css?v=c2c534a6a5">
+<link rel="stylesheet" href="./coach.css?v=f5273d438e">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -19,7 +19,7 @@
   <div id="teamRecent"></div>
 
   <details class="bt-disclosure" id="teamInsights">
-    <summary><span>Team insights</span><span class="bt-disclosure-chevron" aria-hidden="true">⌄</span></summary>
+    <summary><span>Team insights</span><span class="bt-disclosure-chevron" aria-hidden="true"><svg class="bt-icon " width="20" height="20" aria-hidden="true" focusable="false"><use href="./assets/icons.svg#chevron-down"></use></svg></span></summary>
     <div class="bt-disclosure-body"><div id="focusBanner"></div>
   <div class="roster-toolbar">
     <div class="chip-row" id="chipRow">
@@ -328,12 +328,10 @@
         const priority = priorityByPlayer.get(p.id);
         const scoreRows = [...p.scoresBySlug.values()];
         const strengthCount = scoreRows.filter((row) => row.review_status === "verified" && row.score === 3).length;
-        const evidenceCount = scoreRows.filter((row) => row.review_status === "insufficient_evidence").length;
-        // Development state first: Priority, then the one next step, then what is already verified.
-        const next = reviewCount ? `Next: review ${reviewCount} observation${reviewCount === 1 ? "" : "s"}` : priority ? "Next: continue the development plan" : "Next: review swing evidence";
-        const status = [priority ? `Priority: ${priority.title}` : "No Priority yet", next,
-          strengthCount ? `${strengthCount} verified strength${strengthCount === 1 ? "" : "s"}` : null,
-          evidenceCount ? `${evidenceCount} checkpoint${evidenceCount === 1 ? "" : "s"} need better evidence` : null].filter(Boolean).join(" · ");
+        // Development state first: the Priority, anything waiting on the coach, then what is already verified.
+        const status = [priority ? `Priority: ${priority.title}` : "No Priority yet",
+          reviewCount ? `${reviewCount} observation${reviewCount === 1 ? "" : "s"} to review` : null,
+          strengthCount ? `${strengthCount} strength${strengthCount === 1 ? "" : "s"} checked by the coach` : null].filter(Boolean).join(" · ");
         return `<a class="bt-list-row p1b-roster-row" href="./player.html?team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(p.slug)}">
           <span class="bt-list-row-leading"><span class="jersey-badge">${escapeHtml(p.jersey_number)}</span></span>
           <span class="bt-list-row-copy"><span class="bt-list-row-title p1b-player-name">${escapeHtml(p.name)}</span><span class="bt-list-row-supporting">${escapeHtml(status)}</span><span class="mini-heatmap">${blocks}</span></span>

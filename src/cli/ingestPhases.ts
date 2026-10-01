@@ -35,6 +35,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { findPlayerId } from "../services/db/checklistUpsert.js";
 import { computeAnalysisQuality } from "../services/db/analysisQuality.js";
+import { normalizeBox, subjectBoxAt, SUBJECT_BOX_METHOD, type BatFrame } from "../services/pose3d/subjectBox.js";
 import {
   findGameLogEntryId,
   findOrCreateVideoClip,
@@ -102,6 +103,8 @@ export async function ingestPhases(
   }
   const pose2d = JSON.parse(fs.readFileSync(path.join(clipDir, "pose_2d.json"), "utf-8"));
   const metrics = JSON.parse(fs.readFileSync(path.join(clipDir, "metrics.json"), "utf-8"));
+  const batPath = path.join(clipDir, "bat_path.json");
+  const batFrames: BatFrame[] = fs.existsSync(batPath) ? JSON.parse(fs.readFileSync(batPath, "utf-8")).frames ?? [] : [];
 
   if (!metrics.phases) {
     // metrics.py itself already writes a specific, honest reason to
@@ -158,6 +161,13 @@ export async function ingestPhases(
       throw new Error(`No swing_phase_types row for slug "${dbSlug}" - was migration 00004 applied?`);
     }
     const normalized = normalizePhase(raw);
+    // Where the batter is at this phase, for the coach app's "zoom on player"
+    // view. Omitted (not guessed) when the tracked person isn't confidently
+    // visible around this frame.
+    if (normalized.frame !== null) {
+      const box = subjectBoxAt(pose2d.frames, batFrames, normalized.frame, pose2d.meta.width, pose2d.meta.height);
+      if (box) normalized.detail = { ...normalized.detail, subject_box: { ...normalizeBox(box, pose2d.meta.width, pose2d.meta.height), method: SUBJECT_BOX_METHOD } };
+    }
     await upsertSwingPhase({ videoClipId, phaseTypeId, ...normalized });
     written++;
   }

@@ -61,9 +61,25 @@ export function checkpointEvidence(slug: string): { tier: CheckpointEvidenceTier
 }
 
 const PHASE_STILL = /^phase_([a-z_-]+)\.(png|jpe?g)$/i;
+const SWING_SEQUENCE_FRAME = /^swing_seq_\d+\.(png|jpe?g)$/i;
+/** Fewest consecutive swing_seq_NN frames that count as whole-swing evidence alongside phase
+ * stills. extractAnalysisInputs() writes up to 24 evenly sampled original frames from just before load
+ * to just after the last located swing phase; fewer than this means the window was cut short. */
+export const MIN_SWING_SEQUENCE_FRAMES = 8;
 
 /**
- * The swing phases the supplied stills cover, from extractPhaseStills()'s `phase_<slug>.png`
+ * Whether whole-swing evidence was supplied: either a dense frame sequence with no phase stills
+ * (suppliedPhases() === null, the original rule), or a batter-zoomed swing_seq_NN sequence of at
+ * least MIN_SWING_SEQUENCE_FRAMES frames supplied with the phase stills. Phase stills alone, however
+ * many, are single instants and never count.
+ */
+export function wholeSwingSupplied(frameNames: string[]): boolean {
+  if (suppliedPhases(frameNames) === null) return true;
+  return frameNames.filter((n) => SWING_SEQUENCE_FRAME.test(n)).length >= MIN_SWING_SEQUENCE_FRAMES;
+}
+
+/**
+ * The swing phases the supplied stills cover, from extractAnalysisInputs()'s `phase_<slug>.png`
  * names. When any phase still is present, coverage comes ONLY from the phase stills - other images
  * in the same set add no phase coverage and do not switch the check off. Returns null (whole clip,
  * no phase can be ruled out by name) only when there are zero phase stills: a dense frame_###.png
@@ -250,6 +266,7 @@ export function assertSemanticallyValid(result: SemanticResult, evidence: Valida
   const knownType = evidence.pitch.pitchType === null ? null : normalize(evidence.pitch.pitchType);
   const knownOutcome = evidence.pitch.outcome;
   const phases = suppliedPhases(evidence.frameNames);
+  const wholeSwing = wholeSwingSupplied(evidence.frameNames);
 
   for (const { where, field, text, kind } of textFields(result)) {
     const zone = knownPitchZone(evidence.pitch);
@@ -312,7 +329,7 @@ export function assertSemanticallyValid(result: SemanticResult, evidence: Valida
     else if (need.notScorable) violations.push(`${where} is scored but is never AI-scored: ${need.notScorable}`);
     else {
       // Whole-swing checkpoints need the whole swing: phase stills (any number) are single instants.
-      if (need.tier === "whole-swing" && phases) violations.push(`${where} is a whole-swing checkpoint but only phase stills were supplied`);
+      if (need.tier === "whole-swing" && !wholeSwing) violations.push(`${where} is a whole-swing checkpoint but only phase stills were supplied`);
       const missing = phases ? need.phases.filter((p) => !phases.has(p)) : [];
       if (missing.length) violations.push(`${where} is scored but its required still(s) ${missing.join(", ")} were not supplied`);
       if (need.pitchLocation && !locationKnown) violations.push(`${where} is scored but pitch location is unknown`);
@@ -348,7 +365,7 @@ export function checkpointRequirement(slug: string, frameNames: string[], pitch:
   const wholeSwing = need.tier === "whole-swing";
   const parts = [...(wholeSwing ? ["whole-swing frames (not phase stills)"] : []), ...need.phases.map((p) => `${p} still`), ...(need.pitchLocation ? ["known pitch location"] : [])];
   const missing = [
-    ...(wholeSwing && phases ? ["only phase stills were supplied"] : []),
+    ...(wholeSwing && !wholeSwingSupplied(frameNames) ? ["only phase stills were supplied"] : []),
     ...(phases ? need.phases.filter((p) => !phases.has(p)).map((p) => `${p} still`) : []),
     ...(need.pitchLocation && !pitchLocationKnown(pitch) ? ["known pitch location"] : []),
   ];

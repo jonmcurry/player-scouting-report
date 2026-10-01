@@ -4,7 +4,7 @@ import type { AnalysisInput } from "./analysisContext.js";
 import { unknown } from "./analysisContext.js";
 import { ANALYSIS_POLICY_VERSION, PROMPT_RENDER_VERSION } from "./analysisVersions.js";
 import { CONCEPTS, type Concept } from "../knowledge/knowledgePack.js";
-import { assertSemanticallyValid, checkpointRequirement, pitchLocationKnown, suppliedPhases, type ValidationEvidence } from "./semanticValidation.js";
+import { assertSemanticallyValid, checkpointRequirement, pitchLocationKnown, suppliedPhases, wholeSwingSupplied, type ValidationEvidence } from "./semanticValidation.js";
 
 export const SOFTBALL_COMP_BANK = ["Alo", "Chamberlain", "Chidester", "Romero", "Watley", "McCleney"];
 export const ISSUE_PHASES = ["stance", "load", "stride", "contact", "extension", "follow_through"] as const;
@@ -53,7 +53,14 @@ export function renderSwingAnalysisPrompt(input: AnalysisInput): string {
   const evidence = {
     swing_context: input.swing.context ?? "unknown",
     frame_names: input.swing.frameNames,
+    image_kinds: {
+      "phase_<phase>": "the full original frame at that swing phase",
+      "zoom_<phase>": "the same original frame cropped and enlarged around the batter (no other processing); same instant as phase_<phase>",
+      "swing_seq_NN": "consecutive original frames in time order, cropped around the batter, from just before load to just after the last located swing phase",
+      note: "Phase labels and the sequence window come from automatic detection and can be wrong. If an image labelled as a swing phase, or the sequence, shows the batter running, walking, or not swinging, treat that evidence as not supplied and do not score from it.",
+    },
     phases_supplied: phases ? [...phases].sort() : "not determinable from frame names",
+    whole_swing_frames_supplied: wholeSwingSupplied(input.swing.frameNames),
     pipeline_version: unknown(input.swing.pipelineVersion),
     reliable_metrics_supplied: input.swing.metrics,
     reconstruction_supplied: input.swing.reconstructionSupplied,

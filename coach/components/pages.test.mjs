@@ -184,32 +184,42 @@ test("public copy: no 'Direct video measurement' labels, no unreviewed no-action
   }
   const review = read("review.html");
   assert.doesNotMatch(review, /emptyState\("No meaningful mechanical issue/);
-  assert.match(review, /No reviewed observation from this swing\./);
+  assert.match(review, /Nothing flagged on this swing\./);
   assert.match(review, /This swing has not been analyzed/);
-  assert.match(review, /not a judgment that the swing has no issues/);
+  // An empty analysis is never presented as a clean bill of health.
+  assert.match(review, /isn't a promise the swing has no issues - the coach makes that call/);
   const report = read("report.html");
   assert.doesNotMatch(report, /Your coach will add a drill/);
-  assert.match(report, /A Drill comes after your coach confirms a Priority/);
+  // With a Priority but no Drill/progress yet, the report must not claim there is no Priority.
+  assert.match(report, /No Drill picked yet\.<\/h2><p>Your coach chooses a Drill for this Priority\./);
+  assert.match(report, /No progress check yet\. It appears here after your coach checks a later swing against this Priority\./);
+  assert.doesNotMatch(report, /there is no Priority being tracked/);
 });
 
 test("Overview leads with development, evidence rows, and one actionable sparse-state story", () => {
   const player = read("player.html");
   assert.ok(player.indexOf('id="developmentSummary"') < player.indexOf('id="swingEvidenceList"'));
   assert.match(player, /What’s working/);
-  assert.match(player, /No Priority confirmed yet\./);
+  // No Priority: one "What to work on next" card, not four empty sections - and no Drill or progress claim.
+  assert.match(player, /What to work on next/);
+  assert.match(player, /The coach hasn't picked a Priority yet\./);
   assert.match(player, /summary\.nextStep/);
   assert.match(read("components/playerDevelopmentSummary.js"), /Capture another swing with the full body and bat visible through contact/);
-  assert.match(player, /No Drill yet\./);
-  assert.match(player, /No progress claim yet/);
+  assert.match(player, /Once the coach sets a Priority, the Drill and progress show up here\./);
+  assert.ok(player.indexOf("Progress appears here as later swings") > player.indexOf("if (summary.currentPriority) {"), "progress copy only in the Priority branch");
+  assert.ok(player.indexOf("Progress appears here as later swings") < player.indexOf("} else {", player.indexOf("if (summary.currentPriority) {")), "progress copy only in the Priority branch");
+  // Parent view: a real coach confirms before a share link is created; the demo creates it directly.
+  assert.match(player, /id="parentViewBtn"/);
+  assert.match(player, /if \(!isDemoMode\(\) && !await confirmDialog\(\{ title: "Create a parent link\?"/);
   assert.match(player, />Review<.*>Compare</s);
 });
 
 test("Development uses one unified empty state while preserving real priority rendering", () => {
   const development = read("development.html");
   assert.match(development, /No Priority confirmed yet/);
-  assert.match(development, /What we know/);
-  assert.match(development, /What still needs better evidence/);
-  assert.match(development, /Review swing evidence/);
+  assert.doesNotMatch(development, /What we know|What still needs better evidence/, "Overview owns strengths and evidence; Development doesn't repeat them");
+  assert.match(development, /data-focus-action="add-priority">Set a Priority</);
+  assert.match(development, /openAddPrioritySheet\(ctx, refresh\)/);
   assert.doesNotMatch(development, /No priorities yet|No active priorities yet|No findings to review|No activity yet/);
   assert.match(development, /open\.map\(priorityCard\)/);
 });
@@ -217,7 +227,8 @@ test("Development uses one unified empty state while preserving real priority re
 test("Practice requires a confirmed priority with an active drill", () => {
   const practice = read("components/practicePage.js");
   assert.match(practice, /No practice plan yet/);
-  assert.match(practice, /Practice is tied to a confirmed development priority/);
+  assert.match(practice, /A practice plan starts once the coach sets a Priority and picks a Drill/);
+  assert.doesNotMatch(practice, /because the current footage needs better evidence/, "no claimed cause the data doesn't establish");
   assert.match(practice, /hasGuidedPlan/);
   assert.match(practice, /if \(!hasGuidedPlan\) \{ renderPicker\(\); return; \}/);
   assert.match(practice, /Start practice/);
@@ -277,7 +288,8 @@ test("Team: no all-clear card when nothing is pending; roster rows lead with dev
   assert.match(read("components/teamDashboard.js"), /el\.innerHTML = attention\.reviewCount \|\| attention\.dueCount \? today : "";/);
   const team = read("team.html");
   assert.match(team, /"No Priority yet"/);
-  assert.match(team, /"Next: review swing evidence"/);
+  assert.match(team, /observation\$\{reviewCount === 1 \? "" : "s"\} to review/);
+  assert.doesNotMatch(team, /need better evidence/, "roster rows stay short");
 });
 
 test("At-bat: a recorded swing's Review link is visible in its row; unknown swing/take is not reported as 0 swings", () => {
@@ -338,4 +350,25 @@ test("every page's inline module script parses (catches template/quote breakage 
       assert.doesNotThrow(() => new AsyncFunction(body), `${page} script ${i} must parse`);
     });
   }
+});
+
+test("Polish: one chevron icon, compare from one swing, honest empty queue, SW leaves cross-origin alone", () => {
+  for (const f of ["player.html", "review.html", "development.html", "team.html"]) {
+    assert.doesNotMatch(read(f), /⌄/, `${f}: the text glyph rendered as a plain "v" on some devices`);
+  }
+  const compare = read("compare.html");
+  assert.match(compare, /Choose a swing to compare/, "opened from one swing, A is shown and B is the next pick");
+  assert.match(compare, /B\?\.clipId\]\.filter\(Boolean\)/, "picking B while B is empty must not dereference null");
+  // Changing A while B is still empty applies at once - otherwise the sheet's Compare button can never enable.
+  assert.match(compare, /if \(replace && !\(replace === "a" \? B : A\)\) \{/);
+  for (const label of ["Other comparisons", "Compare two moments in one swing"]) {
+    assert.match(compare, new RegExp(`<span>${label}</span><span class="bt-disclosure-chevron">`), `${label} shows the chevron`);
+  }
+  const queue = read("queue.html");
+  assert.doesNotMatch(queue, /New swings show up here after they're analyzed/, "analyzed swings with nothing flagged never land here");
+  assert.match(queue, /Swings land here when the analysis flags something for the coach to check/);
+  const sw = read("sw.js");
+  const crossOrigin = sw.slice(sw.indexOf("if (url.origin !== self.location.origin) {"));
+  assert.match(crossOrigin.slice(0, crossOrigin.indexOf("}")), /\n\s*return;\s*$/, "cross-origin GETs are not relayed through the worker's fetch()");
+  assert.doesNotMatch(sw, /evt\.respondWith\(fetch\(evt\.request\)\);/);
 });

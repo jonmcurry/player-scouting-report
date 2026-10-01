@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Review Swing</title>
-<link rel="stylesheet" href="./coach.css?v=c2c534a6a5">
+<link rel="stylesheet" href="./coach.css?v=f5273d438e">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -19,10 +19,10 @@
       <div class="bt-review-media"><div id="swingHeader"></div><div id="watch"></div></div>
       <div class="bt-review-coaching"><section id="reviewSummary" aria-labelledby="swingReviewTitle"></section><div id="observations"></div><div id="verifiedSummary"></div><div id="evidenceNeeds"></div><div id="workOn"></div><div id="lookFor"></div><div id="track"></div></div>
     </div>
-    <details class="bt-disclosure p1b-advanced" id="advancedAnalysis"><summary><span>Advanced analysis</span><span id="qualityChip"></span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body">
-      <details class="bt-disclosure" id="quality"><summary><span>Analysis quality</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body" id="qualityBody"></div></details>
-      <details class="bt-disclosure" id="metricsDrawer" hidden><summary><span>Measurements</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body" id="metricsBody"></div></details>
-      <details class="bt-disclosure" id="advanced"><summary><span>Detailed checklist</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body" id="advancedBody"></div></details>
+    <details class="bt-disclosure p1b-advanced" id="advancedAnalysis"><summary><span>Advanced analysis</span><span id="qualityChip"></span><span class="bt-disclosure-chevron"><svg class="bt-icon " width="20" height="20" aria-hidden="true" focusable="false"><use href="./assets/icons.svg#chevron-down"></use></svg></span></summary><div class="bt-disclosure-body">
+      <details class="bt-disclosure" id="quality"><summary><span>Analysis quality</span><span class="bt-disclosure-chevron"><svg class="bt-icon " width="20" height="20" aria-hidden="true" focusable="false"><use href="./assets/icons.svg#chevron-down"></use></svg></span></summary><div class="bt-disclosure-body" id="qualityBody"></div></details>
+      <details class="bt-disclosure" id="metricsDrawer" hidden><summary><span>Measurements</span><span class="bt-disclosure-chevron"><svg class="bt-icon " width="20" height="20" aria-hidden="true" focusable="false"><use href="./assets/icons.svg#chevron-down"></use></svg></span></summary><div class="bt-disclosure-body" id="metricsBody"></div></details>
+      <details class="bt-disclosure" id="advanced"><summary><span>Detailed checklist</span><span class="bt-disclosure-chevron"><svg class="bt-icon " width="20" height="20" aria-hidden="true" focusable="false"><use href="./assets/icons.svg#chevron-down"></use></svg></span></summary><div class="bt-disclosure-body" id="advancedBody"></div></details>
     </div></details>
   </div>
 </div>
@@ -45,6 +45,7 @@
   import { findingActionState, reviewSummary } from "./components/phase1bScreens.js";
   import { buildReviewQueue, findingSequence, queueRemaining } from "./components/reviewQueue.js";
   import { derivePlayerDevelopmentSummary, hasPublishedMetrics, reviewFindingState } from "./components/playerDevelopmentSummary.js";
+  import { unionBox, wireZoomToggle, zoomPreferred, zoomToggleHtml } from "./components/subjectZoom.js";
 
   const clipId = qs("clip");
   const queueMode = qs("queue") === "1";
@@ -153,8 +154,9 @@
     el.innerHTML = `
       <video id="swingVideo" class="review-video" src="${url}" controls playsinline preload="metadata"></video>
       <div class="p1b-phase-track" id="phaseChips" aria-label="Swing phases">${phases.filter((p) => p.timeS != null).map((p) => `<button class="p1b-phase-tick tap-target" data-phase="${p.slug}" data-confidence="${escapeHtml(p.confidence ?? "")}"><span aria-hidden="true"></span>${escapeHtml(p.slug === "follow-through" ? "Finish" : p.label)}</button>`).join("")}</div>
-      <p class="bt-caption p1b-source-note">Original video is the source of truth.${phases.some((p) => p.confidence === "low") ? " Hollow markers are estimated." : ""}</p>`;
+      <div class="bt-video-footer">${zoomToggleHtml(zoomPreferred())}<p class="bt-caption p1b-source-note">Original video is the source of truth.${phases.some((p) => p.confidence === "low") ? " Open circles are best guesses." : ""}</p></div>`;
     videoEl = document.getElementById("swingVideo");
+    wireZoomToggle(el.querySelector("[data-zoom-toggle]"), [[videoEl, unionBox(phases.map((p) => p.subjectBox))]]);
     document.getElementById("phaseChips").addEventListener("click", (e) => {
       const b = e.target.closest("[data-phase]");
       if (b) seekToPhase(b.dataset.phase);
@@ -177,7 +179,7 @@
     const rejected = issues.filter((issue) => issue.review_status === "rejected").length;
     const state = reviewFindingState({ issues, hasAnalysisRun: Boolean(latestAnalysisRun) });
     const status = state === "analyzed-empty" ? "Analysis complete" : state === "unanalyzed" ? "Not analyzed" : issues.length && drafts === 0 ? `Reviewed · ${approved} approved${rejected ? ` · ${rejected} rejected` : ""}` : reviewSummary(issues).label;
-    const heading = state === "analyzed-empty" ? "No reviewed observation from this swing."
+    const heading = state === "analyzed-empty" ? "Nothing flagged on this swing."
       : state === "unanalyzed" ? "This swing has not been analyzed."
       : drafts ? `${drafts} observation${drafts === 1 ? "" : "s"} awaiting coach review`
       : "Swing review complete";
@@ -194,16 +196,18 @@
   function renderVerificationSummary() {
     const summary = derivePlayerDevelopmentSummary({ checklist: playerChecklist, priorities, assignments });
     const verified = document.getElementById("verifiedSummary");
-    verified.innerHTML = `<section class="bt-card bt-review-verified"><span class="bt-eyebrow">What's going well</span><h2>Coach-reviewed strengths</h2><p class="bt-caption">${isDemoMode() ? "AI helped prepare drafts; the coach’s review determines what appears here. " : ""}These player-level scores are not an independent check of this clip.</p>${summary.strengths.length ? `<div class="bt-verified-list">${summary.strengths.map((row) => `<article><div class="bt-summary-title">${icon("check", { size: 18 })}<h3>${escapeHtml(row.label)}</h3><span class="bt-score-word">${escapeHtml(row.scoreWord ?? "")}</span></div>${row.note ? `<p>${escapeHtml(row.note)}</p>` : ""}</article>`).join("")}</div>` : `<p class="bt-supporting">No checkpoint has been coach-verified yet.</p>`}</section>`;
+    verified.innerHTML = summary.strengths.length
+      ? `<details class="bt-card bt-review-verified"><summary><span><span class="bt-eyebrow">What's going well</span><strong>${summary.strengths.length} strength${summary.strengths.length === 1 ? "" : "s"} the coach has checked</strong></span><span class="bt-disclosure-chevron">${icon("chevron-down", { size: 20 })}</span></summary><div class="bt-disclosure-body"><p class="bt-caption">From the coach's review of all of ${escapeHtml(ctx.player.name)}'s swings, not only this one.</p><div class="bt-verified-list">${summary.strengths.map((row) => `<article><div class="bt-summary-title">${icon("check", { size: 18 })}<h3>${escapeHtml(row.label)}</h3><span class="bt-score-word">${escapeHtml(row.scoreWord ?? "")}</span></div>${row.note ? `<p>${escapeHtml(row.note)}</p>` : ""}</article>`).join("")}</div></div></details>`
+      : "";
     const needs = document.getElementById("evidenceNeeds");
-    needs.innerHTML = summary.needsBetterEvidence.length ? `<details class="bt-card bt-evidence-needs"><summary><span><span class="bt-eyebrow">What needs better evidence</span><strong>${summary.needsBetterEvidence.length} checkpoint${summary.needsBetterEvidence.length === 1 ? "" : "s"} need better evidence</strong></span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><ul>${summary.needsBetterEvidence.map((row) => `<li>${escapeHtml(row.label)}</li>`).join("")}</ul></div></details>` : "";
+    needs.innerHTML = summary.needsBetterEvidence.length ? `<details class="bt-card bt-evidence-needs"><summary><span><span class="bt-eyebrow">Not judged yet</span><strong>${summary.needsBetterEvidence.length} part${summary.needsBetterEvidence.length === 1 ? "" : "s"} of the swing need${summary.needsBetterEvidence.length === 1 ? "s" : ""} clearer video</strong></span><span class="bt-disclosure-chevron">${icon("chevron-down", { size: 20 })}</span></summary><div class="bt-disclosure-body"><ul>${summary.needsBetterEvidence.map((row) => `<li>${escapeHtml(row.label)}</li>`).join("")}</ul></div></details>` : "";
   }
 
   function renderObservations() {
     const el = document.getElementById("observations");
     if (!issues.length) {
       el.innerHTML = latestAnalysisRun
-        ? `<p class="bt-supporting bt-review-explanation">The analysis finished without a draft observation, and no coach has confirmed one. This is not a judgment that the swing has no issues.</p>`
+        ? `<p class="bt-supporting bt-review-explanation">The analysis didn't flag anything for the coach to look at. That isn't a promise the swing has no issues - the coach makes that call.</p>`
         : `<p class="bt-supporting bt-review-explanation">Watch the original video above. For an analysis, capture a swing with the full body and bat visible through contact.</p>`;
       return;
     }
@@ -340,6 +344,7 @@
       const raw = m?.analysis_quality ?? L.deriveQualityFromPhases(phases, !!p3);
       const q = L.analysisQualityLabels(raw);
       const rows = [["Pose tracking", q.pose], ["Bat tracking", q.bat], ["Contact estimate", q.contact], ["Occlusion", q.occlusion], ["Handedness", q.handedness]];
+      if (rows.every(([, v]) => !v)) { document.getElementById("qualityBody").innerHTML = '<p class="hint">Video quality wasn\'t measured for this swing. Rely on the original video.</p>'; return; }
       document.getElementById("qualityBody").innerHTML = `<div class="quality-grid">${rows.map(([l, v]) => `<span>${l}</span>${v ? pill(v, L.QUALITY_TEXT[v] ?? v) : '<span class="hint">Not measured</span>'}`).join("")}</div>
         <p class="hint">${m?.analysis_quality ? "" : "Measured from what this clip already has; pose and bat coverage weren't recorded when it was processed. "}Limited or Poor means treat automated observations as hints and rely on the original video.</p>`;
     });

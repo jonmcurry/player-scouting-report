@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Player Development</title>
-<link rel="stylesheet" href="./coach.css?v=c2c534a6a5">
+<link rel="stylesheet" href="./coach.css?v=f5273d438e">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -23,10 +23,10 @@
 
     <section id="findingsSection"><h2 class="p2a-section-label">Observations to review</h2><div id="aiSuggestionsWrap"></div></section>
 
-    <details class="bt-disclosure" id="priorityHistory" hidden><summary><span>Priority history</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body" id="priorityHistoryBody"></div></details>
-    <details class="bt-disclosure" id="developmentHistory" hidden><summary><span>Development history</span><span class="bt-disclosure-chevron">⌄</span></summary><div class="bt-disclosure-body"><div id="timelineWrap"></div><button class="bt-button bt-button-tertiary tap-target" id="moreTimeline" hidden>Show earlier</button></div></details>
+    <details class="bt-disclosure" id="priorityHistory" hidden><summary><span>Priority history</span><span class="bt-disclosure-chevron"><svg class="bt-icon " width="20" height="20" aria-hidden="true" focusable="false"><use href="./assets/icons.svg#chevron-down"></use></svg></span></summary><div class="bt-disclosure-body" id="priorityHistoryBody"></div></details>
+    <details class="bt-disclosure" id="developmentHistory" hidden><summary><span>Development history</span><span class="bt-disclosure-chevron"><svg class="bt-icon " width="20" height="20" aria-hidden="true" focusable="false"><use href="./assets/icons.svg#chevron-down"></use></svg></span></summary><div class="bt-disclosure-body"><div id="timelineWrap"></div><button class="bt-button bt-button-tertiary tap-target" id="moreTimeline" hidden>Show earlier</button></div></details>
 
-    <details class="bt-disclosure p2a-insights" id="insightsDrawer" hidden><summary><span>Insights</span><span class="bt-disclosure-chevron">⌄</span></summary>
+    <details class="bt-disclosure p2a-insights" id="insightsDrawer" hidden><summary><span>Insights</span><span class="bt-disclosure-chevron"><svg class="bt-icon " width="20" height="20" aria-hidden="true" focusable="false"><use href="./assets/icons.svg#chevron-down"></use></svg></span></summary>
       <div class="bt-disclosure-body"><h3>Game vs practice</h3><div id="mix"></div>
         <details class="bt-disclosure" id="trendsDrawer"><summary><span>Measured trends over time</span></summary>
           <div class="bt-disclosure-body" id="trendsBody"><p class="bt-supporting">Loading…</p></div></details>
@@ -141,8 +141,9 @@
              <span>${icon("target", { size: 18 })}${escapeHtml(nf.assignment?.drill_library?.name || "No drill assigned")}</span></div>
            <div class="p2a-hero-actions">${nf.assignment ? `<a class="bt-button bt-button-primary" href="${ctx.url("session", { start: 1, priority: nf.priority.id })}">Start practice</a>` : '<button class="bt-button bt-button-secondary" data-focus-action="drill">Choose a drill</button>'}
              <button class="bt-button bt-button-tertiary" data-focus-action="progress">Update progress</button></div></section>`
-      : `<section class="bt-card bt-unified-development-empty"><span class="bt-eyebrow">Development</span><h1>No Priority confirmed yet</h1>${isDemoMode() ? '<p class="bt-supporting">AI helped prepare drafts; the coach’s review determines what appears here.</p>' : ""}<h2>What we know</h2>${summary.strengths.length ? `<ul class="bt-strengths">${summary.strengths.map((row) => `<li>${icon("check", { size: 18 })}<span>${escapeHtml(row.label)}</span></li>`).join("")}</ul>` : '<p class="bt-supporting">No strengths have been coach-verified yet.</p>'}<h2>What still needs better evidence</h2><p>${summary.needsBetterEvidence.length} checkpoint${summary.needsBetterEvidence.length === 1 ? "" : "s"}</p><h2>Next step</h2><p>${escapeHtml(summary.nextStep || DEFAULT_CAPTURE_GUIDANCE)}</p><a class="bt-button bt-button-primary" href="${ctx.url("player")}">Review swing evidence</a></section>`;
+      : `<section class="bt-card bt-unified-development-empty"><span class="bt-eyebrow">Development</span><h1>No Priority confirmed yet</h1><p>${summary.draftFindingCount ? `${summary.draftFindingCount} observation${summary.draftFindingCount === 1 ? " is" : "s are"} waiting for coach review below.` : `${escapeHtml(summary.nextStep || DEFAULT_CAPTURE_GUIDANCE)}`}</p><p class="bt-supporting">A Priority is the one thing ${escapeHtml(ctx.player.name)} works on next. The coach sets it; the Drill and progress tracking follow.</p><div class="p2a-hero-actions"><button class="bt-button bt-button-primary" data-focus-action="add-priority">Set a Priority</button><a class="bt-button bt-button-tertiary" href="${ctx.url("player")}">Back to overview</a></div></section>`;
     document.querySelector("[data-focus-action=progress]")?.addEventListener("click", () => openObservationSheet(ctx, nf.priority, {}, refresh));
+    document.querySelector("[data-focus-action=add-priority]")?.addEventListener("click", () => openAddPrioritySheet(ctx, refresh));
     document.querySelector("[data-focus-action=drill]")?.addEventListener("click", () => openAssignDrillSheet(ctx, nf.priority, library, state.asgBy.get(nf.priority.id) ?? [], refresh));
   }
 

@@ -1,5 +1,82 @@
 # Changelog
 
+## [0.29.0] - 2026-10-01
+
+No schema or data change. Public demo fixture stays `emily@2026-09-26.1`; nothing was deployed.
+
+### Changed
+
+- Compare opened from one swing's "Compare" link shows that swing as A and asks for B ("Choose a swing to compare"). It used to show a generic "Choose two swings" card, with the chosen swing invisible until the picker was opened.
+- The Review queue's empty state says what it means: swings land there only when the analysis flags something for the coach to check, and analyzed swings with nothing flagged stay on each player's page. It links to the players. It used to say "You're all caught up · New swings show up here after they're analyzed", which isn't true for swings with nothing flagged.
+- App bar titles wrap to two lines before truncating, so long swing titles ("Emily · Sep 19 · AB 2 · Pitch 3") are no longer cut off mid-word on phones.
+- Every disclosure uses the same chevron icon. The text glyph "⌄" rendered as a plain "v" on some devices.
+
+### Fixed
+
+- The service worker relayed every cross-origin GET through its own `fetch()`, which is checked against the page's `connect-src`. On the live demo the Google Fonts stylesheet and the host's Cloudflare analytics beacon failed with `net::ERR_FAILED`. Cross-origin requests are no longer intercepted: the browser loads them natively, and still never from cache.
+- Compare with only A chosen: picking B read `B.clipId` of null, and changing A left the picker's Compare button permanently disabled. A choice for either side now applies straight away while the other side is still empty.
+- Compare's "Other comparisons" and "Compare two moments in one swing" drawers had no chevron, so nothing showed they could be opened.
+- `components/subjectZoom.js` (0.27.0) is precached for the offline shell. Without it, Review and Compare couldn't load their modules offline.
+
+## [0.28.0] - 2026-10-01
+
+No schema or data change. Public demo fixture stays `emily@2026-09-26.1`; nothing was deployed.
+
+### Added
+
+- "Parent view" button on the player Overview. It opens the read-only report a family gets from a share link, creating the link first if there isn't one. A real coach confirms before a link is created, because anyone with the link can read the report. The demo creates it directly, since demo data resets.
+
+### Changed
+
+- Easier to read for parents and players:
+  - With no Priority, the Overview shows one "What to work on next" card instead of four empty sections (Priority, Next step, Development plan, Progress). It names anything waiting for coach review, and links to "Set a Priority". The parent report gets the same single card.
+  - Review leads with the swing. The player-level strengths that repeated on every swing now sit in a collapsed "N strengths the coach has checked" row, still labelled as coming from all of the player's swings, not this one.
+  - Plainer wording:
+    - "No reviewed observation from this swing" → "Nothing flagged on this swing"; it still says this is not a promise the swing has no issues.
+    - "N checkpoints need better evidence" → "N parts of the swing need clearer video".
+    - "Hollow markers are estimated" → "Open circles are best guesses".
+    - Swing rows read "Analyzed · nothing flagged", "Waiting for coach review" or "Coach reviewed".
+    - The demo's AI note appears once on the Overview instead of on every card.
+  - An "Analysis quality" table where every row is "Not measured" is replaced by one line saying quality wasn't measured.
+  - Development with no Priority no longer repeats the Overview's lists; it explains what a Priority is and offers "Set a Priority".
+  - Team roster rows are shorter: the Priority, anything waiting for review, and the number of coach-checked strengths.
+  - The Overview's game log, practice log, earlier notes, technical details, player history and Manage player sit under one "More: logs, history, settings" drawer. The app-bar menu still opens Manage player directly.
+
+### Fixed
+
+- Practice's empty state said the player had no Priority "because the current footage needs better evidence", a cause the data does not establish. It now says a practice plan starts once the coach sets a Priority and picks a Drill.
+- The parent report said "there is no Priority being tracked" and "A Drill comes after your coach confirms a Priority" even when a Priority existed but had no Drill or progress yet.
+
+## [0.27.0] - 2026-10-01
+
+No schema change. Public demo fixture stays `emily@2026-09-26.1`; nothing was deployed.
+
+### Added
+
+- "Zoom on player" for swing video in Review and Compare (Video and Frames). It crops the view to where the batter is in the original video, so a hitter filmed from far away is large enough to see on a phone; "Show full field" returns to the whole frame. Display only: the same original pixels, native video controls unchanged. Shown only where the batter's position is known and the browser can crop video (Chromium/Android; not Safari or Firefox yet). The choice is remembered per device.
+- Ingesting phases stores the batter's position at each phase (`swing_phases.detail.subject_box`, normalized, from the pose pipeline's own keypoints and bat track). Omitted, not guessed, when the batter isn't confidently tracked at that frame.
+- AI analysis input now includes, alongside each full-frame phase still:
+  - a batter-zoomed crop of the same frame (`zoom_<phase>.png`);
+  - a batter-zoomed frame sequence (`swing_seq_NN.png`, up to 24 frames) from just before load to just after the last located swing phase (at most 3 s). It is only produced when the tracked batter is inside the crop in at least 80% of those frames. The crop is anchored on the load frame, and frames where the tracker jumps to another player are left out.
+- Each validated AI response is saved beside its input images (`analysis_result_<run>.json`). Drafts for checkpoints a coach has already reviewed are not written to the checklist, and this file keeps them visible.
+- A swing sequence of at least 8 frames now counts as whole-swing evidence, so hand path, bat path and head/eyes can be drafted from it (swing decisions still need a recorded pitch location). Prompt render version `render-1.3`.
+
+### Fixed
+
+- AI stills came from the wrong moment.
+  - Long uploads: phase frames index into Stage 0's trimmed analysis window, but stills were cut from the raw upload at the window-relative time, up to minutes before the swing.
+  - Phone video: it is variable frame rate, so a frame's time is not frame / fps. On a real clip that landed several frames away.
+  - Stills are now cut at the exact raw frame, using the container's own timestamps: the first raw frame at or after the window start, then one-to-one, or every Nth frame for decimated clips. If the window can't be matched to exactly one recorded Stage 0 window, the AI step is skipped rather than fed misaligned frames.
+- A re-run no longer mixes AI input images, or AI results that cite them, from an earlier run in the same folder.
+
+### Changed
+
+- The AI prompt now says that phase labels come from automatic detection and can be wrong: frames showing the batter running or not swinging are to be treated as not supplied.
+
+### Removed
+
+- `extractPhaseStills` (replaced by `extractAnalysisInputs`).
+
 ## [0.26.1] - 2026-09-26
 
 No fixture, schema or data changes. Public demo fixture stays `emily@2026-09-26.1`.

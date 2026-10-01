@@ -172,6 +172,13 @@ export async function analyzeAndSync(
   // Both backends and draft files reach this point only after the same strict runtime validator.
   // Consequently malformed output has made zero database writes.
   const analysisRunId = await createAnalysisRun({ playerId, videoClipId, result, input });
+  // Keep the full validated response beside the inputs it came from. Checklist
+  // drafts for a checkpoint a coach already reviewed are (correctly) not
+  // written to checklist_scores, so without this a coach could never see what
+  // the model said about them.
+  if (framesDir && fs.existsSync(framesDir)) {
+    fs.writeFileSync(path.join(framesDir, `analysis_result_${analysisRunId}.json`), JSON.stringify({ analysisRunId, videoClipId, result }, null, 2));
+  }
   const slugToId = await loadCheckpointSlugToId();
   let updated = 0;
   let skipped = 0;

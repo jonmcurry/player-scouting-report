@@ -21,10 +21,10 @@
  * src/services/pose3d/smoothJoints.ts, empirically tuned against real
  * data) and store it, not to transcode/upload a browser-playable video.
  *
- * Also runs AI diagnosis automatically once a clip is ready: extracts one
- * still per located swing phase (extractPhaseStills, seeking metrics.json's
- * own phase timestamps directly rather than dumping a dense fixed-fps frame
- * sequence) and hands them to analyze.ts's analyzeAndSync (Gemini today -
+ * Also runs AI diagnosis automatically once a clip is ready: extracts the
+ * located phase stills, batter-zoomed crops and a short batter-zoomed swing
+ * sequence (extractAnalysisInputs, by the pipeline's own phase frames) and
+ * hands them to analyze.ts's analyzeAndSync (Gemini today -
  * see geminiAnalyzer.ts for the current API-key status). Wrapped in its own
  * try/catch, separate from the pipeline/ingestion try/catch above - a
  * diagnosis failure must never undo an otherwise-successful clip or mark it
@@ -61,7 +61,8 @@ import { smoothJoints, SMOOTHING_METHOD_LABEL, type Pose3dFrame } from "../servi
 import { rigidifySkeleton, RIGID_METHOD_LABEL } from "../services/pose3d/rigidifySkeleton.js";
 import { extractLongestTrackedRun, MIN_TRACKED_FRAMES } from "../services/pose3d/trackedFrames.js";
 import { ingestPhases } from "./ingestPhases.js";
-import { extractPhaseStills, type PhaseTimestamp } from "./extract.js";
+import { extractAnalysisInputs, type PhaseFrame } from "./extract.js";
+import { analysisWindowForClipDir } from "../services/pose3d/analysisWindow.js";
 import { analyzeAndSync } from "./analyze.js";
 
 const POLL_INTERVAL_MS = 10_000;
@@ -194,7 +195,7 @@ export async function processOnePendingClip(): Promise<boolean> {
     // this real value on a real clip.
     const metrics = JSON.parse(fs.readFileSync(path.join(outDir, "metrics.json"), "utf-8")) as {
       lead_side_guess?: "l" | "r" | null;
-      phases?: Record<string, { time_s: number | null }>;
+      phases?: Record<string, { frame: number | null; time_s: number | null }>;
       pipeline_version?: string;
     };
     const trackedFrames = extractLongestTrackedRun(pose3d.frames);
@@ -231,14 +232,30 @@ export async function processOnePendingClip(): Promise<boolean> {
     // extract.ts + analyze.ts by hand afterward.
     try {
       const phaseEntries = Object.entries(metrics.phases ?? {})
-        .filter((entry): entry is [string, { time_s: number }] => entry[1].time_s !== null)
-        .map(([slug, phase]): PhaseTimestamp => ({ slug, timeS: phase.time_s }));
+        .filter((entry): entry is [string, { frame: number; time_s: number }] => typeof entry[1]?.frame === "number")
+        .map(([slug, phase]): PhaseFrame => ({ slug, frame: phase.frame }));
+      // Phase frames index into the window the pipeline analyzed, not the raw
+      // upload (Stage 0 trims long uploads) - unknown alignment means the
+      // stills would show the wrong moment, so skip rather than guess.
+      const analysisWindow = analysisWindowForClipDir(outDir, localRawPath);
       if (phaseEntries.length === 0) {
         console.log(`[process-upload-queue] Clip "${clip.clipSlug}": no located swing phases, skipping AI diagnosis.`);
+      } else if (analysisWindow === null) {
+        console.log(`[process-upload-queue] Clip "${clip.clipSlug}": couldn't match the analyzed window to the upload, skipping AI diagnosis.`);
       } else {
         const stillsDir = path.join(outDir, "phase_stills");
-        console.log(`[process-upload-queue] Extracting ${phaseEntries.length} phase still(s) for AI diagnosis`);
-        await extractPhaseStills(localRawPath, phaseEntries, stillsDir);
+        const pose2d = JSON.parse(fs.readFileSync(path.join(outDir, "pose_2d.json"), "utf-8"));
+        const batPath = path.join(outDir, "bat_path.json");
+        const inputs = await extractAnalysisInputs({
+          videoPath: localRawPath, window: analysisWindow, fps: pose2d.meta.fps, nFrames: pose2d.meta.n_frames,
+          width: pose2d.meta.width, height: pose2d.meta.height, poseFrames: pose2d.frames,
+          batFrames: fs.existsSync(batPath) ? JSON.parse(fs.readFileSync(batPath, "utf-8")).frames ?? [] : [],
+        }, phaseEntries, stillsDir);
+        console.log(
+          `[process-upload-queue] Extracted ${inputs.phaseStills} phase still(s), ${inputs.zooms} batter zoom(s), ` +
+            `${inputs.sequenceFrames} swing-sequence frame(s) for AI diagnosis (window start ${analysisWindow.startS.toFixed(3)}s)` +
+            (inputs.sequenceSkipped ? ` - no swing sequence: ${inputs.sequenceSkipped}` : ""),
+        );
         const pitchContext = [clip.pitch, clip.result].filter(Boolean).join(" - ") || "No pitch/result details recorded for this at-bat.";
         // AI_ANALYZER selects the backend - defaults to Gemini (the intended
         // production path); set to "claude-cli" for local testing to use
