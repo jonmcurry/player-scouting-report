@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=f9eb46aa49">
+<link rel="stylesheet" href="./coach.css?v=6faa2dd8c8">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -55,6 +55,11 @@
         view it. Video/clip data is never included.</p>
       <button class="tap-target" id="createShareLinkBtn">🔗 Create Share Link</button>
       <div id="shareLinksList" style="margin-top:10px;"></div>
+      <hr style="margin:20px 0;opacity:.2;">
+      <h3 style="margin-top:0;">Parents</h3>
+      <p class="hint">A linked parent gets their own family page: your Priority, Drill and reviewed
+        notes, and a way to send swings.</p>
+      <div id="guardianAdmin"></div>
 
       <button class="tap-target btn-danger" id="deletePlayerBtn" style="margin-top:20px;">🗑 Delete Player</button>
       <p class="hint" style="margin-top:8px;">Removes her entire record, including every logged
@@ -81,7 +86,10 @@
   import { openLogAtBatSheet } from "./components/logAtBatSheet.js";
   import { mountSegmentedTabs, card, confirmDialog, emptyState, icon, listRow, showSnackbar } from "./components/ui.js";
   import { derivePlayerDevelopmentSummary } from "./components/playerDevelopmentSummary.js";
+  import { removedVideoNote } from "./components/phase1bScreens.js";
+  import { clipReviewState, coachReviewLabel } from "./components/clipReviewState.js";
   import { isDemoMode } from "./demoConfig.js";
+  import { guardianInviteUrl, guardianListHtml, pendingInvitesHtml, inviteCreatedHtml, removeGuardianDialog, inviteErrorCopy, cancelInvitesDialog, cancelInvitesDoneMessage, GUARDIAN_DEMO_NOTE, INVITE_DIALOG } from "./components/guardianAdmin.js";
   import { renderZonePicker, zoneLabel, outcomeLabel } from "./components/pitchZonePicker.js";
 
   const MIN_ATBATS_FOR_PATTERN = 3;
@@ -236,6 +244,7 @@
       }
     });
     await loadShareLinks();
+    setupGuardianAdmin(player);
 
     const devQuery = `team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}`;
     mountSegmentedTabs(document.getElementById("devTabs"), [
@@ -348,12 +357,12 @@
     const reviewByClip = new Map();
     for (const finding of findings ?? []) {
       const values = reviewByClip.get(finding.video_clip_id) ?? [];
-      values.push(finding.review_status); reviewByClip.set(finding.video_clip_id, values);
+      values.push(finding); reviewByClip.set(finding.video_clip_id, values);
     }
     document.getElementById("reviewedSwingCount").textContent = `${ready.length} game swing${ready.length === 1 ? "" : "s"} on file`;
     host.innerHTML = ready.length ? ready.map((row) => {
-      const statuses = reviewByClip.get(row.id) ?? [];
-      const reviewLabel = statuses.includes("draft") ? "Waiting for coach review" : statuses.length ? "Coach reviewed" : analyzed.has(row.id) ? "Analyzed · nothing flagged" : "Not analyzed";
+      // Same rule as the family surface (get-family-report) - see clipReviewState.js.
+      const reviewLabel = coachReviewLabel(clipReviewState({ status: row.status, analyzed: analyzed.has(row.id) }, reviewByClip.get(row.id)));
       const entry = row.game_log_entries;
       const pitch = row.at_bat_pitches?.pitch_number;
       const query = `team=${encodeURIComponent(teamSlug)}&player=${encodeURIComponent(playerSlug)}`;
@@ -637,10 +646,14 @@
   }
 
   async function loadIssues() {
-    const { data: issues } = await supabase
-      .from("issues")
-      .select("issue, seen_in_at_bats, likely_cause, effect, reviewed_by")
-      .eq("player_id", playerId);
+    const [{ data: issues }, { data: removedRows }] = await Promise.all([
+      supabase
+        .from("issues")
+        .select("id, issue, seen_in_at_bats, likely_cause, effect, reviewed_by, review_status, video_clip_id")
+        .eq("player_id", playerId),
+      supabase.rpc("clip_removals_for_player", { p_player_id: playerId }),
+    ]);
+    const removals = new Map((removedRows ?? []).map((r) => [r.issue_id, r.removed_by_role]));
     const el = document.getElementById("issuesList");
     if (!issues || issues.length === 0) {
       el.innerHTML = `<p class="hint">No issues logged yet.</p>`;
@@ -655,6 +668,7 @@
         <p><b>Likely cause:</b> ${escapeHtml(i.likely_cause)}</p>
         <p><b>Effect:</b> ${escapeHtml(i.effect)}</p>
         ${i.reviewed_by ? `<span class="badge confirmed">✓ Verified by ${escapeHtml(i.reviewed_by)}</span>` : `<span class="badge ai-draft">🤖 AI Draft</span>`}
+        ${removedVideoNote(i, removals) ? `<p class="hint">${escapeHtml(removedVideoNote(i, removals))}</p>` : ""}
       </div>
     `,
       )
@@ -715,6 +729,89 @@
         <div class="followup-field"><b>What to check next time</b>${whatToCheckNext ?? "TBD"}</div>
       </div>
     `;
+  }
+
+  // Parents (guardian links), beside the share links. A coach invites a parent with a one-time
+  // family.html link (7 days, shown once), cancels invites not used yet, sees who is linked, and removes a link. Removing leaves
+  // the videos that parent sent with the team. The demo has no family persona: a note, no invites.
+  function setupGuardianAdmin(player) {
+    const host = document.getElementById("guardianAdmin");
+    if (isDemoMode()) {
+      host.innerHTML = `<p class="hint">${GUARDIAN_DEMO_NOTE}</p>`;
+      return;
+    }
+    host.innerHTML = `
+      <select id="guardianRelationship" aria-label="Relationship"><option value="parent">Parent</option><option value="guardian">Guardian</option></select>
+      <button type="button" class="tap-target" id="inviteGuardianBtn">Invite a parent</button>
+      <div id="guardianInvite"></div>
+      <div id="guardianPending"></div>
+      <div id="guardianList" style="margin-top:10px;"></div>`;
+    document.getElementById("inviteGuardianBtn").addEventListener("click", async () => {
+      if (isDemoMode() || !await confirmDialog(INVITE_DIALOG)) return;
+      const btn = document.getElementById("inviteGuardianBtn");
+      btn.disabled = true;
+      const relationship = document.getElementById("guardianRelationship").value === "guardian" ? "guardian" : "parent";
+      const { data: token, error } = await supabase.rpc("create_guardian_invite", { p_player_id: playerId, p_relationship: relationship });
+      btn.disabled = false;
+      if (error || !token) { showSnackbar(inviteErrorCopy(error?.message)); return; }
+      // The token exists only here: the database keeps its hash. Expiry mirrors the 7-day default.
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      document.getElementById("guardianInvite").innerHTML = inviteCreatedHtml(guardianInviteUrl(window.location, token), { expiresAt });
+      await loadGuardians();
+    });
+    host.addEventListener("click", async (e) => {
+      const copyBtn = e.target.closest("[data-copy-invite]");
+      if (copyBtn) {
+        try {
+          await navigator.clipboard.writeText(copyBtn.dataset.copyInvite);
+          copyBtn.textContent = "Copied!";
+          setTimeout(() => { copyBtn.textContent = "Copy"; }, 1500);
+        } catch {
+          copyBtn.parentElement.querySelector("input")?.select();
+          showSnackbar("Couldn't copy. Press and hold the link to copy it.");
+        }
+        return;
+      }
+      const cancelBtn = e.target.closest("[data-cancel-invites]");
+      if (cancelBtn) {
+        if (isDemoMode() || !await confirmDialog(cancelInvitesDialog(Number(cancelBtn.dataset.cancelInvites) || 1))) return;
+        cancelBtn.disabled = true;
+        const { data: cancelled, error } = await supabase.rpc("revoke_guardian_invites", { p_player_id: playerId });
+        if (error) {
+          showSnackbar(/not allowed/.test(error.message ?? "") ? "Only this player's coaches can cancel invites." : "Couldn't cancel the invites. Try again.");
+          cancelBtn.disabled = false;
+          return;
+        }
+        // A link shown on this page no longer works: don't leave it up.
+        document.getElementById("guardianInvite").innerHTML = "";
+        showSnackbar(cancelInvitesDoneMessage(cancelled));
+        await loadGuardians();
+        return;
+      }
+      const removeBtn = e.target.closest("[data-remove-guardian]");
+      if (removeBtn) {
+        if (!await confirmDialog(removeGuardianDialog(removeBtn.dataset.guardianLabel, player.name))) return;
+        removeBtn.disabled = true;
+        const { error } = await supabase.rpc("revoke_guardian", { p_player_id: playerId, p_user_id: removeBtn.dataset.removeGuardian });
+        if (error) {
+          showSnackbar("Couldn't remove the parent. Try again.");
+          removeBtn.disabled = false;
+          return;
+        }
+        showSnackbar("Parent removed.");
+        await loadGuardians();
+      }
+    });
+    loadGuardians();
+  }
+
+  async function loadGuardians() {
+    const [{ data: guardians, error }, { data: invites }] = await Promise.all([
+      supabase.from("player_guardians").select("user_id, relationship, consented_at").eq("player_id", playerId).order("consented_at"),
+      supabase.from("guardian_invites").select("expires_at").eq("player_id", playerId).is("used_at", null).is("revoked_at", null).gt("expires_at", new Date().toISOString()),
+    ]);
+    document.getElementById("guardianList").innerHTML = error ? `<p class="hint">Couldn't load parents.</p>` : guardianListHtml(guardians ?? []);
+    document.getElementById("guardianPending").innerHTML = pendingInvitesHtml(invites ?? []);
   }
 
   async function loadShareLinks() {
@@ -1011,9 +1108,23 @@
         deleteBtn.disabled = true;
         const clipId = deleteBtn.dataset.deleteClip;
         const gameLogEntryId = deleteBtn.dataset.gameLogEntry;
-        const { error } = await supabase.from("video_clips").delete().eq("id", clipId);
-        if (error) {
-          alert(`Couldn't delete clip: ${error.message}`);
+        let message = null;
+        if (isDemoMode()) {
+          // A demo visitor's clip is their own throwaway clone in the demo
+          // schema: no stored video or worker files exist to clean up.
+          const { error } = await supabase.from("video_clips").delete().eq("id", clipId);
+          message = error?.message ?? null;
+        } else {
+          // delete-clip really deletes: the raw video, unreviewed AI drafts and
+          // the clip's AI output, then the row (reviewed findings keep their text).
+          const { error } = await supabase.functions.invoke("delete-clip", { body: { clipId } });
+          if (error) {
+            message = error.message;
+            try { message = (await error.context?.json())?.error ?? message; } catch { /* keep the generic message */ }
+          }
+        }
+        if (message) {
+          alert(`Couldn't delete clip: ${message}`);
           deleteBtn.disabled = false;
           return;
         }

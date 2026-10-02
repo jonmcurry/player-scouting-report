@@ -10,7 +10,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Storage } from "npm:@google-cloud/storage@7";
-import { shapePlayerReport } from "./shape.ts";
+import { buildFamilyReport } from "../_shared/familyReport.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,15 +55,8 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "This link is invalid or has been revoked." }, 404);
     }
 
-    const { data: player, error: playerError } = await supabase
-      .from("players")
-      .select("name, jersey_number, what_to_check_next, teams!inner(name)")
-      .eq("id", link.player_id)
-      .single();
-    if (playerError || !player) {
-      return jsonResponse({ error: "Player not found." }, 404);
-    }
-
+    // The share link's player always exists here (player_share_links.player_id
+    // cascades on player delete), so the clip check needs no player read.
     // Signed video URL for a clip - only when a coach linked it as evidence on one of this
     // player's visible priorities. The token alone is not enough to fetch arbitrary clips.
     if (videoClipId) {
@@ -85,43 +78,13 @@ Deno.serve(async (req) => {
       return jsonResponse({ url });
     }
 
-    const { data: scores } = await supabase
-      .from("checklist_scores")
-      .select("score, reviewed_by, review_status, checkpoints!inner(label, sort_order)")
-      .eq("player_id", link.player_id)
-      .order("sort_order", { referencedTable: "checkpoints" });
-
-    const { count: loggedAtBats } = await supabase
-      .from("game_log_entries")
-      .select("id", { count: "exact", head: true })
-      .eq("player_id", link.player_id)
-      .eq("session_type", "game");
-
-    const { data: priorities } = await supabase
-      .from("player_priorities")
-      .select("id, title, description, status, priority_order, first_identified_at, resolved_at, follow_up_kind, follow_up_date, follow_up_swings")
-      .eq("player_id", link.player_id)
-      .neq("status", "archived");
-    const ids = (priorities ?? []).map((p) => p.id);
-    const [{ data: drills }, { data: observations }] = ids.length
-      ? await Promise.all([
-          supabase.from("player_priority_drills").select("player_priority_id, active, coach_note, assigned_at, drill_library(name, purpose, instructions, equipment)").in("player_priority_id", ids).order("assigned_at", { ascending: false }),
-          supabase.from("player_priority_observations").select("player_priority_id, status, coach_note, observed_at, video_clip_id, phase").in("player_priority_id", ids),
-        ])
-      : [{ data: [] }, { data: [] }];
-
-    return jsonResponse(
-      shapePlayerReport({
-        player: { name: player.name, jersey_number: player.jersey_number, teamName: (player.teams as unknown as { name: string }).name, whatToCheckNext: player.what_to_check_next },
-        // deno-lint-ignore no-explicit-any
-        scores: (scores ?? []) as any,
-        priorities: priorities ?? [],
-        // deno-lint-ignore no-explicit-any
-        drills: (drills ?? []) as any,
-        observations: observations ?? [],
-        loggedAtBats: loggedAtBats ?? 0,
-      }),
-    );
+    // Same queries and shape as before the family surface shared them
+    // (familyReport.ts); includeVideoIds: false keeps the payload unchanged.
+    const report = await buildFamilyReport(supabase, link.player_id, { includeVideoIds: false });
+    if (!report) {
+      return jsonResponse({ error: "Player not found." }, 404);
+    }
+    return jsonResponse(report);
   } catch (err) {
     return jsonResponse({ error: String(err) }, 500);
   }

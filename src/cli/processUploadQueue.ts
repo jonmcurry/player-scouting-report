@@ -56,7 +56,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { claimNextPendingClip, markClipFailed, markClipReady } from "../services/db/uploadQueue.js";
 import { upsertPose3dFrames, deletePose3dFrames } from "../services/db/videoClipUpsert.js";
-import { downloadFile } from "../services/storage/gcs.js";
+import { downloadFile, deleteObjectIfExists } from "../services/storage/gcs.js";
 import { smoothJoints, SMOOTHING_METHOD_LABEL, type Pose3dFrame } from "../services/pose3d/smoothJoints.js";
 import { rigidifySkeleton, RIGID_METHOD_LABEL } from "../services/pose3d/rigidifySkeleton.js";
 import { extractLongestTrackedRun, MIN_TRACKED_FRAMES } from "../services/pose3d/trackedFrames.js";
@@ -64,6 +64,8 @@ import { ingestPhases } from "./ingestPhases.js";
 import { extractAnalysisInputs, type PhaseFrame } from "./extract.js";
 import { analysisWindowForClipDir } from "../services/pose3d/analysisWindow.js";
 import { analyzeAndSync } from "./analyze.js";
+import { purgeDeletedClips, supabasePurgeDb, retryUnfinishedDeletions, supabaseRetryDb } from "./purgeDeletedClips.js";
+import { getSupabaseClient } from "../services/db/supabaseClient.js";
 
 const POLL_INTERVAL_MS = 10_000;
 const VENV_PYTHON = path.join(".venv_pose3d", "Scripts", "python.exe");
@@ -315,6 +317,25 @@ export async function processOnePendingClip(): Promise<boolean> {
 async function main() {
   console.log(`[process-upload-queue] Polling every ${POLL_INTERVAL_MS / 1000}s. Ctrl-C to stop.`);
   for (;;) {
+    // Deleted clips (delete-clip Edge Function) leave their derived files in
+    // frames/<player>/<clipSlug>/ on this machine - remove them every loop.
+    // Runs between clips, never during one, so a clip deleted mid-processing
+    // is purged right after the worker finishes writing its outputs.
+    try {
+      // A delete that failed part-way and wasn't retried in the app for 15 minutes is finished
+      // here (same SQL function as delete-clip), so its local files are purged right after.
+      const bucket = process.env.GCS_BUCKET_NAME ?? "";
+      const retried = await retryUnfinishedDeletions(supabaseRetryDb(getSupabaseClient()), deleteObjectIfExists, bucket);
+      if (retried) console.log(`[process-upload-queue] Finished ${retried} clip deletion(s) that had stopped part-way.`);
+    } catch (err) {
+      console.error("[process-upload-queue] Deletion retry error:", err instanceof Error ? err.message : err);
+    }
+    try {
+      const purged = await purgeDeletedClips(supabasePurgeDb(getSupabaseClient()), "frames");
+      if (purged) console.log(`[process-upload-queue] Purged local files for ${purged} deleted clip(s).`);
+    } catch (err) {
+      console.error("[process-upload-queue] Purge error:", err instanceof Error ? err.message : err);
+    }
     let didWork = false;
     try {
       didWork = await processOnePendingClip();

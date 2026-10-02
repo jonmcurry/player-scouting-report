@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.30.0] - 2026-10-02
+
+Adds schema migrations 00041-00045. Nothing deployed; hosted needs the pre-deploy steps in `NEXT_STEPS.md` first.
+
+### Added
+
+- Parent (guardian) accounts, linked to a player by a coach invite, with consent recorded (migrations 00041-00044). Invite preview names the child before acceptance.
+- Coaches can cancel a player's pending parent invites ("Cancel pending invites" in Manage player; `revoke_guardian_invites`, migration 00045).
+- Parent uploads into the normal analysis pipeline, with a per-parent daily limit (checked when the upload URL is issued and again when the clip is recorded). A parent upload URL can't overwrite an existing video.
+- Family page (`family.html`): coach-confirmed results only, swing statuses, a capture guide, invite acceptance with consent naming the child, "Delete" for the parent's own uploads, and "Unlink".
+- `get-family-report` Edge Function.
+- Parents can watch their own child's coach-reviewed swings, with the coach's notes, from the family page.
+- "From family" chip in the Review queue for parent-uploaded swings.
+- `delete-clip` Edge Function and `purgeDeletedClips` CLI: real clip deletion removes the video bytes, worker frames and unreviewed AI drafts. Coach conclusions are kept and marked "Video removed by family" / "Video removed by coach".
+- A parent's delete that fails part-way stays on the family page as "Deleting didn't finish" with Try again; the upload worker finishes any deletion still unfinished after 15 minutes.
+
+### Changed
+
+- Coach "Delete Pitch" now uses `delete-clip`.
+- The demo exporter refuses parent uploads unless they have separate publication permission.
+
+### Fixed
+
+- Coach "Delete Pitch" (the per-clip delete in the player page's game log) previously left the video in storage. Other coach deletes (at-bat, practice rep, player) still remove rows only - see `NEXT_STEPS.md`.
+
+### Security
+
+- `search_path` pinned on existing trigger/helper functions.
+
 ## [0.29.1] - 2026-10-01
 
 Prepared with public demo fixture `emily@2026-10-01.1` (same four approved media files as `emily@2026-09-26.1`).

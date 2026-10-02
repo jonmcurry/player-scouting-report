@@ -55,6 +55,7 @@ if (assetPaths.length === 0) {
 const STAMPED_HTML = [
   "index.html", "team.html", "player.html", "report.html", "queue.html",
   "development.html", "review.html", "compare.html", "atbat.html", "session.html",
+  "family.html",
 ];
 const SELF_REFERENTIAL_FILES = new Set(STAMPED_HTML);
 const STAMP_PLACEHOLDER = "coach.css?v=PLACEHOLDER";

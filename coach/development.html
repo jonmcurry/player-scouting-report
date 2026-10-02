@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Player Development</title>
-<link rel="stylesheet" href="./coach.css?v=f9eb46aa49">
+<link rel="stylesheet" href="./coach.css?v=6faa2dd8c8">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -48,6 +48,7 @@
   } from "./components/devActions.js";
   import { button, errorState, icon, openOverflowMenu } from "./components/ui.js";
   import { developmentFocusModel, transferModel } from "./components/phase2aScreens.js";
+  import { removedVideoNote } from "./components/phase1bScreens.js";
   import { DEFAULT_CAPTURE_GUIDANCE, derivePlayerDevelopmentSummary } from "./components/playerDevelopmentSummary.js";
   import { isDemoMode } from "./demoConfig.js";
 
@@ -74,16 +75,18 @@
     try {
       const priorities = await loadPriorities(ctx.player.id);
       const ids = priorities.map((p) => p.id);
-      const [observations, assignments, followCtx, aiIssues, checklistResult] = await Promise.all([
+      const [observations, assignments, followCtx, aiIssues, checklistResult, removedResult] = await Promise.all([
         loadObservations(ids),
         loadDrillAssignments(ids),
         loadFollowUpContext(),
         loadAiIssues(),
         supabase.from("checklist_scores").select("score, review_status, notes, checkpoints!inner(slug,label,sort_order)").eq("player_id", ctx.player.id).order("sort_order", { referencedTable: "checkpoints" }),
+        supabase.rpc("clip_removals_for_player", { p_player_id: ctx.player.id }),
       ]);
       const obsBy = groupBy(observations, "player_priority_id");
       const asgBy = groupBy(assignments, "player_priority_id");
-      state = { priorities, observations, assignments, obsBy, asgBy, followCtx, aiIssues, checklist: checklistResult.data ?? [] };
+      const removals = new Map((removedResult.data ?? []).map((r) => [r.issue_id, r.removed_by_role]));
+      state = { priorities, observations, assignments, obsBy, asgBy, followCtx, aiIssues, removals, checklist: checklistResult.data ?? [] };
       renderNextFocus();
       renderPriorities();
       renderAiSuggestions();
@@ -224,7 +227,7 @@
     if (!list.length) { wrap.innerHTML = ""; return; }
     wrap.innerHTML = `<div class="bt-list p2a-findings">` + list.slice(0, 5).map((i) => `
       <div class="bt-list-row" data-iid="${i.id}">${icon("sparkles", { size: 20 })}<span class="bt-list-row-copy">
-        <span class="bt-list-row-title">${escapeHtml(i.issue)}</span><span class="bt-list-row-supporting">${i.review_status === "draft" ? "Needs coach review" : "Approved · ready to track"}${i.confidence ? ` · ${escapeHtml(i.confidence)} confidence` : ""}</span></span>
+        <span class="bt-list-row-title">${escapeHtml(i.issue)}</span><span class="bt-list-row-supporting">${i.review_status === "draft" ? "Needs coach review" : "Approved · ready to track"}${i.confidence ? ` · ${escapeHtml(i.confidence)} confidence` : ""}${removedVideoNote(i, state.removals) ? ` · ${escapeHtml(removedVideoNote(i, state.removals))}` : ""}</span></span>
         ${i.review_status === "draft" && i.video_clip_id ? `<a class="bt-button bt-button-secondary" href="${ctx.url("review", { clip: i.video_clip_id, ...(i.phase ? { phase: i.phase } : {}) })}">Review swing</a>` : i.review_status !== "draft" && i.suggest_priority && !i.context_explains_it ? '<button class="bt-button bt-button-secondary" data-a="promote">Track</button>' : ""}
         <button class="bt-icon-button" aria-label="More observation actions" data-a="menu">${icon("ellipsis-vertical", { size: 22 })}</button>
       </div>`).join("") + `</div>`;

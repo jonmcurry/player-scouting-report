@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { findingActionState, nextActionModel, reviewSummary, teamAttentionModel } from "./phase1bScreens.js";
+import { findingActionState, nextActionModel, removedVideoNote, reviewSummary, teamAttentionModel } from "./phase1bScreens.js";
 
 const coach = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (file) => fs.readFileSync(path.join(coach, file), "utf8");
@@ -80,4 +80,32 @@ test("Review summary: zero findings are never labelled a draft; only real unrevi
   assert.equal(reviewSummary([{ review_status: "draft" }]).label, "1 observation · Draft from analysis · Not reviewed");
   assert.equal(reviewSummary([{ review_status: "draft" }, { review_status: "draft" }]).label, "2 observations · Draft from analysis · Not reviewed");
   assert.equal(reviewSummary([{ review_status: "rejected" }]).label, "1 observation", "a rejected observation is not an unreviewed draft");
+});
+
+test("Task 2b: a reviewed finding whose clip was deleted says who removed the video - never a guess for clip-less findings", () => {
+  const removals = new Map([["i-family", "guardian"], ["i-coach", "coach"]]);
+  assert.equal(removedVideoNote({ id: "i-family", review_status: "approved", video_clip_id: null }, removals), "Video removed by family");
+  assert.equal(removedVideoNote({ id: "i-coach", review_status: "edited", video_clip_id: null }, removals), "Video removed by coach");
+  // A finding that never had a clip (legacy/CLI) has no removal record: no claim at all.
+  assert.equal(removedVideoNote({ id: "i-legacy", review_status: "approved", video_clip_id: null }, removals), null);
+  // Still linked to a clip -> nothing removed.
+  assert.equal(removedVideoNote({ id: "i-family", review_status: "approved", video_clip_id: "c1" }, removals), null);
+  // Drafts are deleted with the clip; a stray draft never gets the label.
+  assert.equal(removedVideoNote({ id: "i-family", review_status: "draft", video_clip_id: null }, removals), null);
+  assert.equal(removedVideoNote(null, removals), null);
+  assert.equal(removedVideoNote({ id: "i-family", review_status: "approved", video_clip_id: null }, null), null);
+
+  // The coach surfaces that list reviewed findings render it from the removal RPC.
+  for (const file of ["player.html", "development.html"]) {
+    const html = read(file);
+    assert.match(html, /clip_removals_for_player/, file);
+    assert.match(html, /removedVideoNote\(/, file);
+  }
+  // The coach's Delete Pitch goes through the delete-clip function (keeping its confirm). A row-only
+  // delete remains only for a demo visitor's own clone, which has no stored video or worker files.
+  const player = read("player.html");
+  assert.match(player, /functions\.invoke\("delete-clip"/);
+  assert.match(player, /Delete this pitch clip and its 3D data\? This can't be undone\./);
+  assert.equal(player.match(/from\("video_clips"\)\.delete\(\)/g)?.length, 1);
+  assert.match(player, /if \(isDemoMode\(\)\) \{[\s\S]{0,300}?from\("video_clips"\)\.delete\(\)/);
 });

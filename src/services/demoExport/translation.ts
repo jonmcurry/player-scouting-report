@@ -148,15 +148,18 @@ export const ENTITY_SPECS: Readonly<Record<FixtureTable, EntitySpec>> = {
       clip_slug: "neutral <publicSlug>-clip-NNN (local slugs are derived from original filenames and can carry the athlete's name/initial)",
       demo_media_path: "generated public media filename, or null when media was skipped",
       demo_media_offset_s: "analysis-window start minus media trim start, or null when unknown",
+      uploaded_by_role: "source (coach/guardian), or \"coach\" for rows read before 00042 (the only upload path then)",
     },
     omitted: {
       raw_gcs_path: "private bucket path to the untrimmed original",
+      uploaded_by: AUTH_UUID,
       error_message: "worker diagnostics (may contain local paths)",
       claimed_at: "worker queue bookkeeping", retry_count: "worker queue bookkeeping", next_retry_at: "worker queue bookkeeping",
     },
     defaulted: {
       raw_gcs_path: "null (no private media reference in the demo)",
       error_message: "null", claimed_at: "null", retry_count: "0", next_retry_at: "null",
+      uploaded_by: "null (never a real auth identity in a fixture; demo.upgrade_fixture_payload refuses one)",
     },
     fk: { game_log_entry_id: "game_log_entries", at_bat_pitch_id: "at_bat_pitches", practice_repetition_id: "practice_repetitions" },
     required: ["id", "game_log_entry_id", "clip_slug", "position", "status", "retry_count", "created_at"],

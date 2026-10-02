@@ -737,3 +737,62 @@ test("public phase detail keeps only a valid batter box", () => {
   assert.deepEqual(publicPhaseDetail({ subject_box: { x: 0.1, y: 0.1, w: 0.1, h: 0.1, method: "C:/Users/x" } }), { subject_box: { x: 0.1, y: 0.1, w: 0.1, h: 0.1 } }, "no free-text method");
   assert.deepEqual(publicPhaseDetail(null), {});
 });
+
+test("00042 upload provenance: role is exported, the uploader's auth id never is", () => {
+  const m = manifest({ clips: [{ clipSlug: "c2-slug", trim: { startS: 0, endS: 8 }, analysisWindowStartS: 0 }], priorities: "none", expect: {} });
+  const legacy = build(snapshot(), m).fixture.tables.video_clips[0]!;
+  assert.equal(legacy.uploaded_by, null);
+  assert.equal(legacy.uploaded_by_role, "coach", "pre-00042 source rows (no provenance columns) were coach uploads");
+
+  const snap = snapshot();
+  const uploader = "11111111-2222-4333-8444-555555555555";
+  for (const c of snap.rows.video_clips) Object.assign(c, { uploaded_by: uploader, uploaded_by_role: "guardian" });
+  const permitted = manifest({
+    clips: [{ clipSlug: "c2-slug", trim: { startS: 0, endS: 8 }, analysisWindowStartS: 0, guardianPublicationPermission: { confirmedBy: "Parent via coach", confirmedAt: "2026-10-01" } }],
+    priorities: "none", expect: {},
+  });
+  const { fixture, findings } = build(snap, permitted);
+  assert.deepEqual(errors(findings), []);
+  const row = fixture.tables.video_clips[0]!;
+  assert.equal(row.uploaded_by, null);
+  assert.equal(row.uploaded_by_role, "guardian");
+  assert.ok(!JSON.stringify(fixture).includes(uploader), "the uploader's auth id must never be exported");
+});
+
+test("Task 2b: a guardian-uploaded clip is refused unless the manifest records that guardian's separate publication permission", () => {
+  const clip = { clipSlug: "c2-slug", trim: { startS: 0, endS: 8 } as const, analysisWindowStartS: 0 };
+  const guardianSnap = () => {
+    const snap = snapshot();
+    for (const c of snap.rows.video_clips) Object.assign(c, { uploaded_by: "11111111-2222-4333-8444-555555555555", uploaded_by_role: "guardian" });
+    return snap;
+  };
+
+  // No recorded permission -> error, even though team-level consent is recorded.
+  const refused = build(guardianSnap(), manifest({ clips: [clip], priorities: "none", expect: {} }));
+  assert.ok(codes(errors(refused.findings)).has("GUARDIAN_PERMISSION_MISSING"), JSON.stringify(errors(refused.findings)));
+
+  // Recorded permission -> accepted; only the date reaches the fixture (never who confirmed it).
+  const ok = build(guardianSnap(), manifest({
+    clips: [{ ...clip, guardianPublicationPermission: { confirmedBy: "Real Parent Name via coach", confirmedAt: "2026-10-01" } }],
+    priorities: "none", expect: {},
+  }));
+  assert.deepEqual(errors(ok.findings), []);
+  const fxClipId = String(ok.fixture.tables.video_clips[0]!.id);
+  assert.deepEqual(ok.fixture.curation.guardianPublicationPermissions, [{ clipId: fxClipId, confirmedAt: "2026-10-01" }]);
+  assert.ok(!JSON.stringify(ok.fixture).includes("Real Parent Name"));
+
+  // validateFixture itself refuses a guardian clip with no matching permission entry.
+  const tampered = structuredClone(ok.fixture);
+  tampered.curation.guardianPublicationPermissions = [{ clipId: "00000000-0000-4000-8000-000000000000", confirmedAt: "2026-10-01" }];
+  assert.ok(codes(errors(validateFixture(tampered))).has("GUARDIAN_PERMISSION_MISSING"));
+
+  // Coach clips are unaffected, and add no curation key (existing fixtures stay byte-identical).
+  const coach = build(snapshot(), manifest({ clips: [clip], priorities: "none", expect: {} }));
+  assert.deepEqual(errors(coach.findings), []);
+  assert.equal("guardianPublicationPermissions" in coach.fixture.curation, false);
+
+  // The manifest parser validates the permission's shape.
+  const raw = JSON.parse(JSON.stringify(manifest({ clips: [{ ...clip, guardianPublicationPermission: { confirmedBy: "", confirmedAt: "Oct 1" } as never }] })));
+  const parsed = parseCurationManifest(raw);
+  assert.ok(parsed.problems.some((p) => p.path === "clips[0].guardianPublicationPermission"), JSON.stringify(parsed.problems));
+});

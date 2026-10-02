@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Coach Login</title>
-<link rel="stylesheet" href="./coach.css?v=f9eb46aa49">
+<link rel="stylesheet" href="./coach.css?v=6faa2dd8c8">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -59,7 +59,8 @@
 <!-- Dev-only, gitignored, silently absent in a real deploy - see coach/config.js -->
 <script src="./demo.local.js"></script><script src="./config.local.js"></script>
 <script type="module">
-  import { supabase, escapeHtml } from "./shared.js";
+  import { supabase, escapeHtml, qs } from "./shared.js";
+  import { familyReturnPath } from "./components/familyPage.js";
 
   const loginView = document.getElementById("loginView");
   const signupView = document.getElementById("signupView");
@@ -77,9 +78,38 @@
       .replace(/^-+|-+$/g, "");
   }
 
+  // Family invite links (family.html?invite=...) send a signed-out parent here
+  // to sign in or create an account, then back. Only this app's own family
+  // page is ever a valid return target (no open redirect).
+  const familyNext = familyReturnPath(qs("next"));
+  // The "join your child's page" copy (and the parent sign-up: no coach name or
+  // coach profile) is only for an actual invite link.
+  const familyInvite = Boolean(familyNext && familyNext.includes("?invite="));
+  if (familyInvite) {
+    document.querySelector("#loginView .hint").textContent = "Sign in to join your child's page";
+    document.querySelector("#showSignupLink").parentElement.firstChild.textContent = "New here? ";
+    document.querySelector("#signupView .hint").textContent = "Create your account, then you'll join your child's page.";
+    document.getElementById("signupName").style.display = "none";
+  }
+
+  /**
+   * Is this account linked to a child as a parent/guardian? RLS also lets a coach read their team's
+   * guardian rows (coach_read_team_guardians), so filter to the signed-in user's own rows.
+   * Errors count as none.
+   */
+  async function hasFamilyLinks(userId) {
+    if (!userId) return false;
+    const { data, error } = await supabase.from("player_guardians").select("player_id").eq("user_id", userId).limit(1);
+    return !error && (data ?? []).length > 0;
+  }
+
   async function showPickerIfSignedIn() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return false;
+    if (familyNext) {
+      window.location.href = familyNext;
+      return true;
+    }
 
     loginView.style.display = "none";
     signupView.style.display = "none";
@@ -96,7 +126,14 @@
 
     const teamsList = document.getElementById("teamsList");
     const createTeamView = document.getElementById("createTeamView");
+    // Coaches are decided first: any coach_team_access row keeps the coach home.
+    // A guardian-only account (linked child, no team) goes to the family page.
+    const isFamily = await hasFamilyLinks(session.user?.id);
     if (!access || access.length === 0) {
+      if (isFamily) {
+        window.location.href = "./family.html";
+        return true;
+      }
       teamsList.innerHTML = "";
       createTeamView.style.display = "block";
       return true;
@@ -114,6 +151,12 @@
       `;
       teamsList.appendChild(div);
       fillTeamSummary(div.querySelector("[data-team-summary]"), a.teams.id);
+    }
+    if (isFamily) {
+      const family = document.createElement("div");
+      family.className = "card";
+      family.innerHTML = `<a class="tap-target" style="display:inline-flex;align-items:center;" href="./family.html">Your family page →</a>`;
+      teamsList.appendChild(family);
     }
     return true;
   }
@@ -167,10 +210,14 @@
     errorMsg.textContent = "";
     checkEmailMsg.style.display = "none";
 
-    if (!displayName) { errorMsg.textContent = "Enter your name."; return; }
+    if (!displayName && !familyInvite) { errorMsg.textContent = "Enter your name."; return; }
     if (password !== passwordConfirm) { errorMsg.textContent = "Passwords don't match."; return; }
 
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    // A parent signing up from an invite comes back to it after confirming their email
+    // (the same validated family return path, carried through index.html?next=).
+    const { data, error } = await supabase.auth.signUp(familyNext
+      ? { email, password, options: { emailRedirectTo: new URL(`./index.html?next=${encodeURIComponent(familyNext)}`, window.location.href).href } }
+      : { email, password });
     if (error) {
       errorMsg.textContent = error.message;
       return;
@@ -186,6 +233,11 @@
       return;
     }
 
+    // A parent joining through a family invite isn't a coach: no coach profile.
+    if (familyInvite) {
+      await showPickerIfSignedIn();
+      return;
+    }
     const { error: profileError } = await supabase
       .from("coach_profiles")
       .insert({ user_id: data.user.id, display_name: displayName });

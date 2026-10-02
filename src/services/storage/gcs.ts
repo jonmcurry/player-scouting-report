@@ -107,3 +107,13 @@ export async function deleteObject(gcsPath: string): Promise<void> {
   const storage = getStorageClient();
   await storage.bucket(bucketName).file(objectPath).delete();
 }
+
+/** Deletes one gs:// object; an already-absent object counts as deleted.
+ * Used by the worker's retry of clip deletions that failed part-way
+ * (purgeDeletedClips.ts retryUnfinishedDeletions) - the same semantics as
+ * the delete-clip Edge Function's storage step. */
+export async function deleteObjectIfExists(gcsPath: string): Promise<void> {
+  const { bucketName, objectPath } = parseGcsPath(gcsPath);
+  const storage = getStorageClient();
+  await storage.bucket(bucketName).file(objectPath).delete({ ignoreNotFound: true });
+}

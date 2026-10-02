@@ -41,7 +41,7 @@ function moduleSources() {
     srcs.push({ label: `${p}.html`, dir: coach, src: script[1] });
   }
   for (const f of ["devUi.js", "devActions.js", "teamDashboard.js"]) srcs.push({ label: `components/${f}`, dir: path.join(coach, "components"), src: read(`components/${f}`) });
-  for (const f of ["team.html", "player.html", "index.html", "report.html"]) {
+  for (const f of ["team.html", "player.html", "index.html", "report.html", "family.html"]) {
     const m = read(f).match(/<script type="module">([\s\S]*?)<\/script>/);
     if (m) srcs.push({ label: f, dir: coach, src: m[1] });
   }
@@ -378,4 +378,118 @@ test("Overview progress shows only a recorded coach observation on the current P
   assert.match(player, /from\("player_priority_observations"\)\.select\("status, coach_note, observed_at"\)\.eq\("player_priority_id", priorityIds\[0\]\)/);
   assert.match(player, /OBSERVATION_LABELS\[latestObservation\.status\]/);
   assert.match(player, /No progress check yet\. Progress appears here as later swings are checked against this Priority\./);
+});
+
+test("family page: never imports checklistReview.js or reads AI drafts, scores or metrics", () => {
+  const family = read("family.html");
+  const sources = [family, read("components/familyPage.js"), read("components/captureGuide.js")];
+  for (const src of sources) {
+    assert.doesNotMatch(src, /checklistReview\.js/);
+    assert.doesNotMatch(src, /ai_draft/);
+    assert.doesNotMatch(src, /swingMetricsPanel|checklist_scores|analysis_runs|\.from\("issues"\)/);
+    assert.doesNotMatch(src, /AI found/);
+  }
+  // Only this account's own link rows (a coach who is also a parent must not get team guardian rows).
+  assert.match(family, /from\("player_guardians"\)\.select\("player_id, consented_at"\)\.eq\("user_id", viewerId\)/);
+  assert.equal((family.match(/from\("player_guardians"\)/g) ?? []).length, 1);
+  // Families read through get-family-report only; no direct table reads beyond their own link rows.
+  const froms = [...family.matchAll(/\.from\("([a-z_]+)"\)/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(froms)], ["player_guardians"]);
+  assert.match(family, /functions\.invoke\("get-family-report"/);
+});
+
+test("family page: invite acceptance uses the server's consent version and the existing sign-in flow", () => {
+  const family = read("family.html");
+  assert.match(family, /rpc\("current_guardian_consent_version"\)/);
+  assert.match(family, /rpc\("accept_guardian_invite", \{ p_token: [^,]+, p_consent_version: [^}]+\}\)/);
+  assert.doesNotMatch(family, /guardian-consent-\d/, "consent version is never hard-coded in the UI");
+  assert.match(family, /rpc\("guardian_invite_preview", \{ p_token: token \}\)/);
+  assert.match(family, /consentText\(player\)/, "consent always names the child");
+  assert.doesNotMatch(family, /consentText\(""\)|your child's coach invited/i, "no unnamed consent path");
+  assert.match(family, /if \(!player\) \{[\s\S]{0,200}INVITE_UNAVAILABLE/, "no preview -> one unavailable message, no consent");
+  assert.match(family, /index\.html\?next=/);
+  const index = read("index.html");
+  assert.match(index, /familyReturnPath\(qs\("next"\)\)/);
+  assert.match(index, /const familyInvite = Boolean\(familyNext && familyNext\.includes\("\?invite="\)\);\s*if \(familyInvite\) \{/, "invite copy only for invite links");
+  assert.match(index, /emailRedirectTo: new URL\(`\.\/index\.html\?next=\$\{encodeURIComponent\(familyNext\)\}`/, "email confirmation returns to the validated invite");
+});
+
+test("family page: uploads go through the guardian path; Delete confirms and calls delete-clip", () => {
+  const family = read("family.html");
+  assert.match(family, /rpc\("guardian_create_entry"/);
+  assert.match(family, /uploadRawClip\([^)]*\{ asGuardian: true \}\)/);
+  assert.match(family, /await confirmDialog\(/);
+  assert.match(family, /functions\.invoke\("delete-clip"/);
+  assert.match(family, /functions\.invoke\("get-video-url"/);
+  assert.match(family, /isDemoMode\(\)/, "demo mode has no family persona and gets a plain message");
+  // "Deleting didn't finish": Try again calls delete-clip again without a second confirm.
+  assert.match(family, /querySelectorAll\("\[data-retry-delete\]"\)\.forEach\(\(el\) => el\.addEventListener\("click", \(\) => sendDelete\(el\.dataset\.retryDelete, el\)\)\)/);
+  assert.match(family, /async function deleteSwing\(clipId, el\) \{[\s\S]{0,400}await confirmDialog\([\s\S]{0,300}await sendDelete\(clipId, el\);/);
+});
+
+test("sign-in routing: guardian-only accounts land on the family page; coaches keep the team picker", () => {
+  const index = read("index.html");
+  assert.match(index, /from\("player_guardians"\)/);
+  // RLS also returns a coach's team guardian rows: only the signed-in user's own links count.
+  assert.match(index, /from\("player_guardians"\)\.select\("player_id"\)\.eq\("user_id", userId\)/);
+  assert.match(index, /hasFamilyLinks\(session\.user\?\.id\)/);
+  assert.doesNotMatch(index, /their own rows only/);
+  assert.match(index, /family\.html/);
+  // The coach branch is decided first: any coach_team_access row keeps the coach home.
+  assert.match(index, /if \(!access \|\| access\.length === 0\) \{\s*if \(isFamily\) \{\s*window\.location\.href = "\.\/family\.html";/);
+});
+
+test("family page is precached, cache-stamped and mobile-ready", () => {
+  const sw = read("sw.js");
+  const bump = fs.readFileSync(path.join(coach, "..", "scripts", "bump-coach-cache.mjs"), "utf8");
+  assert.ok(sw.includes('"./family.html"'));
+  for (const f of ["familyPage.js", "captureGuide.js"]) assert.ok(sw.includes(`"./components/${f}"`), f);
+  assert.ok(bump.includes('"family.html"'));
+  const family = read("family.html");
+  assert.match(family, /coach\.css\?v=[0-9a-f]{10}/);
+  assert.match(family, /<meta name="viewport" content="width=device-width[^"]*viewport-fit=cover/);
+  assert.match(family, /bt-button/);
+});
+
+test("Manage player: parent invites need a confirm outside the demo; list and Remove use the guardian RPCs", () => {
+  const player = read("player.html");
+  const manage = player.slice(player.indexOf('id="managePlayer"'), player.indexOf('id="deletePlayerBtn"'));
+  assert.ok(manage.indexOf('id="shareLinksList"') < manage.indexOf('id="guardianAdmin"'), "Parents sits beside share links");
+  assert.match(player, /import \{[^}]*guardianInviteUrl[^}]*\} from "\.\/components\/guardianAdmin\.js"/);
+  // Mirrors the parent-link guard: a real coach confirms; the demo never creates a real invite.
+  assert.match(player, /if \(isDemoMode\(\) \|\| !await confirmDialog\(INVITE_DIALOG\)\) return;/);
+  assert.match(player, /rpc\("create_guardian_invite", \{ p_player_id: playerId, p_relationship: [^}]+\}\)/);
+  assert.match(player, /from\("player_guardians"\)\.select\("user_id, relationship, consented_at"\)/);
+  assert.match(player, /rpc\("revoke_guardian", \{ p_player_id: playerId, p_user_id: [^}]+\}\)/);
+  assert.match(player, /await confirmDialog\(removeGuardianDialog\(/);
+  // "Cancel pending invites": confirmed, coach-only RPC, the shown link is cleared, never in the demo.
+  assert.match(player, /if \(isDemoMode\(\) \|\| !await confirmDialog\(cancelInvitesDialog\(/);
+  assert.match(player, /rpc\("revoke_guardian_invites", \{ p_player_id: playerId \}\)/);
+  assert.match(player, /document\.getElementById\("guardianInvite"\)\.innerHTML = "";/);
+  // Demo: a short note, no invite UI and no guardian queries.
+  assert.match(player, /if \(isDemoMode\(\)\) \{\s*host\.innerHTML = `<p class="hint">\$\{GUARDIAN_DEMO_NOTE\}<\/p>`;\s*return;/);
+  // The token is shown once and never stored in the page beyond the invite card.
+  assert.doesNotMatch(player, /localStorage\.setItem\([^)]*invite/i);
+});
+
+test("Review queue marks family uploads with a From family chip", () => {
+  const queue = read("queue.html");
+  assert.match(queue, /video_clips\(id,status,uploaded_by_role,/);
+  assert.match(queue, /item\.fromFamily \? statusChip\("from-family", \{ label: "From family" \}\)/);
+});
+
+test("Family page: Unlink me asks about the guardian's own videos, deletes them first, then revokes", () => {
+  const family = read("family.html");
+  assert.match(family, /Unlink me/);
+  assert.match(family, /ownUploadIds\(report\)/);
+  assert.match(family, /unlinkSheet\(/);
+  assert.match(family, /await confirmDialog\(unlinkConfirm\(/);
+  const del = family.indexOf('functions.invoke("delete-clip", { body: { clipId: id } })');
+  const revoke = family.indexOf('rpc("revoke_guardian", { p_player_id: playerId, p_user_id: viewerId })');
+  assert.ok(del > 0 && revoke > 0 && del < revoke, "deletes own uploads before revoking (delete-clip needs the link)");
+  assert.match(family, /if \(failed\) \{[\s\S]{0,200}unlinkDeleteFailedMessage\(failed\)[\s\S]{0,80}return;/, "a failed delete keeps the link");
+});
+
+test("guardian admin module is precached", () => {
+  assert.ok(read("sw.js").includes('"./components/guardianAdmin.js"'));
 });

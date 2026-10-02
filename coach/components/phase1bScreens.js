@@ -44,3 +44,14 @@ export function reviewSummary(issues = []) {
     label: `${issues.length} observation${issues.length === 1 ? "" : "s"}${status}`,
   };
 }
+
+// A reviewed finding whose evidence clip was deleted (delete-clip records it -
+// clip_removals_for_player). `removals` maps issue id -> "guardian" | "coach".
+// Findings that simply never had a clip get no label: never guess why.
+export function removedVideoNote(issue, removals) {
+  if (!issue || !removals || issue.review_status === "draft" || issue.video_clip_id) return null;
+  const role = removals.get(issue.id);
+  if (role === "guardian") return "Video removed by family";
+  if (role === "coach") return "Video removed by coach";
+  return null;
+}

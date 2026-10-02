@@ -1,0 +1,412 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>HitterLoop — Family</title>
+<link rel="stylesheet" href="./coach.css?v=6faa2dd8c8"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
+<style>
+  .hl-family-section { margin-top:var(--space-6); }
+  .hl-family-section > .bt-card + .bt-card { margin-top:var(--space-3); }
+  .hl-family-heading { margin:0 0 var(--space-3); font:700 1.25rem/1.3 var(--font-body); color:var(--text-1); text-transform:none; }
+  .hl-family .bt-card h3 { margin:var(--space-1) 0 var(--space-2); font:700 1.0625rem/1.4 var(--font-body); color:var(--text-1); }
+  .hl-family .bt-card p { margin:var(--space-1) 0; }
+  .hl-switcher { display:flex; flex-wrap:wrap; gap:var(--space-2); margin-top:var(--space-2); }
+  .hl-capture-list { margin:0; padding-left:1.25rem; display:grid; gap:var(--space-2); }
+  .hl-send { display:grid; gap:var(--space-3); margin-top:var(--space-3); }
+  .hl-send fieldset { border:0; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; }
+  .hl-send legend { padding:0; margin-bottom:var(--space-2); color:var(--text-2); font-size:.875rem; }
+  .hl-send label { display:grid; gap:var(--space-1); color:var(--text-2); font-size:.875rem; }
+  .hl-send input[type="date"] { min-height:44px; }
+  .hl-send .bt-button-primary { width:100%; }
+  .hl-swings-intro { margin:0 0 var(--space-3); color:var(--text-2); font-size:.875rem; }
+  .hl-swing-days { list-style:none; margin:0; padding:0; display:grid; gap:var(--space-4); }
+  .hl-swing-day-head { margin:0 0 var(--space-2); color:var(--text-2); font:600 .875rem/1.25rem var(--font-body); text-transform:none; letter-spacing:0; }
+  .hl-swings { list-style:none; margin:0; padding:0; display:grid; gap:var(--space-2); }
+  .hl-swing { padding:var(--space-3); border-radius:var(--radius-card); background:var(--surface-1); }
+  .hl-swing-top { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); }
+  .hl-swing-top time { color:var(--text-2); font-weight:600; }
+  .hl-swing-top .bt-status-chip { white-space:normal; }
+  .hl-swing-detail { margin:var(--space-2) 0 0; color:var(--text-2); font-size:.875rem; }
+  .hl-swing-removed { color:var(--text-3); font-size:.8125rem; }
+  .hl-swing-actions { display:flex; flex-wrap:wrap; gap:var(--space-2); margin-top:var(--space-2); }
+  .hl-coach-notes { list-style:none; margin:var(--space-2) 0 0; padding:0; display:grid; gap:var(--space-3); }
+  .hl-coach-notes p { margin:var(--space-1) 0 0; }
+  .hl-consent-text { padding:var(--space-3); border-radius:var(--radius-card); background:var(--surface-2); line-height:1.5; }
+  .hl-check { display:flex; align-items:center; gap:var(--space-2); min-height:44px; margin:var(--space-3) 0; }
+  .hl-check input { width:22px; height:22px; }
+  .hl-family .bt-sheet video { width:100%; border-radius:var(--radius-card); background:#000; }
+  .hl-family-footer { display:grid; justify-items:center; gap:var(--space-2); }
+  .hl-unlink-actions { display:grid; gap:var(--space-2); }
+  .hl-unlink-actions .bt-button { width:100%; }
+</style>
+</head><body class="bt-public-report hl-family"><div class="bt-report-brand">HitterLoop</div><main class="wrap"><div id="familyRoot"><div class="bt-report-skeleton"><div></div><div></div><div></div></div></div></main>
+<input type="file" id="swingFile" accept="video/*" hidden>
+<script src="./demo.local.js"></script><script src="./config.local.js"></script><script type="module">
+// The parent/guardian page. Reads ONLY get-family-report (coach-confirmed
+// content + clip statuses) and the account's own player_guardians rows; never
+// AI drafts, checklist scores or swing metrics. Uploads go through the
+// guardian RPC path; deletes through the delete-clip Edge Function.
+import { supabase, qs, escapeHtml, signOut } from "./shared.js";
+import { isDemoMode } from "./demoConfig.js";
+import { button, emptyState, errorState, processingState, confirmDialog, openBottomSheet, showSnackbar, filterChip } from "./components/ui.js";
+import { uploadRawClip } from "./components/videoUpload.js";
+import { captureGuideHtml } from "./components/captureGuide.js";
+import {
+  familyEmptyState, focusSection, swingsList, coachNotes, consentText, firstName,
+  inviteErrorMessage, localDateString, uploadErrorMessage, deleteErrorMessage, INVITE_UNAVAILABLE,
+  ownUploadIds, unlinkSheet, unlinkConfirm, unlinkDoneMessage, unlinkDeleteFailedMessage,
+} from "./components/familyPage.js";
+
+const root = document.getElementById("familyRoot");
+const fileInput = document.getElementById("swingFile");
+const GUIDE_SEEN_KEY = "hitterloop.family.captureGuideSeen";
+const PLAYER_KEY = "hitterloop.family.player";
+
+let playerIds = [];
+const reports = new Map(); // playerId -> report | null (failed to load)
+let current = null;
+let kind = "game";
+// An entry created for an upload that then failed is reused on retry (same child/kind/day),
+// so a flaky connection doesn't leave a trail of empty at-bats for the coach.
+let pendingEntry = null;
+let sending = false;
+let unlinking = false;
+// The signed-in guardian's own id (the verified session): "Unlink me" removes only this account's link.
+let viewerId = null;
+
+const store = {
+  get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch { /* per-device convenience only */ } },
+};
+
+function signOutButton() {
+  return button("Sign out", { variant: "tertiary", attrs: 'id="familySignOut"' });
+}
+function wireSignOut() {
+  document.getElementById("familySignOut")?.addEventListener("click", () => signOut());
+}
+
+async function main() {
+  // No family persona in the demo: say so plainly instead of querying tables the demo schema doesn't have.
+  if (isDemoMode()) {
+    root.innerHTML = `<section class="bt-report-state">${emptyState("Not part of this demo", "The family page isn't included in the demo.")}</section>`;
+    return;
+  }
+  const { data: { session } } = await supabase.auth.getSession();
+  const invite = qs("invite");
+  if (!session) {
+    // The existing sign-in / create-account flow (index.html), then back here.
+    const next = invite ? `./family.html?invite=${encodeURIComponent(invite)}` : "./family.html";
+    window.location.href = `./index.html?next=${encodeURIComponent(next)}`;
+    return;
+  }
+  viewerId = session.user?.id ?? null;
+  // Tokens are lowercase hex; accept a link whose case was changed in transit.
+  if (invite) return showConsent(/^[0-9a-f]+$/i.test(invite) ? invite.toLowerCase() : invite);
+  return loadFamily();
+}
+
+async function showConsent(token) {
+  root.innerHTML = processingState("Loading your invite…");
+  const [{ data: version, error }, preview] = await Promise.all([
+    supabase.rpc("current_guardian_consent_version"),
+    supabase.rpc("guardian_invite_preview", { p_token: token }),
+  ]);
+  if (error || !version || preview.error) {
+    root.innerHTML = errorState("Couldn't load the invite", "Check your connection and try again.", button("Try again", { variant: "primary", attrs: 'id="retryConsent"' }));
+    document.getElementById("retryConsent").onclick = () => showConsent(token);
+    return;
+  }
+  // Consent text v1 always names the child. guardian_invite_preview returns the first name only for a
+  // usable invite and the same null otherwise - then there's no consent to show, just one message.
+  const player = preview.data;
+  if (!player) {
+    root.innerHTML = `<section class="bt-report-state">${emptyState("This invite can't be used", INVITE_UNAVAILABLE, '<a class="tap-target" href="./family.html">Go to your family page</a>')}</section><footer class="hl-family-footer">${signOutButton()}</footer>`;
+    wireSignOut();
+    return;
+  }
+  root.innerHTML = `<section class="hl-family-section">
+    <h1>Join ${escapeHtml(player)}'s HitterLoop page</h1>
+    <p>${escapeHtml(player)}'s coach invited you. Please read this before you join.</p>
+    <p class="hl-consent-text" id="consentText">${escapeHtml(consentText(player))}</p>
+    <label class="hl-check"><input type="checkbox" id="consentBox"> <span>I agree</span></label>
+    ${button("Join", { variant: "primary", attrs: 'id="acceptInvite" disabled' })}
+    <p class="error-text" id="inviteError" role="alert"></p>
+    <div id="inviteAfterError"></div>
+  </section><footer class="hl-family-footer">${signOutButton()}</footer>`;
+  wireSignOut();
+  const box = document.getElementById("consentBox");
+  const accept = document.getElementById("acceptInvite");
+  box.addEventListener("change", () => { accept.disabled = !box.checked; });
+  accept.addEventListener("click", async () => {
+    accept.disabled = true;
+    const errorEl = document.getElementById("inviteError");
+    errorEl.textContent = "";
+    const { data: playerId, error: acceptError } = await supabase.rpc("accept_guardian_invite", { p_token: token, p_consent_version: version });
+    if (acceptError || !playerId) {
+      errorEl.textContent = inviteErrorMessage(acceptError?.message);
+      document.getElementById("inviteAfterError").innerHTML = '<a class="tap-target" href="./family.html">Go to your family page</a>';
+      accept.disabled = !box.checked;
+      return;
+    }
+    store.set(PLAYER_KEY, playerId);
+    // Drop the one-time token from the address bar and history.
+    history.replaceState(null, "", "./family.html");
+    loadFamily();
+  });
+}
+
+async function fetchReport(playerId) {
+  try {
+    const response = await supabase.functions.invoke("get-family-report", { body: { playerId } });
+    if (response.error || !response.data || response.data.error) return null;
+    return response.data;
+  } catch { return null; }
+}
+
+async function loadFamily() {
+  root.innerHTML = processingState("Loading…");
+  // RLS also returns a coach's team guardian rows (coach_read_team_guardians): only this account's own links.
+  const { data: links, error } = await supabase.from("player_guardians").select("player_id, consented_at").eq("user_id", viewerId).order("consented_at");
+  if (error) {
+    root.innerHTML = errorState("Couldn't load", "Check your connection and try again.", button("Try again", { variant: "primary", attrs: 'id="retryFamily"' }));
+    document.getElementById("retryFamily").onclick = loadFamily;
+    return;
+  }
+  playerIds = (links ?? []).map((link) => link.player_id);
+  if (!playerIds.length) {
+    root.innerHTML = `<section class="bt-report-state">${emptyState("No child linked yet", "Ask your child's coach for an invite link. Open it here and your child's page shows up.", "", "users")}</section><footer class="hl-family-footer">${signOutButton()}</footer>`;
+    wireSignOut();
+    return;
+  }
+  const preferred = store.get(PLAYER_KEY);
+  current = playerIds.includes(preferred) ? preferred : playerIds[0];
+  const loaded = await Promise.all(playerIds.map(fetchReport));
+  playerIds.forEach((id, i) => reports.set(id, loaded[i]));
+  render();
+}
+
+async function refreshCurrent() {
+  const fresh = await fetchReport(current);
+  if (fresh) reports.set(current, fresh);
+  renderSwings();
+}
+
+function switcherHtml() {
+  if (playerIds.length < 2) return "";
+  return `<div class="hl-switcher" role="group" aria-label="Choose a child">${playerIds.map((id) => {
+    const name = reports.get(id)?.playerName;
+    return filterChip(name ? firstName(name) : "Child", { selected: id === current, value: id });
+  }).join("")}</div>`;
+}
+
+function render() {
+  const report = reports.get(current);
+  if (!report) {
+    root.innerHTML = `${switcherHtml()}${errorState("Couldn't load", "Check your connection and try again.", button("Try again", { variant: "primary", attrs: 'id="retryFamily"' }))}<footer class="hl-family-footer">${signOutButton()}</footer>`;
+    document.getElementById("retryFamily").onclick = loadFamily;
+    wireSwitcher();
+    wireSignOut();
+    return;
+  }
+  const guideOpen = !store.get(GUIDE_SEEN_KEY);
+  const today = localDateString();
+  root.innerHTML = `<header class="bt-report-player">${report.jerseyNumber != null && report.jerseyNumber !== "" ? `<span class="jersey-badge lg">${escapeHtml(report.jerseyNumber)}</span>` : ""}<div><h1>${escapeHtml(report.playerName)}</h1><p>${escapeHtml(report.teamName)}</p></div></header>
+    ${switcherHtml()}
+    ${focusSection(report)}
+    <section class="hl-family-section" aria-labelledby="hlSend"><h2 class="hl-family-heading" id="hlSend">Send a swing</h2>
+      ${captureGuideHtml({ open: guideOpen })}
+      <div class="hl-send">
+        <fieldset><legend>Where was it filmed?</legend>${filterChip("Game", { selected: kind === "game", value: "game" }).replace("bt-filter-chip", "bt-filter-chip hl-kind")}${filterChip("Practice", { selected: kind === "practice", value: "practice" }).replace("bt-filter-chip", "bt-filter-chip hl-kind")}</fieldset>
+        <label>Day filmed <input type="date" id="swingDate" value="${today}" max="${today}"></label>
+        ${button("Send a swing", { variant: "primary", iconName: "upload", attrs: 'id="sendSwing"' })}
+        <div id="sendStatus" aria-live="polite"></div>
+      </div>
+    </section>
+    <section class="hl-family-section" aria-labelledby="hlSwings"><h2 class="hl-family-heading" id="hlSwings">Your swings</h2><div id="swingsHost"></div></section>
+    <footer class="hl-family-footer">${button("Unlink me", { variant: "tertiary", attrs: 'id="unlinkMe"' })}${signOutButton()}</footer>`;
+  if (guideOpen) store.set(GUIDE_SEEN_KEY, "1");
+  wireSwitcher();
+  wireSignOut();
+  root.querySelectorAll(".hl-kind").forEach((chip) => chip.addEventListener("click", () => {
+    kind = chip.dataset.value;
+    root.querySelectorAll(".hl-kind").forEach((c) => c.setAttribute("aria-pressed", String(c === chip)));
+  }));
+  document.getElementById("sendSwing").addEventListener("click", () => { if (!sending) fileInput.click(); });
+  document.getElementById("unlinkMe").addEventListener("click", unlinkMe);
+  renderSwings();
+}
+
+function wireSwitcher() {
+  root.querySelectorAll(".hl-switcher .bt-filter-chip").forEach((chip) => chip.addEventListener("click", () => {
+    if (chip.dataset.value === current) return;
+    current = chip.dataset.value;
+    store.set(PLAYER_KEY, current);
+    pendingEntry = null;
+    render();
+  }));
+}
+
+function renderSwings() {
+  const host = document.getElementById("swingsHost");
+  const report = reports.get(current);
+  if (!host || !report) return;
+  host.innerHTML = familyEmptyState(report) || swingsList(report);
+  host.querySelectorAll("[data-open-clip]").forEach((el) => el.addEventListener("click", () => openSwing(el.dataset.openClip)));
+  host.querySelectorAll("[data-delete-clip]").forEach((el) => el.addEventListener("click", () => deleteSwing(el.dataset.deleteClip, el)));
+  host.querySelectorAll("[data-retry-delete]").forEach((el) => el.addEventListener("click", () => sendDelete(el.dataset.retryDelete, el)));
+}
+
+fileInput.addEventListener("change", async () => {
+  const file = fileInput.files?.[0];
+  fileInput.value = "";
+  if (!file || sending || unlinking) return;
+  sending = true;
+  const sendButton = document.getElementById("sendSwing");
+  const status = document.getElementById("sendStatus");
+  if (sendButton) sendButton.disabled = true;
+  status.innerHTML = processingState("Sending your swing…", "Keep this page open until it's done.");
+  const date = document.getElementById("swingDate")?.value || localDateString();
+  const key = `${current}|${kind}|${date}`;
+  try {
+    let entryId = pendingEntry?.key === key ? pendingEntry.entryId : null;
+    if (!entryId) {
+      const { data, error } = await supabase.rpc("guardian_create_entry", { p_player_id: current, p_kind: kind, p_date: date });
+      if (error || !data) throw new Error(error?.message ?? "no entry");
+      entryId = data;
+      pendingEntry = { key, entryId };
+    }
+    await uploadRawClip(entryId, file, {}, { asGuardian: true });
+    pendingEntry = null;
+    status.innerHTML = `<p>Sent! It shows up below while it's processing.</p>`;
+    await refreshCurrent();
+  } catch (err) {
+    status.innerHTML = `<p class="error-text" role="alert">${escapeHtml(uploadErrorMessage(err?.message))}</p>`;
+  } finally {
+    sending = false;
+    if (sendButton) sendButton.disabled = false;
+  }
+});
+
+function openSwing(clipId) {
+  const report = reports.get(current);
+  const clip = report?.clips?.find((c) => c.id === clipId);
+  if (!clip) return;
+  const sheet = openBottomSheet({
+    title: `Swing from ${clip.recordedAt}`,
+    bodyHtml: `<div id="swingVideo">${processingState("Loading video…")}</div><h3>Coach's notes</h3>${coachNotes(report, clipId)}`,
+  });
+  loadVideo(sheet, clipId);
+}
+
+async function loadVideo(sheet, clipId) {
+  const host = sheet.querySelector("#swingVideo");
+  let response;
+  try { response = await supabase.functions.invoke("get-video-url", { body: { videoClipId: clipId } }); } catch { /* shown below */ }
+  if (!response?.data?.url) {
+    host.innerHTML = `<p>Video unavailable.</p>${button("Try again", { variant: "tertiary", attrs: 'data-retry-video' })}`;
+    host.querySelector("[data-retry-video]").onclick = () => { host.innerHTML = processingState("Loading video…"); loadVideo(sheet, clipId); };
+    return;
+  }
+  host.innerHTML = `<video src="${escapeHtml(response.data.url)}" controls playsinline preload="metadata"></video>`;
+  host.querySelector("video").addEventListener("error", () => { host.innerHTML = "<p>Video unavailable.</p>"; }, { once: true });
+}
+
+async function deleteSwing(clipId, el) {
+  const ok = await confirmDialog({
+    title: "Delete this video?",
+    message: "It will be removed for you and the coach. Notes your coach already wrote stay. This can't be undone.",
+    confirmLabel: "Delete",
+    destructive: true,
+  });
+  if (!ok) return;
+  await sendDelete(clipId, el);
+}
+
+// Also the "Try again" on an own upload whose earlier delete didn't finish (already confirmed once).
+// Every delete-clip step is idempotent, so calling it again finishes the job.
+async function sendDelete(clipId, el) {
+  el.disabled = true;
+  let status = 0;
+  try {
+    const response = await supabase.functions.invoke("delete-clip", { body: { clipId } });
+    status = response.error ? (response.error.context?.status ?? 500) : 200;
+  } catch { status = 500; }
+  if (status !== 200) {
+    // A failure part-way leaves the clip listed as "Deleting didn't finish"; a retry the worker
+    // already completed answers 403 (the clip is gone) - refresh so the list shows the real state.
+    await refreshCurrent();
+    const stillThere = reports.get(current)?.clips?.some((c) => c.id === clipId);
+    if (!stillThere) { showSnackbar("Video deleted."); return; }
+    showSnackbar(deleteErrorMessage(status));
+    return;
+  }
+  showSnackbar("Video deleted.");
+  await refreshCurrent();
+}
+
+// "Unlink me": the parent chooses what happens to the videos they sent (a coach removing a parent
+// leaves them with the team). delete-clip needs the guardian link, so own uploads are deleted
+// first and the link is removed only after every delete succeeded.
+function askUnlinkChoice(player, count) {
+  return new Promise((resolve) => {
+    let choice = null;
+    const sheet = openBottomSheet({ ...unlinkSheet(player, count), onClose: () => resolve(choice) });
+    sheet.querySelectorAll("[data-unlink-choice]").forEach((el) => el.addEventListener("click", () => {
+      choice = el.dataset.unlinkChoice === "delete" ? "delete" : "keep";
+      sheet.remove();
+    }));
+  });
+}
+
+async function unlinkMe() {
+  if (unlinking || !viewerId) return;
+  if (sending) { showSnackbar("Wait until your swing finishes sending."); return; }
+  const playerId = current;
+  const btn = document.getElementById("unlinkMe");
+  unlinking = true;
+  if (btn) btn.disabled = true;
+  try {
+    // A fresh report, so every video this account sent - including one sent since the page loaded - is counted.
+    const report = await fetchReport(playerId);
+    if (!report) { showSnackbar("Couldn't unlink. Check your connection and try again."); return; }
+    reports.set(playerId, report);
+    const player = firstName(report.playerName) || "your child";
+    const own = ownUploadIds(report);
+    let deleteOwn = false;
+    if (own.length) {
+      const choice = await askUnlinkChoice(player, own.length);
+      if (!choice) return;
+      deleteOwn = choice === "delete";
+    } else if (!await confirmDialog(unlinkConfirm(player))) return;
+    if (deleteOwn) {
+      showSnackbar("Deleting your videos…");
+      let failed = 0;
+      for (const id of own) {
+        try {
+          const response = await supabase.functions.invoke("delete-clip", { body: { clipId: id } });
+          if (response.error) failed += 1;
+        } catch { failed += 1; }
+      }
+      if (failed) {
+        showSnackbar(unlinkDeleteFailedMessage(failed));
+        await refreshCurrent();
+        return;
+      }
+    }
+    const { error } = await supabase.rpc("revoke_guardian", { p_player_id: playerId, p_user_id: viewerId });
+    if (error) {
+      showSnackbar("Couldn't unlink. Please try again.");
+      if (deleteOwn) await refreshCurrent();
+      return;
+    }
+    reports.delete(playerId);
+    pendingEntry = null;
+    showSnackbar(unlinkDoneMessage(player));
+    await loadFamily();
+  } finally {
+    unlinking = false;
+    const still = document.getElementById("unlinkMe");
+    if (still) still.disabled = false;
+  }
+}
+
+main();
+</script></body></html>

@@ -34,3 +34,16 @@ test("skips affect next only and one finding is actionable", () => {
   const sequence = findingSequence([{ id: "x", review_status: "approved" }, { id: "y", review_status: "draft" }, { id: "z", review_status: "draft" }]);
   assert.deepEqual(sequence.map((row) => row.actionable), [false, true, false]);
 });
+
+test("queue items carry fromFamily when a guardian uploaded the clip", () => {
+  const p = { id: "p", name: "Player" };
+  const fam = issue("1", "fam", "draft", p, "2026-09-18");
+  fam.video_clip.uploaded_by_role = "guardian";
+  const coach = issue("2", "coach", "draft", p, "2026-09-19");
+  coach.video_clip.uploaded_by_role = "coach";
+  const legacy = issue("3", "legacy", "approved", p, "2026-09-17");
+  const model = buildReviewQueue([fam, coach, legacy]);
+  assert.equal(model.pending.find((row) => row.clipId === "fam").fromFamily, true);
+  assert.equal(model.pending.find((row) => row.clipId === "coach").fromFamily, false);
+  assert.equal(model.reviewed.find((row) => row.clipId === "legacy").fromFamily, false, "missing role is not a family upload");
+});

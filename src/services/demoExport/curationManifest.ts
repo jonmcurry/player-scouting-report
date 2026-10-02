@@ -36,6 +36,13 @@ export interface CuratedClip {
   analysisWindowStartS?: number;
   /** Explicitly allow media longer than MAX_MEDIA_SECONDS. */
   allowLongMedia?: boolean;
+  /**
+   * Required when the clip was uploaded by a parent/guardian (video_clips.uploaded_by_role
+   * 'guardian'): that guardian's own, separate permission to publish THIS clip, as the
+   * guardian consent text promises. Team/player-level publication consent does not cover
+   * it. Only the date reaches the fixture; who confirmed it stays in this local manifest.
+   */
+  guardianPublicationPermission?: { confirmedBy: string; confirmedAt: string };
   /** Privacy-treated media for this clip: <dir>/<name>.{mp4,summary.json,validation.json} from scripts/privacy/. */
   privacy?: { name: string; dir?: string };
   /** Human-audited phase allowlist and corrections for the demo copy only. */
@@ -220,6 +227,12 @@ export function parseCurationManifest(raw: unknown): { manifest: CurationManifes
       if (c.analysisWindowStartS !== undefined && !(typeof c.analysisWindowStartS === "number" && c.analysisWindowStartS >= 0)) add(`${at}.analysisWindowStartS`, "must be a number >= 0");
       if (c.sourceVideo !== undefined && !nonEmpty(c.sourceVideo)) add(`${at}.sourceVideo`, "must be a non-empty path");
       if (c.overrides !== undefined && !isObj(c.overrides)) add(`${at}.overrides`, "must be an object");
+      if (c.guardianPublicationPermission !== undefined) {
+        const gp = c.guardianPublicationPermission;
+        if (!isObj(gp) || !nonEmpty(gp.confirmedBy) || !nonEmpty(gp.confirmedAt) || !DATE.test(String(gp.confirmedAt))) {
+          add(`${at}.guardianPublicationPermission`, "must be { confirmedBy, confirmedAt: YYYY-MM-DD } - the uploading guardian's own permission to publish this clip");
+        }
+      }
       if (c.phaseReview !== undefined) {
         const pr = c.phaseReview;
         const allowed = ["stance", "load", "stride", "contact", "extension", "follow-through"];

@@ -48,6 +48,8 @@ export function buildReviewQueue(issues = [], { skippedClipIds = [] } = {}) {
         pitch: clip.at_bat_pitches ?? issue.at_bat_pitch ?? null,
         rep: clip.practice_repetitions ?? issue.practice_repetition ?? null,
         createdAt: issue.created_at,
+        // A parent sent this swing (00042 uploaded_by_role); a missing role is a coach upload.
+        fromFamily: clip.uploaded_by_role === "guardian",
         findings: [],
       });
     }

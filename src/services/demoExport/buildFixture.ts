@@ -455,9 +455,14 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
   }
 
   const clipsOut: SelectedClip[] = [];
+  const guardianPermissions: Array<{ clipId: string; confirmedAt: string }> = [];
   for (const { mc, clip, index } of [...selected].sort((a, b) => a.index - b.index)) {
     const sourceClipId = s(clip.id);
     const fxClip = ids.idFor("video_clips", sourceClipId);
+    // validateFixture refuses a guardian upload without this (GUARDIAN_PERMISSION_MISSING).
+    if (clip.uploaded_by_role === "guardian" && mc.guardianPublicationPermission) {
+      guardianPermissions.push({ clipId: fxClip, confirmedAt: mc.guardianPublicationPermission.confirmedAt });
+    }
     const publicFilename = opts.mediaMode === "planned" ? `${manifest.fixtureId}-${mediaVersionTag(manifest.mediaFileVersion ?? manifest.fixtureVersion)}-clip-${String(index + 1).padStart(3, "0")}.mp4` : null;
     const ctx = opts.clipContext?.get(sourceClipId);
     const windowStart = mc.analysisWindowStartS ?? (ctx && !ctx.analysisWindowAmbiguous ? ctx.analysisWindowStartS : null);
@@ -475,6 +480,7 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
       clip_slug: `${manifest.player.publicSlug}-clip-${String(index + 1).padStart(3, "0")}`,
       demo_media_path: publicFilename, demo_media_offset_s: offset,
       raw_gcs_path: null, error_message: null, claimed_at: null, retry_count: 0, next_retry_at: null,
+      uploaded_by: null, uploaded_by_role: clip.uploaded_by_role === "guardian" ? "guardian" : "coach",
     }));
     clipsOut.push({
       manifestIndex: index, sourceClipId, clipSlug: s(clip.clip_slug), fixtureClipId: fxClip, publicFilename,
@@ -626,6 +632,8 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
       consentConfirmedAt: manifest.publication?.consentConfirmedAt ?? "",
       includeDrafts,
       includeRejectedChecklistStates,
+      // Only present when used, so fixtures without guardian uploads stay byte-identical.
+      ...(guardianPermissions.length ? { guardianPublicationPermissions: guardianPermissions } : {}),
       reviewerAliasApplied: reviewerNeeded,
       overrides,
       expect: { comparePairs: [...(manifest.expect?.comparePairs ?? [])] },

@@ -31,6 +31,8 @@ export interface Fixture {
     consentConfirmedAt: string;
     includeDrafts: boolean;
     includeRejectedChecklistStates?: boolean;
+    /** Fixture clip ids of guardian-uploaded clips whose guardian separately permitted publication. Absent when none. */
+    guardianPublicationPermissions?: Array<{ clipId: string; confirmedAt: string }>;
     reviewerAliasApplied: boolean;
     overrides: Array<{ table: string; id: string; column: string; from: unknown; to: unknown }>;
     expect: { comparePairs: string[] };
@@ -218,6 +220,18 @@ export function validateFixture(fx: Fixture, opts: ValidateOptions = {}): Findin
   if (opts.selectedClipIds) {
     for (const id of clipIds) if (!opts.selectedClipIds.has(id)) err("CLIP_NOT_ALLOWLISTED", `video clip ${id} was not selected by the curation manifest`, "video_clips", id);
     for (const id of opts.selectedClipIds) if (!clipIds.has(id)) err("CLIP_MISSING", `selected clip ${id} is absent from the fixture`, "video_clips", id);
+  }
+  // A guardian upload is publishable only with that guardian's own recorded permission
+  // for that clip (the guardian consent text promises this) - team consent isn't enough.
+  const guardianPermitted = new Set(
+    (fx.curation?.guardianPublicationPermissions ?? [])
+      .filter((p) => typeof p?.clipId === "string" && /^\d{4}-\d{2}-\d{2}$/.test(String(p?.confirmedAt ?? "")))
+      .map((p) => p.clipId),
+  );
+  for (const c of rows("video_clips")) {
+    if (c.uploaded_by_role === "guardian" && !guardianPermitted.has(String(c.id))) {
+      err("GUARDIAN_PERMISSION_MISSING", `video clip ${String(c.id)} was uploaded by a parent/guardian and the curation manifest records no separate publication permission from that guardian`, "video_clips", String(c.id));
+    }
   }
   const mediaNames = new Set<string>();
   for (const c of rows("video_clips")) {
