@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HitterLoop Simplified App</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #121418;
+  --surface-1: #1A1E25;
+  --surface-2: #232830;
+  --surface-3: #2C323B;
+  --border: rgba(244,239,234,0.15);
+  --border-strong: rgba(244,239,234,0.40);
+  --text-1: #F4EFEA;
+  --text-2: #BDB6AB;
+  --text-3: #9A9588;
+  --brand: #B4503A;
+  --brand-pressed: #9C4632;
+  --brand-text: #E27B60;
+  --success: #34D399;
+  --warning: #F2B84B;
+  --danger: #E0584C;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 24px;
+  --font-display: 'Oswald', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --touch-min: 48px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #000; color: var(--text-1); font-family: var(--font-body); padding: 40px; -webkit-font-smoothing: antialiased; }
+h1, h2, h3, h4, h5 { font-family: var(--font-display); font-weight: 600; letter-spacing: 0.02em; }
+.notes { max-width: 1250px; margin: 0 auto 40px; background: var(--surface-1); padding: 32px; border-radius: var(--radius-md); font-size: 15px; line-height: 1.6; color: var(--text-2); border: 1px solid var(--border); }
+.notes h1 { color: var(--text-1); font-size: 28px; margin-bottom: 24px; }
+.notes h2 { color: var(--text-1); font-size: 20px; margin: 32px 0 12px; }
+.notes p { margin-bottom: 16px; }
+.notes ul { margin-left: 24px; margin-bottom: 16px; }
+.notes li { margin-bottom: 8px; }
+
+.screens { display: flex; flex-wrap: wrap; gap: 40px; justify-content: center; max-width: 1800px; margin: 0 auto; }
+.screen { width: 390px; height: 844px; background: var(--bg); border-radius: 40px; border: 8px solid #333; position: relative; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+.status-bar { height: 44px; display: flex; justify-content: space-between; align-items: center; padding: 0 24px; font-size: 14px; font-weight: 600; color: var(--text-1); flex-shrink: 0; }
+.content { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 24px; }
+.content::-webkit-scrollbar { display: none; }
+.screen-title { font-family: var(--font-display); font-size: 22px; margin-bottom: 4px; padding: 0 8px; color: var(--text-1); }
+
+/* Components */
+.btn { display: flex; align-items: center; justify-content: center; min-height: var(--touch-min); padding: 0 20px; border-radius: var(--radius-sm); font-weight: 600; font-size: 16px; border: none; cursor: pointer; width: 100%; text-decoration: none; }
+.btn-primary { background: var(--brand); color: #fff; }
+.btn-secondary { background: var(--surface-2); color: var(--text-1); border: 1px solid var(--border-strong); }
+.btn-ghost { background: transparent; color: var(--text-2); min-height: var(--touch-min); font-weight: 500; font-size: 15px; padding: 0; justify-content: flex-start; }
+.btn-ghost:hover { color: var(--text-1); }
+
+.card { background: var(--surface-1); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--border); display: block; text-decoration: none; }
+.card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.card-title { font-size: 16px; color: var(--text-1); font-weight: 600; line-height: 1.3; }
+.card-subtitle { font-size: 13px; color: var(--text-2); margin-bottom: 12px; display: flex; justify-content: space-between; }
+.card-subtitle span { color: var(--brand-text); font-weight: 600; }
+
+.feed-item { display: flex; gap: 12px; padding: 16px 8px; border-bottom: 1px solid var(--border); text-decoration: none; }
+.feed-item:last-child { border-bottom: none; }
+.feed-thumb { width: 72px; height: 72px; border-radius: var(--radius-sm); background: var(--surface-2); flex-shrink: 0; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.feed-thumb img { width: 100%; height: 100%; object-fit: cover; opacity: 0.7; }
+.feed-thumb svg { width: 32px; height: 32px; opacity: 0.5; }
+.feed-details { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.feed-meta { font-size: 12px; color: var(--text-3); display: flex; gap: 8px; margin-bottom: 4px; }
+.feed-tag { color: var(--text-2); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em; background: var(--surface-2); padding: 2px 6px; border-radius: 4px; }
+.feed-headline { font-size: 14px; font-weight: 500; color: var(--text-1); margin-bottom: 6px; line-height: 1.3; }
+.feed-state { font-size: 13px; font-weight: 600; }
+.state-ready { color: var(--success); }
+.state-analyzing { color: var(--warning); }
+.state-error { color: var(--danger); }
+
+.sheet { position: absolute; bottom: 0; left: 0; right: 0; background: var(--surface-1); border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: 24px 16px 32px; box-shadow: 0 -10px 40px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 20px; border-top: 1px solid var(--border); z-index: 10; }
+.sheet-handle { width: 40px; height: 4px; background: var(--surface-3); border-radius: 2px; margin: -12px auto 16px; }
+.sheet-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.6); z-index: 9; }
+
+.toggle-group { display: flex; background: var(--surface-2); border-radius: var(--radius-sm); padding: 4px; }
+.toggle-btn { flex: 1; min-height: 40px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: var(--text-2); border-radius: 6px; }
+.toggle-btn.active { background: var(--surface-3); color: var(--text-1); border: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+
+.chip-scroll { margin: 0; padding: 0 0 12px 0; }
+.chip-scroll::-webkit-scrollbar { display: none; }
+.chip-group { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { flex-shrink: 0; padding: 0 16px; min-height: 40px; display: flex; align-items: center; border-radius: 20px; border: 1px solid var(--border); font-size: 14px; font-weight: 500; color: var(--text-2); background: var(--surface-2); }
+.chip.active { background: var(--text-1); color: var(--bg); border-color: var(--text-1); }
+
+.video-player { width: 100%; aspect-ratio: 9/16; max-height: 400px; background: var(--surface-1); border-radius: var(--radius-md); position: relative; overflow: hidden; margin-bottom: 8px; border: 1px solid var(--border); flex-shrink: 0; }
+.video-player img, .video-player svg { width: 100%; height: 100%; object-fit: contain; opacity: 0.9; }
+.play-btn { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 64px; height: 64px; background: rgba(0,0,0,0.5); border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid rgba(255,255,255,0.8); backdrop-filter: blur(4px); }
+.play-btn::after { content: ''; border-top: 10px solid transparent; border-bottom: 10px solid transparent; border-left: 16px solid #fff; margin-left: 6px; }
+.speed-btn { position: absolute; bottom: 12px; right: 12px; background: rgba(0,0,0,0.6); color: #fff; font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); backdrop-filter: blur(4px); }
+
+.section-title { font-size: 20px; color: var(--text-1); margin-bottom: 12px; margin-top: 8px; }
+.text-body { font-size: 16px; color: var(--text-2); line-height: 1.5; }
+.text-body b { color: var(--text-1); font-weight: 600; }
+
+.bullet-list { margin-left: 0; margin-top: 12px; color: var(--text-2); font-size: 16px; list-style-type: none; }
+.bullet-list li { margin-bottom: 12px; padding-left: 24px; position: relative; line-height: 1.4; }
+.bullet-list li::before { content: '✓'; position: absolute; left: 0; color: var(--success); font-weight: bold; }
+
+.fix-box { background: color-mix(in srgb, var(--brand) 12%, var(--surface-1)); border: 1px solid var(--brand); padding: 20px; border-radius: var(--radius-md); margin-top: 8px; }
+.fix-title { font-family: var(--font-display); font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--brand-text); margin-bottom: 8px; }
+.fix-cue { font-size: 20px; font-weight: 600; color: var(--text-1); margin-bottom: 12px; line-height: 1.3; }
+.fix-look { font-size: 15px; color: var(--text-2); line-height: 1.4; }
+.fix-look b { color: var(--text-1); }
+
+.drill-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; margin-bottom: 12px; }
+.drill-header { padding: 16px; display: flex; justify-content: space-between; align-items: flex-start; cursor: pointer; }
+.drill-info { flex: 1; padding-right: 12px; }
+.drill-name { font-size: 16px; font-weight: 600; color: var(--text-1); margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; }
+.drill-chevron { color: var(--text-3); font-size: 20px; line-height: 1; }
+.drill-best { font-size: 14px; color: var(--text-2); line-height: 1.4; margin-bottom: 12px; }
+.drill-best b { color: var(--text-1); }
+.drill-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+.drill-badge { font-size: 11px; font-weight: 600; background: var(--surface-3); padding: 4px 8px; border-radius: 4px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.02em; }
+.drill-badge.home { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); border: 1px solid color-mix(in srgb, var(--success) 30%, transparent); }
+.drill-expand { padding: 16px; border-top: 1px solid var(--border); background: var(--surface-1); display: none; }
+.drill-card.expanded .drill-expand { display: block; }
+.drill-card.expanded .drill-chevron { transform: rotate(180deg); }
+
+.step-list { list-style-type: decimal; margin-left: 20px; margin-bottom: 16px; color: var(--text-2); font-size: 15px; line-height: 1.5; }
+.step-list li { margin-bottom: 8px; padding-left: 4px; }
+.drill-section { margin-bottom: 16px; }
+.drill-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3); margin-bottom: 4px; }
+.drill-text { font-size: 15px; color: var(--text-1); }
+.drill-mistake { font-size: 15px; color: var(--danger); line-height: 1.4; }
+.demo-link { display: flex; align-items: center; gap: 8px; color: var(--brand-text); font-weight: 600; font-size: 15px; text-decoration: none; padding: 12px 0; border-top: 1px solid var(--border); margin-top: 16px; }
+.demo-link::before { content: '▶'; font-size: 12px; }
+
+.progress-header { margin-bottom: 24px; }
+.progress-pill { display: inline-flex; align-items: center; padding: 6px 12px; background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); border-radius: 16px; font-size: 13px; font-weight: 600; margin-bottom: 16px; border: 1px solid color-mix(in srgb, var(--success) 30%, transparent); }
+.progress-pill.warning { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning); border-color: color-mix(in srgb, var(--warning) 30%, transparent); }
+.progress-evidence { font-size: 16px; color: var(--text-1); line-height: 1.4; }
+
+.side-by-side { display: flex; gap: 8px; margin-bottom: 8px; }
+.sbs-vid { flex: 1; flex-shrink: 0; aspect-ratio: 9/16; background: var(--surface-2); border-radius: var(--radius-sm); position: relative; overflow: hidden; border: 1px solid var(--border); }
+.sbs-vid svg { width: 100%; height: 100%; opacity: 0.8; }
+.sbs-label { position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #fff; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid rgba(255,255,255,0.2); backdrop-filter: blur(4px); }
+.sbs-caption { font-size: 13px; color: var(--text-3); text-align: center; margin-bottom: 32px; }
+
+.history-item { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--border); font-size: 15px; }
+.history-item:last-child { border-bottom: none; }
+.history-name { color: var(--text-1); font-weight: 500; }
+.history-status { color: var(--text-3); font-size: 14px; }
+
+.roster-item { display: flex; align-items: center; gap: 16px; padding: 16px 8px; border-bottom: 1px solid var(--border); text-decoration: none; }
+.roster-item:last-child { border-bottom: none; }
+.roster-badge { width: 48px; height: 48px; border-radius: 50%; background: var(--brand); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-size: 20px; font-weight: 700; color: #fff; flex-shrink: 0; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.2); }
+.roster-info { flex: 1; }
+.roster-name { font-size: 18px; font-weight: 600; color: var(--text-1); margin-bottom: 4px; }
+.roster-focus { font-size: 14px; color: var(--text-2); line-height: 1.3; }
+.roster-date { font-size: 12px; color: var(--text-3); margin-top: 6px; }
+.roster-chevron { color: var(--text-3); font-size: 24px; font-weight: 300; }
+
+.app-bar { padding: 16px 8px 8px; display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.back-btn { font-size: 28px; color: var(--text-2); text-decoration: none; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin-left: -12px; }
+.app-title { font-size: 20px; color: var(--text-1); margin: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.footer-actions { margin-top: 32px; display: flex; flex-direction: column; gap: 16px; border-top: 1px solid var(--border); padding-top: 24px; padding-bottom: 24px; }
+.share-row { display: flex; align-items: center; gap: 16px; padding: 16px; background: var(--surface-2); border-radius: var(--radius-md); margin-bottom: 24px; }
+.share-icon { font-size: 24px; color: var(--brand-text); }
+.share-text { flex: 1; }
+.share-title { font-size: 16px; font-weight: 600; color: var(--text-1); margin-bottom: 4px; }
+.share-desc { font-size: 13px; color: var(--text-2); line-height: 1.4; }
+
+.empty-state { text-align: center; padding: 40px 20px; }
+.empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+.empty-text { font-size: 16px; color: var(--text-2); line-height: 1.5; margin-bottom: 24px; }
+
+/* Illustrations placeholders using generic SVGs */
+.svg-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
+.svg-placeholder svg { width: 60%; height: 60%; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+
+<div class="notes">
+  <h1>Design Notes: HitterLoop Simplified App</h1>
+  <p>This prototype delivers the complete 7-screen simplified flow described in the <code>SIMPLIFIED_APP_SPEC.md</code>.</p>
+  
+  <h2>Design Decisions</h2>
+  <ul>
+    <li><b>Color Tokens</b>: Reused the "infield dirt at night" palette from <code>coach.css</code> (dark slate backgrounds, clay primary accents, warm sand text). This guarantees high contrast (3:1+) for outdoor legibility.</li>
+    <li><b>Typography</b>: Preserved Oswald (display face) for headers/numbers to maintain the athletic scoreboard vibe, and Inter (sans-serif) for body text to ensure readability at small sizes.</li>
+    <li><b>Touch Targets</b>: Enforced the minimum <code>48px</code> touch target constraint (via <code>--touch-min</code>) on all buttons, tabs, and interactive rows. This ensures the app is easily usable one-handed by a parent holding a phone.</li>
+    <li><b>Thumb-friendly Layouts</b>: Actions are anchored to the bottom (sheets) or full-width buttons. Data entry is minimized to optional chips.</li>
+    <li><b>Language & Tone</b>: The UI uses plain, encouraging language. "What looked good" is listed before the "One fix", and drills clearly state their "Best for" intent up front so parents can make confident choices without baseball knowledge.</li>
+    <li><b>Progress Visualization</b>: Replaced complex charts with clear status pills ("Showing up in 2 of her last 5 at-bats") and side-by-side visual comparison, matching the spec's requirement for evidence-based reporting without fake precision.</li>
+  </ul>
+  
+  <h2>Spec Clarifications Revealed by the UI</h2>
+  <p>During design, a few minor ambiguities in the spec were resolved:</p>
+  <ul>
+    <li>The "Record at-bat" confirm sheet doesn't explicitly mention what happens if you select "Skip" for the result chip. I designed the chips as a toggle group where nothing is pre-selected by default, treating the absence of selection as "Skip".</li>
+    <li>For the "Couldn't read this one" state, the spec says "The relevant filming tip from §6". I added a small tip box directly into the report to avoid making the user tap out to a separate screen just to see why it failed.</li>
+  </ul>
+</div>
+
+<div class="screens">
+
+  <!-- 1. Home (Parent) -->
+  <div class="screen">
+    <div class="status-bar">
+      <span>9:41</span>
+      <span>🔋 100%</span>
+    </div>
+    <div class="content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <h1 class="screen-title" style="padding: 0;">Maya's Swings</h1>
+        <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 14px;">⚙️</div>
+      </div>
+      
+      <button class="btn btn-primary" style="font-size: 18px; padding: 16px 0; border-radius: 16px;">
+        <span style="margin-right: 8px; font-size: 20px;">🎥</span> Record at-bat
+      </button>
+
+      <a href="#" class="card" style="background: color-mix(in srgb, var(--brand) 15%, var(--surface-1)); border-color: color-mix(in srgb, var(--brand) 30%, transparent);">
+        <div class="card-subtitle"><span>CURRENT FOCUS</span></div>
+        <div class="card-title">Front side opening early</div>
+      </a>
+
+      <div>
+        <h2 class="section-title">Recent At-Bats</h2>
+        <div style="background: var(--surface-1); border-radius: var(--radius-md); border: 1px solid var(--border); padding: 0 8px;">
+          
+          <a href="#" class="feed-item">
+            <div class="feed-thumb">
+              <div class="svg-placeholder">
+                <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </div>
+            </div>
+            <div class="feed-details">
+              <div class="feed-meta">Oct 3 <span class="feed-tag">Game</span></div>
+              <div class="feed-headline">Good balanced stance, front side opened early</div>
+              <div class="feed-state state-ready">Ready</div>
+            </div>
+          </a>
+
+          <a href="#" class="feed-item">
+            <div class="feed-thumb">
+              <div class="svg-placeholder">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              </div>
+            </div>
+            <div class="feed-details">
+              <div class="feed-meta">Oct 1 <span class="feed-tag">Practice</span></div>
+              <div class="feed-headline">Analyzing your video...</div>
+              <div class="feed-state state-analyzing">Analyzing...</div>
+            </div>
+          </a>
+
+          <a href="#" class="feed-item">
+            <div class="feed-thumb" style="opacity: 0.5;">
+              <div class="svg-placeholder">
+                <svg viewBox="0 0 24 24"><path d="M1 1l22 22M21 21H3V3"/></svg>
+              </div>
+            </div>
+            <div class="feed-details">
+              <div class="feed-meta">Sep 28 <span class="feed-tag">Game</span></div>
+              <div class="feed-headline">Couldn't read this one</div>
+              <div class="feed-state state-error">Tap for details</div>
+            </div>
+          </a>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Record/Upload Sheet -->
+  <div class="screen">
+    <div class="status-bar">
+      <span>9:41</span>
+      <span>🔋 100%</span>
+    </div>
+    <div class="content" style="filter: blur(2px);">
+      <h1 class="screen-title">Maya's Swings</h1>
+      <button class="btn btn-primary">Record at-bat</button>
+    </div>
+    
+    <div class="sheet-overlay"></div>
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h2 class="section-title" style="margin: 0; text-align: center;">Upload At-Bat</h2>
+      
+      <div style="background: var(--surface-2); padding: 12px 16px; border-radius: var(--radius-sm); display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <div class="roster-badge" style="width: 32px; height: 32px; font-size: 14px;">M</div>
+        <div style="font-weight: 600; font-size: 16px; color: var(--text-1);">Maya</div>
+        <div style="margin-left: auto; color: var(--text-3); font-size: 14px;">Change</div>
+      </div>
+
+      <div class="toggle-group">
+        <div class="toggle-btn active">Game</div>
+        <div class="toggle-btn">Practice</div>
+      </div>
+
+      <div style="margin-top: 8px;">
+        <div style="font-size: 14px; color: var(--text-2); margin-bottom: 12px; font-weight: 500;">Result (Optional)</div>
+        <div class="chip-scroll">
+          <div class="chip-group">
+            <div class="chip">Hit</div>
+            <div class="chip">Out</div>
+            <div class="chip">Walk</div>
+            <div class="chip">Strikeout</div>
+            <div class="chip active">Skip</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" style="margin-top: 8px;">Send to Analysis</button>
+      <button class="btn btn-ghost" style="justify-content: center; color: var(--text-2);">Cancel</button>
+    </div>
+  </div>
+
+  <!-- 3. At-Bat Report -->
+  <div class="screen">
+    <div class="status-bar">
+      <span>9:41</span>
+      <span>🔋 100%</span>
+    </div>
+    <div class="content" style="padding-top: 0;">
+      <div class="app-bar">
+        <a href="#" class="back-btn">‹</a>
+        <h1 class="app-title">Oct 3 Game</h1>
+      </div>
+
+      <div class="video-player">
+        <div class="svg-placeholder" style="background: #111;">
+          <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+        </div>
+        <div class="play-btn"></div>
+        <div class="speed-btn">1/2x</div>
+        <div style="position: absolute; bottom: 0; left: 0; width: 100%; height: 4px; background: rgba(255,255,255,0.3);">
+           <div style="position: absolute; left: 0; top: 0; height: 100%; width: 40%; background: var(--brand);"></div>
+           <div style="position: absolute; left: 40%; top: -4px; height: 12px; width: 4px; background: #fff; border-radius: 2px;"></div>
+           <div style="position: absolute; left: 40%; bottom: 8px; font-size: 10px; color: #fff; transform: translateX(-50%); text-shadow: 0 1px 2px rgba(0,0,0,0.8); font-weight: 600;">Contact</div>
+        </div>
+      </div>
+
+      <div>
+        <h2 class="section-title">How it went</h2>
+        <div class="text-body">Good, balanced stance and an on-time load. Her front side opened early, and she finished off-balance toward first base.</div>
+      </div>
+
+      <div>
+        <h2 class="section-title">What looked good</h2>
+        <ul class="bullet-list">
+          <li><b>Solid setup:</b> Athletic, balanced posture before the pitch.</li>
+          <li><b>On-time load:</b> Hands moved back smoothly as the pitcher released.</li>
+        </ul>
+      </div>
+
+      <div class="fix-box">
+        <div class="fix-title">One thing to fix</div>
+        <div style="font-size: 16px; color: var(--text-1); font-weight: 600; margin-bottom: 12px; line-height: 1.4;">Her front side opens too early: her front foot and chest turn toward the dugout before the swing starts.</div>
+        <div class="fix-cue" style="font-size: 16px; margin-bottom: 12px;">Say to Maya: <span style="font-size: 20px; display: block; margin-top: 4px; font-style: italic;">"Keep your front shoulder pointing at the pitcher."</span></div>
+        <div class="fix-look"><b>Next time, watch for:</b> Her front foot and chest shouldn't spin open toward the dugout before the swing starts.</div>
+      </div>
+
+      <div style="margin-top: 16px;">
+        <h2 class="section-title">Drills that can help</h2>
+        
+        <!-- Expanded Drill -->
+        <div class="drill-card expanded">
+          <div class="drill-header">
+            <div class="drill-info">
+              <div class="drill-name">No-Stride Drill <span class="drill-chevron">▼</span></div>
+              <div class="drill-best"><b>Best for:</b> hitters who step open toward the dugout.</div>
+              <div class="drill-meta">
+                <span class="drill-badge home">🏠 Home Friendly</span>
+                <span class="drill-badge">Tee</span>
+              </div>
+            </div>
+          </div>
+          <div class="drill-expand">
+            <ol class="step-list">
+              <li>Set up a tee, but widen the stance so the feet are already where they would be after striding.</li>
+              <li>Do not take a step. Just shift weight back slightly to load.</li>
+              <li>Swing while keeping the front foot planted firmly.</li>
+            </ol>
+            <div class="drill-section">
+              <div class="drill-label">Cue for Maya</div>
+              <div class="drill-text">"Glue your front shoe to the ground."</div>
+            </div>
+            <div class="drill-section">
+              <div class="drill-label">Looks right when</div>
+              <div class="drill-text">The front toe stays pointing at home plate until contact.</div>
+            </div>
+            <div class="drill-section" style="margin-bottom: 0;">
+              <div class="drill-label">Common mistake</div>
+              <div class="drill-mistake">Lifting the front heel to spin early.</div>
+            </div>
+            <a href="#" class="demo-link">Watch demo video (0:45)</a>
+            <div style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: right;">Demo: Coach Matt, Ultimate Baseball Training</div>
+          </div>
+        </div>
+
+        <!-- Collapsed Drill 2 -->
+        <div class="drill-card">
+          <div class="drill-header">
+            <div class="drill-info">
+              <div class="drill-name">Front Toss Stop Drill <span class="drill-chevron">▼</span></div>
+              <div class="drill-best"><b>Best for:</b> hitters whose shoulders spin before the hips.</div>
+              <div class="drill-meta">
+                <span class="drill-badge">Toss</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Collapsed Drill 3 -->
+        <div class="drill-card">
+          <div class="drill-header">
+            <div class="drill-info">
+              <div class="drill-name">Fence Drill <span class="drill-chevron">▼</span></div>
+              <div class="drill-best"><b>Best for:</b> feeling a closed front side without a ball.</div>
+              <div class="drill-meta">
+                <span class="drill-badge home">🏠 Home Friendly</span>
+                <span class="drill-badge">No ball</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-actions">
+        <button class="btn btn-secondary">Share Report</button>
+        <button class="btn btn-ghost">Doesn't look right</button>
+        <button class="btn btn-ghost" style="color: var(--danger);">Delete at-bat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Couldn't Read Variant -->
+  <div class="screen">
+    <div class="status-bar">
+      <span>9:41</span>
+      <span>🔋 100%</span>
+    </div>
+    <div class="content" style="padding-top: 0;">
+      <div class="app-bar">
+        <a href="#" class="back-btn">‹</a>
+        <h1 class="app-title">Sep 28 Game</h1>
+      </div>
+
+      <div class="video-player">
+        <div class="svg-placeholder" style="background: #111;">
+          <svg viewBox="0 0 24 24"><path d="M1 1l22 22M21 21H3V3"/></svg>
+        </div>
+        <div class="play-btn"></div>
+      </div>
+
+      <div>
+        <h2 class="section-title">Couldn't read this one</h2>
+        <div class="text-body" style="margin-bottom: 24px;">We couldn't analyze this video. We couldn't find the batter clearly because the camera was too far away or blocked by the fence.</div>
+        
+        <div class="card" style="background: var(--surface-2);">
+          <div style="font-family: var(--font-display); font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-1); margin-bottom: 8px;">Filming Tip</div>
+          <div class="text-body"><b>Behind home plate</b>, as straight-on as you can. Through the fence is fine; get the lens close to the fence. Frame the whole batter, head to feet.</div>
+        </div>
+      </div>
+
+      <div class="footer-actions" style="margin-top: auto;">
+        <button class="btn btn-ghost" style="color: var(--danger);">Delete at-bat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Progress -->
+  <div class="screen">
+    <div class="status-bar">
+      <span>9:41</span>
+      <span>🔋 100%</span>
+    </div>
+    <div class="content" style="padding-top: 0;">
+      <div class="app-bar">
+        <a href="#" class="back-btn">‹</a>
+        <h1 class="app-title">Maya's Progress</h1>
+      </div>
+
+      <div class="progress-header">
+        <div style="font-family: var(--font-display); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); margin-bottom: 8px;">Current Focus</div>
+        <h2 class="section-title" style="margin-top: 0; font-size: 24px;">Front side opening early</h2>
+        <div style="font-size: 13px; color: var(--text-2); margin-top: 4px;">Since Sept 24</div>
+        <button class="btn btn-ghost" style="margin-top: 8px; font-size: 13px; min-height: 32px;">Doesn't look right</button>
+      </div>
+
+      <div>
+        <div class="progress-pill">Improving</div>
+        <div class="progress-evidence">Showing up less: 2 of her last 5 at-bats (was 4 of 5).</div>
+        <div style="font-size: 13px; color: var(--text-3); margin-top: 8px;">In practice: seen in 1 of last 4 swings</div>
+      </div>
+
+      <div style="margin-top: 16px;">
+        <h3 class="section-title" style="font-size: 16px; margin-bottom: 12px;">Then vs. Now</h3>
+        <div class="side-by-side">
+          <div class="sbs-vid">
+            <div class="svg-placeholder"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4z" fill="currentColor"/></svg></div>
+            <div class="sbs-label">Sep 24</div>
+          </div>
+          <div class="sbs-vid">
+            <div class="svg-placeholder"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4z" fill="currentColor"/></svg></div>
+            <div class="sbs-label">Oct 3</div>
+          </div>
+        </div>
+        <div class="sbs-caption">Synced at contact point</div>
+      </div>
+
+      <div style="margin-top: 8px;">
+        <h3 class="section-title" style="font-size: 16px;">History</h3>
+        <div class="history-item">
+          <span class="history-name">Staying balanced through finish</span>
+          <span class="history-status">Looks fixed • Sep 12</span>
+        </div>
+        <div class="history-item">
+          <span class="history-name">Hands dropping early</span>
+          <span class="history-status">Looks fixed • Aug 20</span>
+        </div>
+        <div class="history-item">
+          <span class="history-name">Late load</span>
+          <span class="history-status">Dismissed • Aug 5</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Coach Roster -->
+  <div class="screen">
+    <div class="status-bar">
+      <span>9:41</span>
+      <span>🔋 100%</span>
+    </div>
+    <div class="content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div>
+          <h1 class="screen-title" style="padding: 0;">Riverside 12U</h1>
+          <div style="font-size: 13px; color: var(--text-2); padding: 0 8px;">Coach Smith</div>
+        </div>
+        <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-size: 14px;">⚙️</div>
+      </div>
+      
+      <button class="btn btn-primary" style="font-size: 18px; padding: 16px 0; border-radius: 16px;">
+        <span style="margin-right: 8px; font-size: 20px;">🎥</span> Record at-bat
+      </button>
+
+      <div style="margin-top: 8px;">
+        <a href="#" class="roster-item">
+          <div class="roster-badge">M</div>
+          <div class="roster-info">
+            <div class="roster-name">Maya Davis</div>
+            <div class="roster-focus">Focus: Front side opening early</div>
+            <div class="roster-date">Latest: Oct 3</div>
+          </div>
+          <div class="roster-chevron">›</div>
+        </a>
+        
+        <a href="#" class="roster-item">
+          <div class="roster-badge" style="background: #3B82F6;">C</div>
+          <div class="roster-info">
+            <div class="roster-name">Chloe Smith</div>
+            <div class="roster-focus">Focus: Front foot down on time</div>
+            <div class="roster-date">Latest: Oct 1</div>
+          </div>
+          <div class="roster-chevron">›</div>
+        </a>
+        
+        <a href="#" class="roster-item">
+          <div class="roster-badge" style="background: #8B5CF6;">E</div>
+          <div class="roster-info">
+            <div class="roster-name">Emma Johnson</div>
+            <div class="roster-focus">Focus: Early read (need 2 more swings)</div>
+            <div class="roster-date">Latest: Sep 28</div>
+          </div>
+          <div class="roster-chevron">›</div>
+        </a>
+        
+        <button class="btn btn-ghost" style="margin-top: 16px; color: var(--brand-text); padding: 0 8px;">+ Add Player</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. Share Sheet -->
+  <div class="screen">
+    <div class="status-bar">
+      <span>9:41</span>
+      <span>🔋 100%</span>
+    </div>
+    <div class="content" style="filter: blur(2px);">
+      <div class="app-bar">
+        <a href="#" class="back-btn">‹</a>
+        <h1 class="app-title">Oct 3 Game</h1>
+      </div>
+      <div class="video-player"></div>
+    </div>
+    
+    <div class="sheet-overlay"></div>
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h2 class="section-title" style="margin: 0; text-align: center;">Share At-Bat</h2>
+      
+      <div class="share-row">
+        <div class="share-icon">🔗</div>
+        <div class="share-text">
+          <div class="share-title">Copy Link</div>
+          <div class="share-desc">Anyone with this link can view this single report.</div>
+        </div>
+      </div>
+      
+      <div class="share-row" style="margin-bottom: 8px;">
+        <div class="share-icon">💬</div>
+        <div class="share-text">
+          <div class="share-title">Send by Text</div>
+          <div class="share-desc">Text this report to family or Maya's hitting instructor. Only this report is shared.</div>
+        </div>
+      </div>
+
+      <button class="btn btn-ghost" style="justify-content: center; color: var(--text-2); margin-top: 16px;">Cancel</button>
+    </div>
+  </div>
+
+</div>
+
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const screenIndex = params.get('screen');
+  const isFull = params.get('full');
+  if (screenIndex !== null) {
+    document.querySelector('.notes').style.display = 'none';
+    document.body.style.padding = '0';
+    document.body.style.background = '#121418';
+    const screens = document.querySelectorAll('.screen');
+    screens.forEach((s, i) => {
+      if (i != screenIndex) s.style.display = 'none';
+      else {
+        s.style.boxShadow = 'none';
+        s.style.border = 'none';
+        s.style.borderRadius = '0';
+        if (isFull) {
+            s.style.height = 'auto';
+            s.style.minHeight = '844px';
+            s.style.overflow = 'visible';
+            const content = s.querySelector('.content');
+            if (content) content.style.overflow = 'visible';
+        }
+      }
+    });
+    document.querySelector('.screens').style.display = 'block';
+  }
+</script>
+</body>
+
+</html>
