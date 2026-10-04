@@ -52,30 +52,38 @@ function visibleConcepts(swing: ReadableSwing): Set<string> {
   return new Set(swing.findings.filter(mechanicalFinding).map((f) => f.concept));
 }
 
-/** The worker passes all recent swings and stored focus history; this function never invents findings. */
-export function advanceFocus(swings: ReadableSwing[], current: FocusRecord | null, history: FocusRecord[]): FocusResult {
+/** Callers pass recent swings, stored focus history, and the persistent serial counter. */
+export function advanceFocus(swings: ReadableSwing[], current: FocusRecord | null, history: FocusRecord[], latestKnownSerial = 0): FocusResult {
   const game = swings.filter((s) => s.readable && s.sessionType === "game").sort((a, b) => a.serial - b.serial || a.id.localeCompare(b.id));
   const latest = game.at(-1);
-  const window = game.slice(-5);
+  const lastSerial = Math.max(latest?.serial ?? 0, latestKnownSerial);
+  // Deleted swings leave gaps in the stable sequence. Never fill a missing
+  // place in the latest five with an older swing.
+  const window = game.filter((s) => s.serial > lastSerial - 5);
   const now = latest?.date ?? "";
   const counts = new Map<string, number>();
   for (const swing of window) for (const concept of visibleConcepts(swing)) counts.set(concept, (counts.get(concept) ?? 0) + 1);
-  const excluded = (concept: string) => history.some((h) => h.concept === concept && h.status === "dismissed" && h.dismissedAtSerial !== null && latest && latest.serial <= h.dismissedAtSerial + 6);
+  const excluded = (concept: string) => history.some((h) => h.concept === concept && h.status === "dismissed" && h.dismissedAtSerial !== null && lastSerial <= h.dismissedAtSerial + 6);
   const seen = current ? counts.get(current.concept) ?? 0 : 0;
   if (current) {
     // Retained evidence can shrink after deletion. Keep the historical focus,
     // but do not claim improvement from fewer than three readable clips.
-    if (game.length < 3) return { current, history, status: "early_read", seen, windowSize: window.length };
-    const lastFour = game.slice(-4);
-    if (lastFour.length === 4 && lastFour.every((s) => !visibleConcepts(s).has(current.concept))) {
+    if (window.length < 3) return { current, history, status: "early_read", seen, windowSize: window.length };
+    const lastFour = window.filter((s) => s.serial > lastSerial - 4);
+    const disputed = window.some((s) => s.findings.some((f) => f.concept === current.concept && f.hidden));
+    const lastFourDisputed = lastFour.some((s) => s.findings.some((f) => f.concept === current.concept && f.hidden));
+    if (lastFour.length === 4 && !lastFourDisputed && lastFour.every((s) => !visibleConcepts(s).has(current.concept))) {
       const fixed: FocusRecord = { ...current, status: "fixed", endedAt: now };
-      const next = advanceFocus(swings, null, [...history, fixed]);
+      const next = advanceFocus(swings, null, [...history, fixed], lastSerial);
       return { ...next, history: next.history, status: next.current ? next.status : "looks_fixed" };
+    }
+    if (window.length < Math.min(5, lastSerial) || disputed) {
+      return { current, history, status: "early_read", seen, windowSize: window.length };
     }
     const status = seen <= 2 ? "improving" : "still_showing";
     return { current: { ...current, status: status === "improving" ? "improving" : "active" }, history, status, seen, windowSize: window.length };
   }
-  if (game.length < 3) return { current: null, history, status: "early_read", seen: 0, windowSize: window.length };
+  if (window.length < 3) return { current: null, history, status: "early_read", seen: 0, windowSize: window.length };
   const candidate = [...counts].filter(([concept, count]) => count >= 3 && !excluded(concept))
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
   if (!candidate) return { current: null, history, status: "no_pattern", seen: 0, windowSize: window.length };

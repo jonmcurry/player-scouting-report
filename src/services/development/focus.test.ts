@@ -31,8 +31,8 @@ test("early read, qualifying pattern, improving and fixed use readable game swin
   assert.equal(advanceFocus([swing(1, ["posture"]), swing(2, ["posture"])], null, []).status, "early_read");
   const game = [swing(1, ["posture"]), swing(2, ["posture"]), swing(3, ["posture"])];
   assert.equal(advanceFocus(game, null, []).current?.concept, "posture");
-  const practice = swing(4, ["posture"], { sessionType: "practice" });
-  const improving = advanceFocus([...game, practice, swing(5, []), swing(6, []), swing(7, [])], focus(), []);
+  const practice = swing(0, ["posture"], { sessionType: "practice" });
+  const improving = advanceFocus([...game, practice, swing(4, []), swing(5, []), swing(6, [])], focus(), []);
   assert.equal(improving.status, "improving");
   assert.equal(improving.seen, 2);
   const fixed = advanceFocus([...game, swing(4, []), swing(5, []), swing(6, []), swing(7, [])], focus(), []);
@@ -58,4 +58,25 @@ test("deleted history cannot create an improvement claim from a tiny retained wi
   const result = advanceFocus([swing(8, ["posture"]), swing(9, ["posture"])], focus(), []);
   assert.equal(result.status, "early_read");
   assert.equal(result.current?.status, "active");
+});
+
+test("deleted serials do not pull older evidence into the last five or prove progress", () => {
+  const retained = [swing(1, ["posture"]), swing(2, ["posture"]), swing(3, ["posture"]),
+    swing(5, []), swing(6, [])];
+  assert.equal(advanceFocus(retained, null, [], 6).status, "no_pattern");
+  const afterDeletion = advanceFocus([...retained, swing(7, [])], focus(), [], 7);
+  assert.equal(afterDeletion.status, "early_read");
+  assert.equal(afterDeletion.current?.concept, "posture");
+  const latestDeleted = advanceFocus([...retained, swing(7, [])], focus(), [], 8);
+  assert.equal(latestDeleted.status, "early_read");
+  assert.equal(latestDeleted.history.length, 0);
+});
+
+test("disputed evidence cannot claim improvement or a fix", () => {
+  const game = [swing(1, ["posture"]), swing(2, ["posture"]), swing(3, ["posture"]),
+    swing(4, [], { findings: [finding("posture", { hidden: true })] }), swing(5, []), swing(6, [])];
+  assert.equal(advanceFocus(game, focus(), [], 6).status, "early_read");
+  assert.equal(advanceFocus([...game, swing(7, [])], focus(), [], 7).status, "early_read");
+  const fourClean = advanceFocus([...game, swing(7, []), swing(8, [])], focus(), [], 8);
+  assert.equal(fourClean.status, "looks_fixed");
 });

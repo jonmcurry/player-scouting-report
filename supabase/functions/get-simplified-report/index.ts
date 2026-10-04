@@ -79,7 +79,7 @@ Deno.serve(async (request) => {
       if (guardian !== true && coach !== true) return notFound();
     }
     const { data: player, error: playerError } = await service.from("players")
-      .select("id, name, age_band, teams!inner(name, sport, age_group)").eq("id", playerId).single();
+      .select("id, name, age_band, readable_game_swing_count, teams!inner(name, sport, age_group)").eq("id", playerId).single();
     if (playerError || !player) return notFound();
     const team = player.teams as unknown as { name: string; sport: string | null; age_group: string | null };
     const sharedText = (value: string) => shared ? redactSharedText(value, player.name, team.name) : value;
@@ -98,7 +98,7 @@ Deno.serve(async (request) => {
       .eq("game_log_entries.player_id", playerId).order("created_at", { ascending: false }).limit(100);
     if (clipsError) throw clipsError;
     const { data: allRecent, error: recentError } = await service.from("video_clips")
-      .select("id, created_at, readable_game_serial, game_log_entries!inner(player_id)")
+      .select("id, created_at, readable_game_serial, game_log_entries!inner(player_id, date)")
       .eq("game_log_entries.player_id", playerId).not("readable_game_serial", "is", null)
       .order("readable_game_serial", { ascending: false }).limit(100);
     if (recentError) throw recentError;
@@ -135,9 +135,9 @@ Deno.serve(async (request) => {
       findings.set(row.video_clip_id, list);
     }
     const swings: ReadableSwing[] = (recent ?? []).map((clip) => ({ id: clip.id, serial: clip.readable_game_serial,
-      date: clip.created_at, sessionType: "game", readable: true, findings: findings.get(clip.id) ?? [] }));
+      date: clip.game_log_entries.date, sessionType: "game", readable: true, findings: findings.get(clip.id) ?? [] }));
     const computed = advanceFocus(swings, storedCurrent ? asFocus(storedCurrent) : null,
-      (focusRows ?? []).filter((row) => row.ended_at !== null).map(asFocus));
+      (focusRows ?? []).filter((row) => row.ended_at !== null).map(asFocus), player.readable_game_swing_count);
     const current = computed.current ? { concept: computed.current.concept, status: computed.status,
       startedAt: computed.current.startedAt, seen: computed.seen, windowSize: computed.windowSize } : null;
     const thenClip = computed.current ? [...(recent ?? [])].reverse().find((clip) =>

@@ -25,6 +25,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Storage } from "npm:@google-cloud/storage@7";
+import { persistPlayerFocus } from "../../../src/services/development/focusPersistence.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -88,6 +89,10 @@ Deno.serve(async (req) => {
     const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+    const { data: clip, error: clipError } = await service.from("video_clips")
+      .select("game_log_entries!inner(player_id)").eq("id", clipId).single();
+    if (clipError || !clip) return forbidden();
+    const playerId = (clip.game_log_entries as unknown as { player_id: string }).player_id;
     const bucket = Deno.env.get("GCS_BUCKET_NAME") ?? "";
 
     // 2-4.
@@ -102,6 +107,15 @@ Deno.serve(async (req) => {
       if (beginError.message.includes("unverified_storage_path")) return jsonResponse({ error: UNVERIFIED_PATH }, 409);
       if (beginError.message.includes("not allowed") || beginError.message.includes("clip not found")) return forbidden();
       return jsonResponse({ error: `Couldn't delete the clip: ${beginError.message}` }, 500);
+    }
+    // The audit row excludes this clip from focus even if storage deletion
+    // needs a retry. Persist before removing the clip so retry can recover a
+    // failed focus write without reconstructing the player's old evidence.
+    try {
+      await persistPlayerFocus(service, playerId);
+    } catch (error) {
+      console.error("delete-clip focus refresh:", error);
+      return jsonResponse({ error: "Couldn't update progress. Please retry deleting the clip." }, 500);
     }
 
     // 5. begin_clip_deletion verified the clip's own raw object path.

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.33.0] - 2026-10-04
+
+The simplified app remains a preview. The new Progress rule is local only; the Edge Function has not been deployed.
+
+### Changed
+
+- Progress uses the persistent game-swing sequence to keep deleted at-bats from being replaced by older evidence in the latest five. When deleted or disputed evidence prevents a supported comparison, it shows an early read instead of claiming improvement or a fix.
+- Progress uses the game date for a completed focus, matching the worker's stored history.
+- Hiding a report fix or deleting a clip now refreshes stored focus history on the server. A pending clip deletion is excluded from the worker's focus calculation before its storage removal finishes.
+
+### Fixed
+
+- Guardian and coach upload URLs now accept correctly shaped clip UUIDs.
+
 ## [0.32.1] - 2026-10-04
 
 The simplified app remains a preview; default routes are unchanged.

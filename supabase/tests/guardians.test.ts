@@ -22,7 +22,9 @@ import { fixtureUuid } from "../../src/services/demoExport/ids.js";
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const CONSENT = "guardian-consent-2026-10-01";
+// Follow the configured consent version so permission tests survive a local
+// version change without rewriting the server's consent setting.
+let CONSENT: string;
 
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -31,6 +33,7 @@ const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 const run = randomUUID().slice(0, 8);
 const userIds: string[] = [];
 const teamIds: string[] = [];
+const mutationDeletionIds: string[] = [];
 
 let coachA: SupabaseClient;
 let coachB: SupabaseClient;
@@ -76,6 +79,10 @@ async function makeTeam(label: string, coachId: string): Promise<string> {
 }
 
 before(async () => {
+  const consent = must(await admin.from("app_settings").select("value")
+    .eq("key", "guardian_consent_version").single(), "current consent version");
+  assert.equal(typeof consent.value, "string");
+  CONSENT = consent.value;
   const a = await makeUser("coach-a");
   const b = await makeUser("coach-b");
   const p = await makeUser("parent");
@@ -105,6 +112,7 @@ after(async () => {
   // Teams first (cascades players -> guardian_invites / player_guardians),
   // then the users those rows referenced.
   for (const id of teamIds) await admin.from("teams").delete().eq("id", id);
+  for (const id of mutationDeletionIds) must(await admin.from("clip_deletions").delete().eq("clip_id", id), "mutation audit cleanup");
   for (const id of userIds) await admin.auth.admin.deleteUser(id);
 });
 
@@ -139,7 +147,7 @@ test("a parent cannot create an invite", async () => {
 
 test("accept rejects a consent version other than the stored one", async () => {
   const token = await rpc(coachA, "create_guardian_invite", { p_player_id: emily, p_relationship: "guardian" });
-  await assert.rejects(rpc(parent2, "accept_guardian_invite", { p_token: token, p_consent_version: "2026-10-01" }), /consent/);
+  await assert.rejects(rpc(parent2, "accept_guardian_invite", { p_token: token, p_consent_version: `${CONSENT}-wrong` }), /consent/);
   // The failed attempt must not have consumed the invite.
   const playerId = await rpc(parent2, "accept_guardian_invite", { p_token: token, p_consent_version: CONSENT });
   assert.equal(playerId, emily);
@@ -709,6 +717,68 @@ async function callDeleteClip(client: SupabaseClient | null, clipId: string) {
   });
   return { status: res.status, body: await res.json().catch(() => null) };
 }
+
+async function callHideSimpleIssue(client: SupabaseClient | null, issueId: string) {
+  const token = client ? (await client.auth.getSession()).data.session!.access_token : SUPABASE_ANON_KEY;
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/hide-simple-issue`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ issueId, reason: "other" }),
+  });
+  return { status: res.status, body: await res.json().catch(() => null) };
+}
+
+async function mutationClip(label: string): Promise<string> {
+  const entry = must(await admin.from("game_log_entries")
+    .insert({ player_id: emily, session_type: "game", date: "2026-10-04", opponent: label, ab: 1 })
+    .select("id").single(), `${label} entry`);
+  const clip = must(await admin.from("video_clips")
+    .insert({ game_log_entry_id: entry.id, clip_slug: randomUUID(), status: "ready", position: 0 })
+    .select("id").single(), `${label} clip`);
+  return clip.id;
+}
+
+test("hide-simple-issue denies another coach and lets a linked guardian hide the report fix", async () => {
+  const clipId = await mutationClip("hide feedback");
+  const run = must(await admin.from("analysis_runs").insert({
+    video_clip_id: clipId, player_id: emily, backend: "gemini", ai_model: "test", prompt_version: "t",
+    analysis_policy_version: "t", knowledge_version: knowledgeVersion(), input_manifest: {}, summary: "Test summary",
+  }).select("id").single(), "feedback run");
+  const issue = must(await admin.from("issues").insert({
+    player_id: emily, video_clip_id: clipId, analysis_run_id: run.id, issue: "Test finding",
+    concept: "posture", basis: "video", confidence: "medium", source: "gemini", review_status: "draft",
+  }).select("id").single(), "feedback issue");
+  assert.equal((await callHideSimpleIssue(null, issue.id)).status, 401);
+  assert.equal((await callHideSimpleIssue(coachB, issue.id)).status, 403);
+  assert.equal((await admin.from("issues").select("review_status").eq("id", issue.id).single()).data?.review_status, "draft");
+  const accepted = await callHideSimpleIssue(guardian, issue.id);
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+  const hidden = must(await admin.from("issues").select("review_status, hidden_by, hidden_reason")
+    .eq("id", issue.id).single(), "hidden issue");
+  assert.deepEqual(hidden, { review_status: "hidden", hidden_by: guardianId, hidden_reason: "other" });
+  const second = must(await admin.from("issues").insert({
+    player_id: emily, video_clip_id: clipId, analysis_run_id: run.id, issue: "Second test finding",
+    concept: "load", basis: "video", confidence: "medium", source: "gemini", review_status: "draft",
+  }).select("id").single(), "second feedback issue");
+  assert.equal((await callHideSimpleIssue(coachA, second.id)).status, 200);
+  assert.equal((await admin.from("issues").select("hidden_by").eq("id", second.id).single()).data?.hidden_by, coachAUserId);
+});
+
+test("delete-clip denies another coach before audit and lets a linked guardian delete", async () => {
+  const clipId = await mutationClip("delete feedback");
+  mutationDeletionIds.push(clipId);
+  assert.equal((await callDeleteClip(null, clipId)).status, 403);
+  assert.equal((await callDeleteClip(coachB, clipId)).status, 403);
+  assert.equal((await admin.from("clip_deletions").select("clip_id").eq("clip_id", clipId)).data?.length, 0);
+  const accepted = await callDeleteClip(guardian, clipId);
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+  assert.equal((await admin.from("clip_deletions").select("clip_id").eq("clip_id", clipId)).data?.length, 1);
+  assert.equal((await admin.from("video_clips").select("id").eq("id", clipId)).data?.length, 0);
+  const coachClipId = await mutationClip("coach delete feedback");
+  mutationDeletionIds.push(coachClipId);
+  assert.equal((await callDeleteClip(coachA, coachClipId)).status, 200);
+  assert.equal((await admin.from("video_clips").select("id").eq("id", coachClipId)).data?.length, 0);
+});
 
 /** A guardian upload through the real path: entry -> get-upload-url -> emulator object -> guardian_register_clip. */
 async function guardianUpload(slug: string): Promise<{ clipId: string; object: string; clipSlug: string }> {

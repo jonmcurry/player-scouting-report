@@ -59,7 +59,7 @@ function jsonResponse(body: unknown, status = 200) {
 
 // guardian_register_clip's limit (00042): 10 registered clips per guardian per rolling 24h.
 const GUARDIAN_DAILY_LIMIT = 10;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Is there already an object at bucket/object? (service-role GCS client; the emulator's JSON API locally). */
 async function objectExists(bucket: string, object: string, emulatorHost: string | undefined): Promise<boolean> {

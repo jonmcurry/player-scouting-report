@@ -370,7 +370,7 @@ root.addEventListener("click", async (event) => {
       case "hide-fix": {
         const fixId = state.report?.report?.fix?.id;
         if (!fixId) break;
-        const { error } = await supabase.rpc("hide_simple_issue", { p_issue_id: fixId });
+        const { error } = await supabase.functions.invoke("hide-simple-issue", { body: { issueId: fixId } });
         if (error) throw error;
         await showReport(state.report.clipId); state.home = await reportApi(state.selected); say("Fix hidden for this report."); break;
       }

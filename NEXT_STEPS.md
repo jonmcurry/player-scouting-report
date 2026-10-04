@@ -1,3 +1,121 @@
+## Prioritized outstanding work from `docs/SIMPLIFIED_APP_SPEC.md` (2026-10-04)
+
+This is the current work order. **Critical** items block inviting families or a hosted release;
+**High** items block a spec-complete simplified default route; **Medium** items close
+validation and operating gaps; **Low** items are explicitly deferred or small cleanup. The dated
+entries below retain the evidence and history behind these tasks. Jon's manual visual review of
+the current Android build passed; AGY's headless visual pass could not complete because its
+browser command permission was denied.
+
+### Critical — release and child-privacy gates
+
+- [ ] **Finish consent and publication rules (§2, §3.6, §9).** Get Jon's approval of guardian
+  consent wording; implement re-consent when the version changes; keep public-demo permission
+  separate for coach and guardian uploads; resolve the current mismatch between consent wording
+  and publication of coach-uploaded footage of linked children. Before screenshot import, disclose
+  that visible children's names go to Gemini and verify provider handling. Complete a release
+  privacy review.
+- [ ] **Prove access and deletion end to end (§2, §8, §10).** Repair the remaining guardian suite
+  failures, including legacy media/report assertions, and demo-schema/fixture parity. Then verify
+  the coach's allowed access and each linked, unrelated, and revoked guardian's exact allow/deny
+  rules for reports, progress, videos, and deletion. Explicitly prove that guardians cannot list,
+  read, or infer the team roster or other players. Verify coach removal of a parent link and parent
+  self-unlink end access immediately; verify each shared token exposes only its intended report.
+  Route every remaining legacy clip, at-bat, rep, and player-removal path through audited storage
+  deletion so no raw video is orphaned. Four focused local integration cases pass, but the last
+  full guardian run had 15 failures in older fixtures and assertions.
+- [ ] **Complete the report's evidence behavior and validate it on real footage (§1, §3.3, §5, §10).**
+  Distinguish confirmed no-swing from inconclusive detection without treating the result chip as
+  proof; keep confirmed no-swing in the feed. Verify the prompt's plain-language summary and
+  evidence-backed strengths. Then run at least 20 real phone and GameChanger at-bats through the
+  new report; record unreadable and fix rates, and get Jon's judgment on every shown fix. Reach
+  the spec's ≥80% agreement target or tighten the threshold. Verify outcome-unknown and
+  strength/phase semantic checks, exclude `swing_decision`, `pitch_location_adjustment`, and
+  `game_approach` from both shown fixes and Progress, and enforce the rule that every displayed
+  claim traces to its source video and stored run.
+- [ ] **Complete the replacement family journey before inviting families (§3–4, §10–11).** Run the
+  full authenticated coach → invite → guardian consent → upload → report → share loop on Android
+  and a parent browser, including the parent switcher for two linked children, offline
+  capture/upload queue and retry across app restarts, accessible 48 px targets, one-hand layout,
+  and the approved prototype's behavior. Make the simplified routes default only after that loop
+  passes; remove verified-unused legacy Group B UI without breaking the frozen demo or rollback.
+- [ ] **Finish persisted Progress behavior (§3.4, §5.5–5.6).** Test stored focus transitions after
+  real feedback and deletion evidence, make the app read persisted focus status, and verify the
+  Progress state and current drill shown to families. Notification triggering depends on these
+  transitions, so this must pass before the first family invite.
+- [ ] **Gate drill safety and shared-link payloads before exposure (§3.3, §3.5, §5.4).** Audit every
+  currently emittable drill for age, sport, equipment, and screen/adult-feeder safety. Keep
+  unapproved or safety-flagged candidates out of the app; a fix with no suitable drill must show
+  "No drill for this yet." Verify that missing player and team ages use the under-13 safety tier.
+  Verify the share-link API payload and rendered page expose only the player's first name plus last
+  initial and no team name.
+- [ ] **Complete the launch infrastructure and migration gate (§3.5, §7, §9–11).** Verify real
+  GCS upload, signed playback, deletion, CORS, and storage permissions; copy and verify old named
+  objects to opaque paths before any parent-facing video or share link uses them. Validate and
+  apply hosted migrations 00041–00047, deploy the Edge bundle, host Supabase and a GPU worker,
+  check the pre-deploy `unrecognized_demo_fixture_count()` predicate before the first hosted
+  clip deletion, measure processing time and cost, and prepare rollback. Add native push, email
+  fallback and player-scoped notification batching. Explicitly prove that single and bulk-upload
+  notifications never contain another child's name or activity. Deployment and rollback actions
+  require Jon's release authorization.
+
+### High — core spec still incomplete
+
+- [ ] **Curate the drill library (§3.3, §5.4, Phase 2).** Have a human approve or reject candidates,
+  specific “Best for” wording, concept, sport, minimum age, equipment, and screen/adult-feeder
+  safety. Import only approved entries; verify every shown fix has suitable choices where curated
+  content exists and that no drill text is invented or unsafe for the player's age.
+- [ ] **Finish GameChanger roster import (§3.6).** Add screenshot extraction with the privacy
+  notice and mandatory coach review; validate CSV identity-column mapping against a real export.
+  Check duplicate prevention, re-import, coach-only access, and confirm with a real export that
+  stats remain browser-only and source files are discarded. Keep CSV and paste available when
+  screenshot extraction fails.
+
+### Medium — validation and operating readiness
+
+- [ ] **Close remaining reliability checks (§9–10).** Measure ≤10-minute processing for a
+  ≤60-second clip and daily upload and clip-length caps. Review allowed upload content types and
+  signed URL rendering.
+- [ ] **Align project documentation with the new product contract (§12).** Update the README and
+  project instructions that still describe coach approval as required, while preserving the new
+  fail-closed rule for AI claims. Keep Phase B self-coached parents explicitly deferred.
+
+### Low — after the first release or small follow-ups
+
+- [ ] **Plan later data cleanup (§4, §8, Phase 6).** After roughly four weeks of real use, audit
+  callers and real data, then separately review removal of historical checklist, priority,
+  pitch, comparison, and other obsolete tables. Do not drop them during the additive first release.
+- [ ] **Revisit deferred product choices (§13).** Parents without a team, billing, analyzing every
+  swing in a multi-swing clip, and native iOS can wait for usage evidence. Malformed delete IDs
+  returning 403 is a small error-response follow-up recorded in the 0.33.0 entry below.
+
+## 2026-10-04: 0.33.0 focus evidence follow-up — simplified app is not ready to release
+
+- Progress now uses the persistent game-swing serial counter to detect deleted clips in its latest
+  five and four-swing proof windows. Hidden findings for the current concept also block an
+  improvement claim. A complete, clean last four can still support "Looks fixed." The focus
+  transition is now persisted by the server when a report fix is hidden or a clip deletion begins;
+  the worker also excludes deletion-pending clips from its stored-focus refresh. Jon passed the
+  updated emulator visual review. The independent code review completed after correcting its
+  first pass's misreading of the four-clean-swing rule. With Jon's explicit AGY authorization,
+  the visual wrapper ran but its headless browser command permission was denied; it produced no
+  visual findings. The new feedback/deletion path still needs authenticated cross-role testing.
+  Notification delivery remains open. The Edge Functions are local only. The guardian suite now
+  reads the local consent setting instead of assuming v1; that exposed a pre-existing upload URL
+  UUID check that rejected valid IDs, now fixed. A targeted guardian upload authorization test
+  passes. After a local-only backup, the recorded-but-missing 00046 schema changes were applied
+  transactionally to the local QA database. The last full guardian run passed 39/54 cases; 15
+  failed, mostly because test fixtures still create legacy video paths rejected by the 00046 trigger.
+  Four isolated integration cases pass together for consent mismatch, guardian upload scope,
+  coach and linked-guardian feedback and deletion, refusal of an unrelated coach, and absence of a
+  deletion audit row after refusal. Evidence-driven status transitions still need an end-to-end
+  fixture. Gemini found no blocking issue in the new path; its hypothetical retry concern is
+  answered by the existing `hide_simple_issue` early return for an already-hidden issue. It noted
+  the pre-existing caller-supplied upload content type and malformed delete IDs returning 403 as
+  non-blocking follow-ups.
+  The stored demo fixture lacks 00047's new player counter, and older media/report assertions also
+  need reconciliation before the cross-role check is complete. No hosted setting was changed.
+
 ## 2026-10-04: 0.32.1 filming guide follow-up — simplified app is not ready to release
 
 - The preview now shows an illustrated filming guide on first use and from Settings or an unreadable
@@ -34,7 +152,7 @@
   Gemini. Keep CSV/paste as the fallback, and verify import mapping with a real GameChanger export.
 - [ ] Curate and approve drill candidates, including age and screen/feeder safety fields, before
   activating them. Confirm selected cards match the fix and do not invent instructions.
-- [ ] Complete the confirmed-no-swing state, focus persistence after feedback/deletion, notification
+- [ ] Complete the confirmed-no-swing state, authenticated focus feedback/deletion verification, notification
   delivery and settings, and the guardian re-consent gate. Get approval for the consent v2 draft;
   keep separate public-demo permission for coach and guardian uploads.
 - [ ] Validate the Edge Function bundle, real GCS upload/playback/delete, old-object copy-and-verify
@@ -85,10 +203,11 @@
 - The Codex/Gemini orchestrated QA wrapper ran successfully for this refactor; its visual wrapper
   could not access a browser in headless mode.
 
-Semantic validation follow-ups carried from the superseded `todo.md` handoff:
-- Check that a known pitch zone cannot be described as an unknown location.
-- Exercise database-derived game pitch context and practice repetition context in `buildAnalysisInput`.
-- Add wording cases where inside, outside, high, or low describe body position rather than pitch location.
+Semantic validation note from the superseded `todo.md` handoff:
+- The old known-pitch-zone and database-derived pitch-context checks are retired because the
+  simplified app no longer collects or presents pitch location, pitch type, or count.
+- Body-position uses of inside, outside, high, and low remain part of the Critical report-evidence
+  validation above so they are not mistaken for unsupported pitch-location claims.
 
 ## 2026-10-02: parent pathway (0.30.0, uncommitted)
 
