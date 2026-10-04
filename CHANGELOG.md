@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.32.1] - 2026-10-04
+
+The simplified app remains a preview; default routes are unchanged.
+
+### Added
+
+- First-use filming guidance with illustrated camera, framing, timing, and stability tips; it is also available in Settings.
+
+### Fixed
+
+- The Record sheet now recommends filming from behind home plate, matching the guide and approved specification.
+- Android sync excludes the optional local browser demo override from APK assets, keeping the coach preview in normal mode.
+
 ## [0.32.0] - 2026-10-04
 
 The simplified app remains a preview. Default coach and family routes are unchanged; nothing was deployed.

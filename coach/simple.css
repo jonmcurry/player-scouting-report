@@ -56,8 +56,12 @@
 .simple-setting input { min-width:24px; min-height:24px; margin:12px; accent-color:var(--brand-fill); }
 .simple-setting small { display:block; margin-top:4px; color:var(--text-2); line-height:1.4; }
 .simple-drill ol { padding-left:22px; line-height:1.5; }
-.simple-guide { padding-left:24px; line-height:1.5; }
-.simple-guide li { margin:10px 0; }
+.simple-guide { display:grid; gap:8px; margin:14px 0; }
+.simple-guide-step { display:grid; grid-template-columns:72px 1fr; align-items:center; gap:10px; padding:8px; border-radius:12px; background:var(--surface-2); }
+.simple-guide-step svg { width:64px; height:56px; fill:none; stroke:var(--brand-text); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.simple-guide-step p { margin:0; line-height:1.35; }
+.simple-guide-step strong { color:var(--text-1); }
+.simple-guide-note { margin:4px 0; line-height:1.4; }
 .simple-error { color:var(--warning); }
 #simpleMessage:not(:empty) { background:var(--surface-2); border-radius:10px; padding:12px; margin-bottom:12px; }
 .simple-nav[hidden] { display:none; }

@@ -1,3 +1,11 @@
+## 2026-10-04: 0.32.1 filming guide follow-up — simplified app is not ready to release
+
+- The preview now shows an illustrated filming guide on first use and from Settings or an unreadable
+  report. The Record sheet's camera direction matches the approved behind-home-plate guidance.
+  Android sync now excludes the local browser demo override from generated APK assets. Jon reported
+  the emulator manual review looked good; authenticated coach and guardian flows and full prototype
+  comparison still need verification before release.
+
 ## 2026-10-04: 0.32.0 follow-up todo — simplified app is not ready to release
 
 - The preview now has settings, a visible contact marker and contact jump, contact-aligned

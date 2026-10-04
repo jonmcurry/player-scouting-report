@@ -219,7 +219,7 @@ async function showProgress() {
 }
 
 function choiceSheet() {
-  sheet.innerHTML = `<h2 id="simpleSheetTitle">Record at-bat</h2><p>Film from the side with the batter and bat in frame.</p>
+  sheet.innerHTML = `<h2 id="simpleSheetTitle">Record at-bat</h2><p>Film from behind home plate with the whole batter and bat in frame.</p>
     <div class="simple-actions"><button class="simple-action primary" data-action="record-now" type="button">Record now</button>
     <button class="simple-action secondary" data-action="choose-video" type="button">Choose video</button></div>
     <button class="simple-action link" data-action="guide" type="button">How to film</button>
@@ -228,13 +228,13 @@ function choiceSheet() {
 }
 
 function guideSheet() {
-  sheet.innerHTML = `<h2 id="simpleSheetTitle">How to film</h2><ol class="simple-guide">
-    <li>Film from behind home plate, as straight on as you can. Through the fence is fine; place the lens close to it.</li>
-    <li>Keep the whole batter, head to feet, and some room for the bat in frame.</li>
-    <li>Start before the pitch and stop after the follow-through. A whole at-bat in one clip is fine.</li>
-    <li>Hold steady. A fence mount or tripod helps.</li>
-    <li>GameChanger clip? Save it to your phone, then choose video.</li>
-  </ol><button class="simple-action primary" data-action="close-sheet" type="button">Got it</button>`;
+  sheet.innerHTML = `<h2 id="simpleSheetTitle">How to film</h2><div class="simple-guide">
+    <div class="simple-guide-step"><svg viewBox="0 0 80 64" aria-hidden="true"><path d="M40 8 65 32 40 56 15 32Z"/><circle cx="40" cy="25" r="4"/><path d="M40 29v12M30 57h20M40 57V46"/></svg><p><strong>Behind home plate</strong><br>Film as straight on as you can. Through the fence is fine; put the lens close to it.</p></div>
+    <div class="simple-guide-step"><svg viewBox="0 0 80 64" aria-hidden="true"><rect x="18" y="5" width="44" height="54" rx="4"/><circle cx="40" cy="18" r="5"/><path d="M40 23v18m0-13-14 9m14-9 14 9M40 41 31 53m9-12 9 12M52 22l12-13"/></svg><p><strong>Whole batter in frame</strong><br>Show head to feet, with room for the bat.</p></div>
+    <div class="simple-guide-step"><svg viewBox="0 0 80 64" aria-hidden="true"><path d="M10 39h60M16 31v16m24-16v16m24-16v16"/><circle cx="40" cy="20" r="8"/><path d="m37 16 9 4-9 4Z"/></svg><p><strong>Capture the full swing</strong><br>Start before the pitch and stop after the follow-through. A whole at-bat in one clip is fine.</p></div>
+    <div class="simple-guide-step"><svg viewBox="0 0 80 64" aria-hidden="true"><rect x="30" y="5" width="20" height="32" rx="3"/><path d="M40 37v9M27 58l13-12 13 12M40 46v12"/></svg><p><strong>Hold steady</strong><br>A fence mount or tripod helps.</p></div>
+    <p class="simple-guide-note">GameChanger clip? Save it to your phone, then tap <strong>Choose video</strong>.</p>
+  </div><button class="simple-action primary" data-action="close-sheet" type="button">Got it</button>`;
   if (!dialog.open) dialog.showModal();
 }
 
@@ -243,6 +243,7 @@ async function settingsSheet() {
   if (error) throw error;
   sheet.innerHTML = `<h2 id="simpleSheetTitle">Settings</h2><label class="simple-setting"><input id="notifyReports" type="checkbox" ${data?.notify_reports !== false ? "checked" : ""}>
     <span><strong>Report notifications</strong><small>Tell me when a new report is ready, once notifications are available.</small></span></label>
+    <button class="simple-action secondary" data-action="guide" type="button">How to film</button>
     <button class="simple-action secondary" data-action="sign-out" type="button">Sign out</button>
     <button class="simple-action link" data-action="close-sheet" type="button">Done</button>`;
   dialog.showModal();
@@ -478,6 +479,14 @@ async function start() {
       state.players.forEach((player, i) => { player.name = summaries[i]?.playerName ?? "Child"; });
     }
     await loadHome();
+    const guideKey = `hitterloop-filming-guide-seen:${state.userId}`;
+    let showFirstUseGuide = true;
+    try { showFirstUseGuide = localStorage.getItem(guideKey) !== "1"; }
+    catch { /* Storage can be unavailable in private browsing. */ }
+    if (showFirstUseGuide) {
+      guideSheet();
+      try { localStorage.setItem(guideKey, "1"); } catch { /* The guide remains available in Settings. */ }
+    }
     drainCaptureQueue(state.userId, state.role === "parent", () => loadHome());
   } catch (error) { root.innerHTML = `<h1>Couldn't load HitterLoop</h1><p class="simple-error">${esc(error.message)}</p>`; }
 }
