@@ -101,11 +101,13 @@ test("Task 2b: a reviewed finding whose clip was deleted says who removed the vi
     assert.match(html, /clip_removals_for_player/, file);
     assert.match(html, /removedVideoNote\(/, file);
   }
-  // The coach's Delete Pitch goes through the delete-clip function (keeping its confirm). A row-only
-  // delete remains only for a demo visitor's own clone, which has no stored video or worker files.
+  // The coach's Delete Pitch goes through the shared helper and audited function.
+  // A row-only delete remains only for a demo visitor's clone without GCS media.
   const player = read("player.html");
-  assert.match(player, /functions\.invoke\("delete-clip"/);
+  const deletion = read("components/clipDeletion.js");
+  assert.match(player, /deleteClip\(clipId\)/);
+  assert.match(deletion, /functions\.invoke\("delete-clip"/);
   assert.match(player, /Delete this pitch clip and its 3D data\? This can't be undone\./);
-  assert.equal(player.match(/from\("video_clips"\)\.delete\(\)/g)?.length, 1);
-  assert.match(player, /if \(isDemoMode\(\)\) \{[\s\S]{0,300}?from\("video_clips"\)\.delete\(\)/);
+  assert.equal(deletion.match(/from\("video_clips"\)\.delete\(\)/g)?.length, 1);
+  assert.match(deletion, /if \(isDemoMode\(\)\) \{[\s\S]{0,300}?from\("video_clips"\)\.delete\(\)/);
 });

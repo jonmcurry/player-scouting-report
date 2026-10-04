@@ -11,6 +11,7 @@ import { findingIdentity, validateSwingAnalysisResult, validationContext, type S
 import { loadActiveMethodologySnapshot, filterApplicableMethodology, renderMethodologyPack } from "../services/knowledge/methodologyRepository.js";
 import { findPlayerId, loadCheckpointSlugToId, upsertChecklistScore } from "../services/db/checklistUpsert.js";
 import { getSupabaseClient } from "../services/db/supabaseClient.js";
+import { refreshPlayerFocus } from "../services/development/focusRepository.js";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg"]);
 const TILT_EXCLUSIONS = [
@@ -47,23 +48,26 @@ export async function buildAnalysisInput(args: {
   const supabase = getSupabaseClient();
   const { data: player, error: playerErr } = await supabase
     .from("players")
-    .select("age_band, bats, throws, teams!inner(slug, sport, level_label)")
+    .select("age_band, bats, throws, teams!inner(slug, sport, level_label, age_group)")
     .eq("id", args.playerId)
     .eq("teams.slug", args.teamSlug)
     .single();
   if (playerErr || !player) throw new Error(`Loading player analysis context: ${playerErr?.message ?? "not found"}`);
-  const team = player.teams as unknown as { sport: "baseball" | "softball" | null; level_label: string | null };
+  const team = player.teams as unknown as { sport: "baseball" | "softball" | null; level_label: string | null; age_group: string | null };
   let pitch = emptyPitch();
+  let atBatResult: AnalysisInput["atBatResult"] = null;
   let swingContext: SwingContext = "unknown";
   if (args.videoClipId) {
     const { data: clip, error: clipErr } = await supabase
       .from("video_clips")
-      .select("game_log_entry_id,at_bat_pitch_id,practice_repetition_id,at_bat_pitches(pitch_location,pitch_zone,count_before_balls,count_before_strikes,pitch_outcome,swung,pitch_type)")
+      .select("game_log_entry_id,at_bat_pitch_id,practice_repetition_id,game_log_entries(result_simple,session_type),at_bat_pitches(pitch_location,pitch_zone,count_before_balls,count_before_strikes,pitch_outcome,swung,pitch_type)")
       .eq("id", args.videoClipId)
       .single();
     if (clipErr) throw new Error(`Loading structured pitch context: ${clipErr.message}`);
     // A clip hangs off either a game at-bat or a practice repetition (video_clips_one_source).
-    swingContext = clip?.practice_repetition_id ? "practice" : clip?.at_bat_pitch_id || clip?.game_log_entry_id ? "game" : "unknown";
+    const entry = clip?.game_log_entries as unknown as { result_simple: string | null; session_type: string } | null;
+    swingContext = entry?.session_type === "practice" ? "practice" : entry?.session_type === "game" ? "game" : "unknown";
+    if (["hit", "out", "walk", "strikeout"].includes(entry?.result_simple ?? "")) atBatResult = entry!.result_simple as AnalysisInput["atBatResult"];
     const p = clip?.at_bat_pitches as unknown as {
       pitch_location: string | null; pitch_zone: number | null; count_before_balls: number | null;
       count_before_strikes: number | null; pitch_outcome: string | null; swung: boolean | null; pitch_type: string | null;
@@ -94,7 +98,7 @@ export async function buildAnalysisInput(args: {
   const playerContext = {
     sport: team.sport,
     level: team.level_label,
-    ageBand: player.age_band as AnalysisInput["player"]["ageBand"],
+    ageBand: (player.age_band ?? (team.age_group ? (Number.parseInt(team.age_group, 10) <= 8 ? "u8" : Number.parseInt(team.age_group, 10) <= 10 ? "8-10" : Number.parseInt(team.age_group, 10) <= 12 ? "11-12" : Number.parseInt(team.age_group, 10) <= 14 ? "13-14" : "15-18") : null)) as AnalysisInput["player"]["ageBand"],
     bats: player.bats as AnalysisInput["player"]["bats"],
     throws: player.throws as AnalysisInput["player"]["throws"],
   };
@@ -103,6 +107,7 @@ export async function buildAnalysisInput(args: {
   return {
     player: playerContext,
     pitch,
+    atBatResult,
     coachReviewedDecisions: (decisions ?? []).map((d) => ({ concept: d.concept, phase: d.phase, videoClipId: d.video_clip_id, status: d.review_status })),
     swing: {
       frameNames: frameNames(args.framesDir), context: swingContext, pipelineVersion: args.pipelineVersion, metrics: {},
@@ -132,6 +137,8 @@ async function createAnalysisRun(args: {
     input_manifest: buildInputManifest(args.input),
     no_action_needed: args.result.noActionNeeded,
     no_action_reason: args.result.noActionReason,
+    summary: args.result.summary,
+    strengths: args.result.strengths,
   }).select("id").single();
   if (error || !data) throw new Error(`Creating analysis run: ${error?.message ?? "no row returned"}`);
   return data.id as string;
@@ -192,9 +199,13 @@ export async function analyzeAndSync(
   }
 
   const supabase = getSupabaseClient();
-  const { data: existing, error: existingErr } = await supabase.from("issues").select("finding_key").eq("player_id", playerId);
+  const { data: existing, error: existingErr } = await supabase.from("issues").select("finding_key,review_status").eq("player_id", playerId);
   if (existingErr) throw new Error(`Reading existing finding identities: ${existingErr.message}`);
-  const existingKeys = new Set((existing ?? []).map((r) => r.finding_key).filter(Boolean));
+  // A rerun needs its own draft rows so the current report and focus use
+  // findings from the same stored run. A human-hidden/reviewed finding stays
+  // suppressed across reruns of that clip/concept/phase.
+  const existingKeys = new Set((existing ?? []).filter((r) => r.review_status !== "draft")
+    .map((r) => r.finding_key).filter(Boolean));
   const freshIssues = result.issues.filter((i) => !existingKeys.has(findingIdentity(i, videoClipId)));
   if (freshIssues.length) {
     const rows = freshIssues.map((i) => ({
@@ -230,6 +241,7 @@ export async function analyzeAndSync(
     if (error) throw new Error(`Inserting drill recommendations: ${error.message}`);
   }
 
+  if (videoClipId && result.summary !== null) await refreshPlayerFocus(playerId, videoClipId);
   console.log(`Analyzed ${playerSlug}: run ${analysisRunId}; ${updated} checkpoint(s) updated, ${skipped} coach-reviewed checkpoint(s) protected, ${freshIssues.length} new issue draft(s), noActionNeeded=${result.noActionNeeded}.`);
 }
 

@@ -1,5 +1,5 @@
-export const ANALYSIS_POLICY_VERSION = "policy-1.1";
-export const PROMPT_RENDER_VERSION = "render-1.3";
+export const ANALYSIS_POLICY_VERSION = "policy-1.2";
+export const PROMPT_RENDER_VERSION = "render-2.0";
 export const PROMPT_VERSION = `${ANALYSIS_POLICY_VERSION}+${PROMPT_RENDER_VERSION}`;
 // No longer the runtime source of truth for analysis_runs.knowledge_version
 // as of the methodology knowledge system (supabase/migrations/

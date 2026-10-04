@@ -1,6 +1,6 @@
 # HitterLoop Simplified App: Product Spec
 
-*Status: approved direction, 2026-10-03. Not yet implemented.*
+*Status: approved direction, 2026-10-03. Implementation in progress; see `NEXT_STEPS.md` for what is verified and still open.*
 *Replaces the coach-led workflow described in `readme.md` and `docs/UX_REDESIGN_SPEC.md`.*
 
 **Companion documents:**
@@ -277,9 +277,12 @@ short or blurry):
 - Nothing else. No partial guesses.
 
 **No swing (take, walk, called strikeout):**
-- If the user tapped Walk or Strikeout, or no swing was detected, the report says "No swing to
-  analyze in this at-bat."
-- It still counts as a recorded at-bat in the feed, not as an error.
+- The result chip never decides whether a swing happened. Analyze a located swing even when the
+  optional result is Strikeout; a swinging strikeout still has a swing to report on. If the
+  pipeline reliably finds no swing, the report says "No swing to analyze in this at-bat."
+- If swing detection is inconclusive, show "We couldn't analyze this video" with a filming tip;
+  do not infer a take from Walk or Strikeout.
+- A confirmed no-swing clip still counts as a recorded at-bat in the feed, not as an error.
 
 **Acceptance:**
 - The report never shows: numbers with physical units, joint angles, checkpoint scores, AI
@@ -300,13 +303,19 @@ short or blurry):
    - a **"Doesn't look right"** action, which dismisses the focus (§5.6).
 2. **How it's going**: a plain status with the evidence behind it.
 
-   | Status | Rule (last up-to-6 readable game swings, same fix) | Example text |
+   | Status | Rule (readable game swings, same fix) | Example text |
    |---|---|---|
-   | **Early read** | Fewer than 3 readable at-bats | "3 more at-bats to see a pattern." |
+   | **Early read** | Fewer than 3 readable at-bats | "Keep filming to see a pattern." |
    | **Still showing up** | Seen in ≥3 of the last 5 | "Still showing up in 4 of her last 5 at-bats." |
-   | **Improving** | Was ≥3 of 5, now ≤2 of the latest 5 | "Showing up less: 2 of her last 5 (was 4 of 5)." |
+   | **Improving** | Active focus appeared in ≤2 of the latest up-to-5 after previously qualifying at ≥3 | "Showing up less: 2 of her last 5 at-bats." |
    | **Looks fixed** | Not seen in the last 4 readable at-bats, after being the focus | "Hasn't shown up in her last 4 at-bats. Nice work." Then the next focus is picked. |
-| **Dismissed** | Someone tapped "Doesn't look right" on the focus (§5.6) | "Dismissed by Coach Smith on Oct 3." Moves to History. |
+   | **Dismissed** | Someone tapped "Doesn't look right" on the focus (§5.6) | "Dismissed by Coach Smith on Oct 3." Moves to History. |
+
+   Apply statuses in this order: dismissed, looks fixed, improving, still showing up. "Looks
+   fixed" wins when its four-swing rule also satisfies "Improving". The focus selection window is
+   the latest **up to 5** readable game swings; the 6-swing window applies only to the exclusion
+   after a dismissal (§5.6). With ≥3 readable game swings but no qualifying concept, show "No
+   clear pattern yet" and no focus. Do not invent a previous count for the Improving sentence.
 
 3. **Then vs. now**: two videos side by side, synced at contact:
    - the at-bat where the focus was clearest: the earliest at-bat in the current focus window with
@@ -387,12 +396,17 @@ HitterLoop never logs into or scrapes GameChanger. It uses exports the coach can
 - The uploaded CSV or screenshot is processed and **discarded immediately**. It's not kept in
   storage, and only the confirmed name/number rows are saved.
 - The file can contain stats for the whole team. That data is never kept.
+- The screenshot option sends the image, including any visible children's names, to Gemini for
+  extraction. Say this before the coach chooses that option and cover this third-party processing
+  in the guardian consent text. HitterLoop does not retain the screenshot after processing;
+  provider handling follows its applicable terms and must be reviewed before release.
 
 **Acceptance:**
 - A real GameChanger "Export Stats" CSV imports correctly.
-  - **To verify before building:** get a real export from a team where Jon has staff access and
-    confirm the column names and order. They are not documented publicly. Build the parser from
-    that sample and keep it tolerant of extra or reordered columns.
+  - **To verify before release:** published GameChanger instructions do not specify the CSV
+    headers, and no real export is available in this workspace. The importer therefore requires
+    a coach-reviewed identity-column mapping; confirm the default suggestions and full flow
+    against a real export before inviting families.
 - No stat value from the file is written anywhere.
 - Re-importing the same file creates zero duplicates.
 - Import is coach-only. Parents never see the roster or the import.
@@ -414,7 +428,7 @@ from the **user interface and the required workflow**.
 | Priorities, follow-ups, outcome logging, status history | `development.html`, `player.html` priority sections, `developmentLogic.js` (priority parts) | **Remove.** Replaced by the automatic Current focus (§5.6) |
 | Practice session logging (goal, focus, drill, rep grouping) | `coach/session.html`, `practicePage.js` | **Remove.** Practice is just the Game/Practice toggle |
 | Compare page (Video / Frames / Progress / Metrics / 3D) | `coach/compare.html`, `skeletonComparison.js` | **Remove.** "Then vs. now" on Progress replaces it |
-| 3D viewer, avatar retargeting | `skeletonScene.js`, `avatar-retarget-map.js`, `assets/models` | **Remove from the app.** Keep the code for the demo/portfolio only |
+| 3D viewer, avatar retargeting | `skeletonScene.js`, `avatar-retarget-map.js`, `assets/models` | **Remove from the app with the old screens in Phase 4.** Keep only independently used demo/portfolio assets after checking their callers |
 | Team dashboard, roster filters, team focus areas | `coach/team.html` dashboard parts | **Remove.** Roster becomes the simple list in §3.1 |
 | Metrics panels | `swingMetricsPanel.js` | **Remove** from UI (metrics stay internal) |
 | Comps (pro comparisons) | `compModal.js`, comp tables | **Remove** from UI |
@@ -432,6 +446,16 @@ from the **user interface and the required workflow**.
 - **Access and privacy:** guardian accounts and invites, share links, clip deletion
   (`delete-clip`), and Supabase auth/RLS.
 - **App shell:** the Android shell and PWA.
+
+**Existing-file routing for the replacement:** `family.html` / `familyPage.js` become the parent
+Home and linked-player switcher; `team.html` and `player.html` are reduced to the coach roster and
+player actions. `guardianAdmin.js` supplies per-player invites. `report.html` remains the
+shared-link entry point but gets the new private report shape and redacted identity. Reuse
+`subjectZoom.js` only if it improves playback without adding an overlay or a claim. Replace
+`get-player-report` / `get-family-report` read shapes as needed for the new report, while keeping
+the frozen demo's existing read path working. Remove the old logging, review, checklist, priority,
+comparison, chart and 3D UI modules with their screens in Phase 4, after checking all callers.
+The analysis pipeline and historical tables stay until a separately reviewed cleanup.
 
 ---
 
@@ -555,7 +579,7 @@ into a real focus.
 
 ### 5.6 Current focus (automatic, deterministic)
 
-- Group stored findings by `concept` across the player's most recent **6 readable game at-bats**.
+- Group stored findings by `concept` across the player's most recent **up to 5 readable game at-bats**.
   Exclude hidden findings, non-video-basis findings, and the non-mechanical concepts listed in §5.3
   rule 6.
 - A concept becomes the **current focus** when it appears (any confidence ≥ low, `basis` video) in
@@ -563,6 +587,10 @@ into a real focus.
 - One focus at a time. While a focus is active, it keeps priority in tie-breaks (§5.3).
 - Status transitions follow the table in §3.4. "Looks fixed" retires the focus and stores it in
   history. The next qualifying concept, if any, becomes the focus.
+- An active focus stays selected while it is improving, even when it no longer meets the 3-of-5
+  entry threshold. Its recorded qualifying window is the evidence that it previously met the
+  threshold. Retire it only when it looks fixed or is dismissed; never relabel a new focus as an
+  improvement of the old one.
 - Fewer than 3 readable game at-bats → "Early read", no focus. This matches the existing 3-at-bat
   rule.
 - **Dismissing a focus.** Low-confidence findings count toward a focus but are never shown on their
@@ -605,6 +633,11 @@ One screen, with pictures:
 **Settings:** one toggle per user, "Notify me when reports are ready". No other notification
 settings in v1.
 
+Phase 5 includes native push integration in `mobile/`, notification permission and device-token
+handling, push-provider setup, and email delivery. None of those are supplied by the current
+Capacitor dependencies, so notification work is part of hosting, not an assumption about the
+existing shell.
+
 **Batching:**
 - When several at-bats are uploaded together, send one notification **per player**: "4 at-bat
   reports ready for Maya".
@@ -632,7 +665,7 @@ same migration. Every new table must be either:
 |---|---|
 | `game_log_entries.opponent`: allow empty (default `''`); `pitch`, `result` optional | At-bats are created with no data entry |
 | `game_log_entries.result_simple` (new, nullable: `hit` / `out` / `walk` / `strikeout`) | The optional result chip. Feeds the AI's "outcome known" input |
-| Auto-create one `game_log_entries` row (or practice rep, per toggle) per uploaded video, via an RPC callable by coaches and guardians | `video_clips` must hang off an at-bat today (`video_clips.game_log_entry_id not null`). The user never sees this |
+| Auto-create one `game_log_entries` row per uploaded video, with `session_type` set by the Game/Practice toggle, via an RPC callable by coaches and guardians | `video_clips.game_log_entry_id` is required. For Practice, the existing triggers also create/link a `practice_sessions` and `practice_repetitions` row behind the scenes; the user does not enter session details |
 | **Guardian delete rights:** extend `delete-clip` authorization so a linked guardian can delete any clip of their own child | §2 control over a child's video |
 | **Remove parent link / self-unlink:** coach-only RPC to delete a `player_guardians` row for a player on their team; guardian self-unlink RPC | §2 removing access |
 | **Guardian read access to reports:** read-only RPCs or views (security definer, `set search_path = ''`, per the 00040/00042 conventions) returning the report and progress data for a guardian's **own linked child only**. No guardian grant on any table or view that lists other players | Today guardians have no read access to development data by design. Parents must never see the roster |
@@ -643,8 +676,9 @@ same migration. Every new table must be either:
 | Drill library: add `requires_screen` (bool), plus `best_for` (text, required for active drills), `looks_right_when` (text), `cue` (text), `common_mistakes` (text[]), `home_friendly` (bool), `sport` (`baseball`/`softball`/`both`), `min_age` (smallint, nullable), `phase` (nullable), `demo_url` (text, nullable), `demo_timestamp` (text, nullable), `source_credit` (text) | §3.3 drill cards, §5.4 selection |
 | Notification preferences: a `user_settings` row with `notify_reports boolean` | §7 |
 
-**Untouched (kept for rollback, hidden from UI):** `checklist_scores`, `checklist_score_history`,
-`player_priorities*`, `practice_sessions`, `at_bat_pitches`, `comp_*`, `drill_recommendations`.
+**Kept for rollback and hidden from UI:** `checklist_scores`, `checklist_score_history`,
+`player_priorities*`, `at_bat_pitches`, `comp_*`, `drill_recommendations`. Practice uploads continue
+to create `practice_sessions` and `practice_repetitions` through the existing linking triggers.
 Drop them in a later cleanup release only after the new flow has run in real use (§11, Phase 5).
 
 ---
@@ -696,8 +730,9 @@ Drop them in a later cleanup release only after the new flow has run in real use
     demo clone still runs.
   - Additive-migration test: existing data still loads.
 - **End to end (emulator):**
-  - parent signs up → adds child → uploads clip → gets report → shares link;
-  - coach invites parent → both see the same report.
+  - coach creates team and player → invites parent → parent accepts and consents → uploads clip →
+    gets report → shares link;
+  - coach and parent see the same report, and the parent sees only linked children.
 - **Real-footage check:** run 20+ real at-bats (mix of phone and GameChanger clips) through the new
   report. Track:
   - % "couldn't read";
@@ -711,13 +746,13 @@ Drop them in a later cleanup release only after the new flow has run in real use
 
 | Phase | Scope | Done when |
 |---|---|---|
-| **0. Prep** | Fix share-link name exposure; route all deletes through `delete-clip`; approve consent text v1; tag current state for rollback | Privacy items closed; tag created |
+| **0. Prep** | Fix share-link name exposure and opaque video paths; route all deletes through `delete-clip`; draft updated guardian consent for review; prepare a rollback tag for explicit authorization | Privacy code validated; consent and rollback action ready for approval |
 | **1. Analysis output** | Prompt changes (§5.2); threshold, drill matching, focus logic (§5.3–5.6) as tested pure functions; report assembler | Unit tests pass; 20 real at-bats produce sensible reports offline |
 | **2. Drill content** | Curate the 90 watch-verified candidates (§5.4) into 30–45 approved drills, each with a human-approved "Best for" line, steps, "looks right when", age notes, demo links | Every emittable concept has ≥1 approved drill, most have 3 |
-| **3. New screens** | Home, Record/Upload, At-bat report, Progress, Share sheet; remove old pages from navigation | Emulator end-to-end passes; old pages unreachable from UI |
-| **4. Accounts** | GameChanger roster import (§3.6: CSV, screenshot, paste, review step); coach-to-parent invites per player (exists; reuse), guardian read RPCs scoped to linked kids, remove-link and self-unlink, guardian delete rights | RLS tests pass, including "a parent cannot see the roster" |
-| **5. Hosting + notifications** | Hosted Supabase + GPU worker; push/email | A non-Jon device completes the full loop |
-| **6. Cleanup** | After ~4 weeks of real use: delete removed pages and components; plan any table drops as a separate, reviewed migration | Codebase reflects the 4-screen app |
+| **3. Access foundation** | Guardian report/progress reads scoped to linked kids, remove-link and self-unlink, guardian delete rights; reuse coach-to-parent invites. Add the reviewed GameChanger roster import (§3.6: CSV, screenshot, paste) | RLS tests pass, including "a parent cannot see the roster"; import is idempotent and coach-only |
+| **4. New screens** | Home, Record/Upload, At-bat report, Progress, Share sheet; remove obsolete UI pages and components after replacement paths work, preserving any independently used frozen-demo code | Emulator end-to-end passes; old pages and their unused UI code removed |
+| **5. Hosting + notifications** | Hosted Supabase + GPU worker; native push integration and provider setup; email delivery | A non-Jon device completes the full loop |
+| **6. Data cleanup** | After ~4 weeks of real use: assess historical tables and plan any drops as separate, reviewed migrations | Unused data structures have an evidence-backed migration plan |
 
 **Versioning:** this is a product redefinition. Under `CLAUDE.md`'s policy it is a candidate for a
 MAJOR bump (e.g. 1.0.0 when Phase 5 ships) or a MINOR bump per phase. That's Jon's call. Keep

@@ -411,7 +411,8 @@ test("family page: invite acceptance uses the server's consent version and the e
   const index = read("index.html");
   assert.match(index, /familyReturnPath\(qs\("next"\)\)/);
   assert.match(index, /const familyInvite = Boolean\(familyNext && familyNext\.includes\("\?invite="\)\);\s*if \(familyInvite\) \{/, "invite copy only for invite links");
-  assert.match(index, /emailRedirectTo: new URL\(`\.\/index\.html\?next=\$\{encodeURIComponent\(familyNext\)\}`/, "email confirmation returns to the validated invite");
+  assert.match(index, /const returnPath = familyNext \?\? simpleNext;/, "only validated in-app return paths are used");
+  assert.match(index, /emailRedirectTo: new URL\(`\.\/index\.html\?next=\$\{encodeURIComponent\(returnPath\)\}`/, "email confirmation returns to the validated invite or simple home");
 });
 
 test("family page: uploads go through the guardian path; Delete confirms and calls delete-clip", () => {

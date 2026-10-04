@@ -34,12 +34,10 @@
  */
 import { GoogleGenAI, Type } from "@google/genai";
 import "dotenv/config";
-import { CHECKPOINTS } from "../../types/scouting.js";
 import type { AnalysisInput } from "./analysisContext.js";
 import {
   ISSUE_BASES,
   ISSUE_PHASES,
-  SOFTBALL_COMP_BANK,
   renderSwingAnalysisPrompt,
   validateSwingAnalysisResult,
   validationContext,
@@ -77,19 +75,17 @@ const RESPONSE_SCHEMA = {
   properties: {
     noActionNeeded: { type: Type.BOOLEAN },
     noActionReason: { type: Type.STRING, nullable: true },
-    checklist: {
+    summary: { type: Type.STRING },
+    strengths: {
       type: Type.ARRAY,
       items: {
         type: Type.OBJECT,
         properties: {
-          checkpointSlug: {
-            type: Type.STRING,
-            enum: CHECKPOINTS.map((c) => c.slug),
-          },
-          score: { type: Type.INTEGER, minimum: 1, maximum: 3 },
-          notes: { type: Type.STRING },
+          text: { type: Type.STRING },
+          evidence: { type: Type.STRING },
+          phase: { type: Type.STRING, enum: ISSUE_PHASES },
         },
-        required: ["checkpointSlug", "score", "notes"],
+        required: ["text", "evidence", "phase"],
       },
     },
     issues: {
@@ -103,7 +99,6 @@ const RESPONSE_SCHEMA = {
           effect: { type: Type.STRING },
           evidence: { type: Type.STRING },
           coachingCue: { type: Type.STRING },
-          suggestedDrill: { type: Type.STRING },
           lookForNext: { type: Type.STRING },
           // "high" is never valid for a single swing (policy rule 4; rejected by the shared validator).
           confidence: { type: Type.STRING, enum: ["medium", "low"] },
@@ -118,31 +113,8 @@ const RESPONSE_SCHEMA = {
         required: ["issue", "seenInAtBats", "likelyCause", "effect", "evidence", "coachingCue", "lookForNext", "confidence", "concept", "basis", "contextExplainsIt", "emergencySwingSuspected", "knowledgeClaimIds", "suggestPriority"],
       },
     },
-    comps: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          compName: { type: Type.STRING, enum: SOFTBALL_COMP_BANK },
-          cue: { type: Type.STRING },
-        },
-        required: ["compName", "cue"],
-      },
-    },
-    compNotes: { type: Type.ARRAY, items: { type: Type.STRING } },
-    drills: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          title: { type: Type.STRING },
-          description: { type: Type.STRING },
-        },
-        required: ["title", "description"],
-      },
-    },
   },
-  required: ["noActionNeeded", "noActionReason", "checklist", "issues", "comps", "compNotes", "drills"],
+  required: ["noActionNeeded", "noActionReason", "summary", "strengths", "issues"],
 };
 
 // Transient provider failures (timeouts, rate limits, server/capacity errors) are retried a bounded
@@ -250,6 +222,7 @@ export async function analyzeSwing(
     source: "gemini",
     aiModel: model,
     aiModelVersion: modelVersion,
+    requireSimplifiedReport: true,
     ...validationContext(input),
   });
 }

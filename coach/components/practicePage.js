@@ -5,6 +5,7 @@ import {
 } from "./devUi.js";
 import { openObservationSheet, openFollowUpSheet } from "./devActions.js";
 import { uploadRawClip } from "./videoUpload.js";
+import { deleteClipsForEntry } from "./clipDeletion.js";
 import { renderDrillInAppBar } from "./appShell.js";
 import { icon, openOverflowMenu } from "./ui.js";
 import { getDemoConfig } from "../demoConfig.js";
@@ -377,6 +378,8 @@ async function updateRepWithUndo(rep, patch, message) {
 async function deleteRep(rep) {
   const approved = await confirmDialog({ title: `Delete rep ${rep.rep_number}?`, message: "Its attached video will also be deleted.", confirmLabel: "Delete rep", destructive: true });
   if (!approved) return;
+  try { await deleteClipsForEntry(rep.game_log_entry_id); }
+  catch (error) { return toast(`Couldn't delete video: ${error.message}`); }
   const { error } = await supabase.from("game_log_entries").delete().eq("id", rep.game_log_entry_id);
   if (error) return toast(`Couldn't delete: ${error.message}`);
   await loadSessions();

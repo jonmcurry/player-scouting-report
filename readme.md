@@ -47,25 +47,25 @@ it transferred to games.*
 
 ## Product principles
 
-These shape almost every design decision. If a change conflicts with one, it needs a good reason.
+The approved simplified direction is in [docs/SIMPLIFIED_APP_SPEC.md](docs/SIMPLIFIED_APP_SPEC.md).
+The app is being refactored in stages; the older workflows described below remain in the current
+screens until their replacements are ready.
 
-1. **The coach is the authority.** AI and pose data only *draft*. An AI-drafted score shows as an
-   unconfirmed "🤖 AI draft" until a coach confirms it. Re-running analysis never overwrites a
-   coach-reviewed score or issue, and it never creates, resolves or reprioritizes a priority.
-   Disagreements between a coach and the AI are kept visible, not silently replaced.
+These principles govern the replacement experience:
+
+1. **The video is the evidence.** Automatic reports are shown to parents and coaches only when
+   the video supports them. A report shows at most one fix; either reader can hide a fix that
+   does not look right. The coach owns the team and roster.
 2. **The original video is the source of truth.** The 3D avatar is an explanatory aid, not
    evidence. The AI prompt forbids resting a conclusion on the avatar alone.
-3. **Never fabricate precision.** The footage has no camera calibration, so there is no mph, no
-   inches and no degrees-of-truth. Bat speed is in shoulder-widths per second, stride is in
-   hip-widths, and every number is labeled as either *measured from video* or a *3D reconstructed
-   estimate*. Low-confidence results are shown as low confidence, or as "not measured".
-4. **Patterns, not single swings.** Film every at-bat. A checklist built from one cherry-picked swing
-   misleads, so below 3 real at-bats a player shows "Early Read" instead of asserting a pattern.
-5. **Games and practice never mix silently.** Practice reps are excluded from every game-only stat.
-   The game-vs-practice split is shown explicitly, along with whether a practice fix *transferred*
-   to games.
-6. **Built for a phone at a ball field.** Thumb-sized targets, one-tap scoring, high contrast for
-   sunlight, and a failure mode that degrades to plain video instead of blocking the coach.
+3. **Never fabricate precision or progress.** No unsupported outcomes, physical-unit estimates,
+   invented drills, or progress inferred from a single swing appear in reports.
+4. **Patterns need repeated game swings.** Fewer than three readable game at-bats means an
+   early read without a current focus.
+5. **Games and practice stay separate.** Practice can inform its own line, while game swings
+   determine current focus and status.
+6. **Built for a phone at a ball field.** Large targets, high contrast, and short paths from
+   recording to reading a report.
 
 ---
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Player View</title>
-<link rel="stylesheet" href="./coach.css?v=6faa2dd8c8">
+<link rel="stylesheet" href="./coach.css?v=a51b5ba5c8">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -80,6 +80,7 @@
   import { checklistState, isPendingDraft, showsNote, stateLabel, reviewPayload, verifiedHistory } from "./components/checklistReview.js";
   import { loadExtensionScore } from "./components/skeletonComparison.js";
   import { uploadRawClip } from "./components/videoUpload.js";
+  import { deleteClip, deleteClipsForEntry, deleteClipsForPlayer } from "./components/clipDeletion.js";
   import { fmtDate, getVideoUrl, videoTimeFor } from "./components/devUi.js";
   import { OBSERVATION_LABELS, teamAverageFromChecklistRows } from "./components/developmentLogic.js";
   import { renderPlayerAppBar, renderBottomNav, loadRosterWithProgress, setLastPlayerSlug } from "./components/appShell.js";
@@ -194,6 +195,8 @@
       if (!await confirmDialog({ title: `Delete ${player.name}?`, message: "This removes every at-bat, score, and clip and cannot be undone.", confirmLabel: "Delete player", destructive: true })) return;
       const btn = document.getElementById("deletePlayerBtn");
       btn.disabled = true;
+      try { await deleteClipsForPlayer(playerId); }
+      catch (error) { showSnackbar(`Couldn't delete player videos: ${error.message}`); btn.disabled = false; return; }
       const { error } = await supabase.from("players").delete().eq("id", playerId);
       if (error) {
         showSnackbar(`Couldn't delete player: ${error.message}`);
@@ -1108,23 +1111,9 @@
         deleteBtn.disabled = true;
         const clipId = deleteBtn.dataset.deleteClip;
         const gameLogEntryId = deleteBtn.dataset.gameLogEntry;
-        let message = null;
-        if (isDemoMode()) {
-          // A demo visitor's clip is their own throwaway clone in the demo
-          // schema: no stored video or worker files exist to clean up.
-          const { error } = await supabase.from("video_clips").delete().eq("id", clipId);
-          message = error?.message ?? null;
-        } else {
-          // delete-clip really deletes: the raw video, unreviewed AI drafts and
-          // the clip's AI output, then the row (reviewed findings keep their text).
-          const { error } = await supabase.functions.invoke("delete-clip", { body: { clipId } });
-          if (error) {
-            message = error.message;
-            try { message = (await error.context?.json())?.error ?? message; } catch { /* keep the generic message */ }
-          }
-        }
-        if (message) {
-          alert(`Couldn't delete clip: ${message}`);
+        try { await deleteClip(clipId); }
+        catch (error) {
+          alert(`Couldn't delete clip: ${error.message}`);
           deleteBtn.disabled = false;
           return;
         }
@@ -1135,12 +1124,7 @@
         return;
       }
 
-      // Delete At-Bat - removes the whole game_log_entries row. video_clips
-      // (and, via ITS OWN cascade, video_clip_pose3d/swing_phases) are all
-      // FK'd to game_log_entries ON DELETE CASCADE (see migration
-      // 00004_video_clips_and_phases.sql), so every pitch clip and its 3D
-      // data for this at-bat is removed in the same operation - no separate
-      // per-clip cleanup needed here.
+      // Delete the raw objects and audit each clip before removing the entry.
       const deleteAtBatBtn = e.target.closest("[data-delete-at-bat]");
       if (deleteAtBatBtn) {
         if (
@@ -1151,6 +1135,8 @@
           return;
         deleteAtBatBtn.disabled = true;
         const gameLogEntryId = deleteAtBatBtn.dataset.deleteAtBat;
+        try { await deleteClipsForEntry(gameLogEntryId); }
+        catch (error) { alert(`Couldn't delete at-bat videos: ${error.message}`); deleteAtBatBtn.disabled = false; return; }
         const { error } = await supabase.from("game_log_entries").delete().eq("id", gameLogEntryId);
         if (error) {
           alert(`Couldn't delete at-bat: ${error.message}`);

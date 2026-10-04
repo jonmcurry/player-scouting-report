@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>HitterLoop</title><link rel="stylesheet" href="./coach.css?v=a51b5ba5c8"><link rel="stylesheet" href="./simple.css">
+  <link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
+</head><body class="simple-app">
+  <header class="simple-top"><a class="simple-brand" href="./index.html">HitterLoop</a><button id="accountBtn" type="button">Account</button></header>
+  <main class="simple-main">
+    <div id="simpleMessage" role="status" aria-live="polite"></div>
+    <div id="simpleRoot"></div>
+  </main>
+  <nav class="simple-nav" aria-label="Main navigation">
+    <button data-tab="home" type="button" aria-current="page">Home</button>
+    <button data-tab="record" type="button">Record</button>
+    <button data-tab="progress" type="button">Progress</button>
+  </nav>
+  <dialog id="captureDialog" class="simple-dialog"><div id="captureSheet"></div></dialog>
+  <input id="recordFile" type="file" accept="video/*" capture="environment" hidden>
+  <input id="chooseFiles" type="file" accept="video/*" multiple hidden>
+  <script src="./demo.local.js"></script><script src="./config.local.js"></script>
+  <script type="module" src="./components/simpleApp.js"></script>
+</body></html>

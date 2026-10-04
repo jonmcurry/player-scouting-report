@@ -41,6 +41,8 @@ export interface SwingEvidence {
 export interface AnalysisInput {
   player: PlayerContext;
   pitch: PitchContext;
+  /** Optional user-entered at-bat result, never evidence that a swing did or did not occur. */
+  atBatResult?: "hit" | "out" | "walk" | "strikeout" | null;
   swing: SwingEvidence;
   coachReviewedDecisions: { concept: string | null; phase: string | null; videoClipId: string | null; status: string }[];
   knowledgePack: string;
@@ -79,6 +81,7 @@ export function buildInputManifest(input: AnalysisInput): Record<string, unknown
         pitch_type: pitch.pitchType !== null,
       },
     },
+    at_bat_result: unknown(input.atBatResult),
     swing_evidence: {
       frames: [...input.swing.frameNames],
       swing_context: input.swing.context ?? "unknown",

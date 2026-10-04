@@ -11,7 +11,7 @@ if (-not $repo) { throw "Run this from inside the HitterLoop repository." }
 
 Write-Host ""
 Write-Host "=== HitterLoop Orchestrated QA ===" -ForegroundColor Cyan
-Write-Host "Claude = orchestrator / implementer" -ForegroundColor DarkGray
+Write-Host "Codex = orchestrator / implementer" -ForegroundColor DarkGray
 Write-Host "Gemini = independent reviewer" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "Git status:" -ForegroundColor Cyan
@@ -52,4 +52,4 @@ if ($LASTEXITCODE -ne 0) { throw "Gemini review failed or was unavailable." }
 
 Write-Host ""
 Write-Host "Orchestrated QA finished." -ForegroundColor Green
-Write-Host "Claude should now reconcile Gemini findings against code/tests/evidence." -ForegroundColor Green
+Write-Host "Codex should now reconcile Gemini findings against code/tests/evidence." -ForegroundColor Green

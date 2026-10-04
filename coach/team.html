@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Team View</title>
-<link rel="stylesheet" href="./coach.css?v=6faa2dd8c8">
+<link rel="stylesheet" href="./coach.css?v=a51b5ba5c8">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -14,7 +14,7 @@
 <div class="wrap">
 
   <div id="devDash"></div>
-  <div class="p1b-section-head"><h2 id="playersHeading">Players</h2></div>
+  <div class="p1b-section-head"><h2 id="playersHeading">Players</h2><button class="tap-target" id="importPlayersBtn" type="button">Import players</button></div>
   <div id="playerCards" class="bt-list"></div>
   <div id="teamRecent"></div>
 
@@ -51,8 +51,10 @@
   import { supabase, requireSession, signOut, CHECKPOINTS, qs, escapeHtml } from "./shared.js";
   import { renderTeamAppBar, renderBottomNav, getLastPlayerSlug } from "./components/appShell.js";
   import { closeableModal } from "./components/compModal.js";
-  import { openBottomSheet } from "./components/ui.js";
+  import { openBottomSheet, showSnackbar } from "./components/ui.js";
   import { renderTeamDashboard } from "./components/teamDashboard.js";
+  import { openRosterImportSheet } from "./components/rosterImportSheet.js";
+  import { isDemoMode } from "./demoConfig.js";
 
   const MIN_ATBATS_FOR_PATTERN = 3;
   const teamSlug = qs("team");
@@ -102,6 +104,7 @@
       `;
       document.querySelector(".roster-toolbar").style.display = "none";
       document.querySelector(".legend-row").style.display = "none";
+      document.getElementById("importPlayersBtn").hidden = true;
       return;
     }
     currentTeamId = team.id;
@@ -114,6 +117,7 @@
       teamName: team.name,
       overflowItems: [
         { label: "Add player", icon: "user-round", onSelect: openAddPlayerModal },
+        ...(!isDemoMode() ? [{ label: "Import players", icon: "upload", onSelect: openImportPlayers }] : []),
         { label: "Filters & team insights", icon: "ellipsis-vertical", onSelect: () => { document.getElementById("teamInsights").open = true; document.getElementById("teamInsights").scrollIntoView({ behavior: "smooth" }); } },
         { label: "Sign out", icon: "x", onSelect: signOut },
       ],
@@ -153,11 +157,23 @@
     });
 
     document.getElementById("addPlayerBtn").addEventListener("click", openAddPlayerModal);
+    if (isDemoMode()) document.getElementById("importPlayersBtn").hidden = true;
+    else document.getElementById("importPlayersBtn").addEventListener("click", openImportPlayers);
     document.getElementById("teamContextBtn").addEventListener("click", openTeamContextModal);
     if (qs("addPlayer") === "1") {
       openAddPlayerModal();
       const url = new URL(location.href); url.searchParams.delete("addPlayer"); history.replaceState(history.state, "", url);
     }
+  }
+
+  function openImportPlayers() {
+    openRosterImportSheet({ supabase, teamId: currentTeamId, existing: currentPlayers,
+      onDone: async ({ created, updated }) => {
+        currentPlayers = await loadPlayers(currentTeamId);
+        renderPlayerCards(currentPlayers, currentFilter);
+        showSnackbar(`Imported ${created} player${created === 1 ? "" : "s"}; updated ${updated} jersey number${updated === 1 ? "" : "s"}. Invite parents from each player's page.`);
+      },
+    });
   }
 
   function option(value, label, selected) {

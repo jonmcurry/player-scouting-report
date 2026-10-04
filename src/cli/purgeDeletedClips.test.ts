@@ -92,7 +92,7 @@ test("purge skips a deletion that never finished (gcs_deleted_at null: the clip 
 const BUCKET = "hl-test";
 const NOW = new Date("2026-10-02T12:00:00Z");
 
-interface StuckRow { clip_id: string; player_slug: string; raw_gcs_path: string | null; requested_at: string; gcs_deleted_at: string | null }
+interface StuckRow { clip_id: string; player_slug: string; clip_slug?: string | null; game_log_entry_id?: string | null; raw_gcs_path: string | null; requested_at: string; gcs_deleted_at: string | null }
 
 /** In-memory clip_deletions + the finish_clip_deletion side effect (stamps gcs_deleted_at, idempotent). */
 function fakeRetryDb(rows: StuckRow[], failFinish = new Set<string>()) {
@@ -100,7 +100,7 @@ function fakeRetryDb(rows: StuckRow[], failFinish = new Set<string>()) {
   const db: RetryDb = {
     async staleUnfinished(before) {
       return rows.filter((r) => r.gcs_deleted_at === null && new Date(r.requested_at) < before)
-        .map(({ clip_id, player_slug, raw_gcs_path }) => ({ clip_id, player_slug, raw_gcs_path }));
+        .map(({ clip_id, player_slug, clip_slug, game_log_entry_id, raw_gcs_path }) => ({ clip_id, player_slug, clip_slug: clip_slug ?? null, game_log_entry_id: game_log_entry_id ?? null, raw_gcs_path }));
     },
     async finishDeletion(clipId) {
       if (failFinish.has(clipId)) throw new Error("finish failed");
@@ -168,4 +168,20 @@ test("isOwnRawObject: exactly gs://<bucket>/<team>/<player>/raw/<file>", () => {
   assert.equal(isOwnRawObject(`gs://${BUCKET}/t/p/raw/`, BUCKET, "p"), false);
   assert.equal(isOwnRawObject(`gs://${BUCKET}/../p/raw/f.mp4`, BUCKET, "p"), false);
   assert.equal(isOwnRawObject(`gs://${BUCKET}x/t/p/raw/f.mp4`, BUCKET, "p"), false);
+});
+
+test("retry accepts only an opaque object belonging to the audited entry and clip", async () => {
+  const entry = "11111111-1111-4111-8111-111111111111";
+  const clip = "22222222-2222-4222-8222-222222222222";
+  const other = "33333333-3333-4333-8333-333333333333";
+  const old = new Date(NOW.getTime() - UNFINISHED_RETRY_AFTER_MS - 1).toISOString();
+  const pathFor = (id: string) => `gs://${BUCKET}/${entry}/raw/${id}.mp4`;
+  const { db, finished } = fakeRetryDb([
+    { clip_id: clip, clip_slug: clip, game_log_entry_id: entry, player_slug: "emily", raw_gcs_path: pathFor(clip), requested_at: old, gcs_deleted_at: null },
+    { clip_id: other, clip_slug: other, game_log_entry_id: entry, player_slug: "emily", raw_gcs_path: pathFor(clip), requested_at: old, gcs_deleted_at: null },
+  ]);
+  const deleted: string[] = [];
+  assert.equal(await retryUnfinishedDeletions(db, async (path) => { deleted.push(path); }, BUCKET, NOW), 1);
+  assert.deepEqual(deleted, [pathFor(clip)]);
+  assert.deepEqual(finished, [clip]);
 });

@@ -216,6 +216,7 @@ export async function analyzeSwingViaClaudeCli(
     source: "claude",
     aiModel: model,
     aiModelVersion: resolvedModelIds(envelope),
+    requireSimplifiedReport: true,
     ...validationContext(input),
   });
 }

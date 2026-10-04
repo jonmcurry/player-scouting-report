@@ -125,7 +125,7 @@ function swingRow(clip) {
   const { detail } = clipStatusCopy(clip.status);
   const actions = [
     clip.status === "reviewed" ? button("Watch with coach’s notes", { variant: "secondary", iconName: "video", attrs: `data-open-clip="${esc(clip.id)}"` }) : "",
-    clip.uploadedByYou ? button("Delete", { variant: "tertiary", iconName: "trash-2", attrs: `data-delete-clip="${esc(clip.id)}" aria-label="Delete this video from ${esc(formatSwingDay(clip.recordedAt))}"` }) : "",
+    button("Delete", { variant: "tertiary", iconName: "trash-2", attrs: `data-delete-clip="${esc(clip.id)}" aria-label="Delete this video from ${esc(formatSwingDay(clip.recordedAt))}"` }),
   ].filter(Boolean).join("");
   return `<li class="hl-swing"><div class="hl-swing-top">${statusChipHtml(clip.status)}</div>${detail ? `<p class="hl-swing-detail">${esc(detail)}</p>` : ""}${actions ? `<div class="hl-swing-actions">${actions}</div>` : ""}</li>`;
 }
@@ -199,7 +199,7 @@ export function uploadErrorMessage(message) {
 
 /** delete-clip HTTP status -> a friendly message. 409 is a server-side hold (e.g. a published demo). */
 export function deleteErrorMessage(status) {
-  if (status === 403) return "You can only delete videos you sent.";
+  if (status === 403) return "You no longer have permission to delete this video.";
   if (status === 409) return "This video can't be deleted right now. Ask your coach for help.";
   return "Couldn't delete the video. Please try again.";
 }

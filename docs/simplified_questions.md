@@ -1,3 +1,27 @@
+# Simplified app review and disposition
+
+The analysis below records the original review. The decisions for the refactor are:
+
+| Review question | Decision |
+|---|---|
+| Strikeout can include a swing | Let the video decide. Analyze a located swing regardless of the optional result chip; show no-swing copy only after reliable no-swing detection. An inconclusive clip fails closed. |
+| Parent end-to-end path | Start with a coach-created team and a player-specific invite. No parent-created player in v1. |
+| Progress overlap and sixth clip | Use the latest up-to-5 readable game swings for focus selection and status. A dismissed concept is excluded for the next 6 readable game swings. Apply dismissed → looks fixed → improving → still showing up; an active improving focus stays until fixed or dismissed. |
+| Broken Dismissed table row | Fix its indentation. |
+| 3D code | Remove unused app UI and assets with the old screens in Phase 4; retain only files with verified independent demo/portfolio callers. Keep the analysis pipeline. |
+| Screenshot privacy | Disclose Gemini processing of the image and visible children's names before upload and in guardian consent. Do not claim that the provider discards it; verify provider handling before release. |
+| Push setup | Include native push integration, provider setup, permissions and token handling in Phase 5. |
+| Practice clip record | Create a `game_log_entries(session_type='practice')` row per clip. Existing triggers create the linked practice session and repetition; those tables stay hidden from the app UI. |
+| Unlisted current files | Route `family.html` to parent Home; reuse `guardianAdmin.js`; rewrite `report.html` for the new shared report; use `subjectZoom.js` only if it helps playback. Check the other modules' callers before Phase 4 removal. |
+| Group A cleanup | Treat the list below as candidates, not proof of safe deletion. Verify callers, npm scripts, research/release provenance and `todo.md` follow-ups before removing tracked files. Preserve untracked local artifacts unless separately authorized. |
+| Group B cleanup | Remove obsolete UI code in Phase 4 once replacement screens work. Preserve frozen-demo dependencies; plan table drops separately after real use. |
+
+Consent wording and release/publication still require Jon's review. A rollback tag is prepared as
+part of Phase 0 but is created only with explicit authorization. These decisions are reflected in
+`docs/SIMPLIFIED_APP_SPEC.md`.
+
+## Original review
+
 I read the whole spec and traced how the repo's files depend on each other: page imports, component imports, Python imports, npm scripts and edge-function callers. I didn't change any files, so the QA wrapper wasn't needed.
 
 Part 1: Problems in the spec to fix before building

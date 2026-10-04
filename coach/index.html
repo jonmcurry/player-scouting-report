@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Coach Login</title>
-<link rel="stylesheet" href="./coach.css?v=6faa2dd8c8">
+<link rel="stylesheet" href="./coach.css?v=a51b5ba5c8">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
@@ -45,7 +45,8 @@
       <p class="hint">You don't have a team yet - set one up to start adding players.</p>
       <input type="text" id="newTeamName" placeholder="Team name (e.g. Riverside Rockets 10U)">
       <input type="text" id="newTeamSlug" placeholder="URL slug (auto-filled from name)">
-      <select id="newTeamSport" aria-label="Sport"><option value="">Sport (unknown)</option><option value="softball">Softball</option><option value="baseball">Baseball</option></select>
+      <select id="newTeamSport" aria-label="Sport" required><option value="">Choose sport</option><option value="softball">Softball</option><option value="baseball">Baseball</option></select>
+      <select id="newTeamAge" aria-label="Age group" required><option value="">Choose age group</option><option>8U</option><option>9U</option><option>10U</option><option>11U</option><option>12U</option><option>13U</option><option>14U</option><option>15U</option><option>16U</option><option>17U</option><option>18U</option></select>
       <input type="text" id="newTeamLevel" placeholder="Level (optional, e.g. 10U)">
       <input type="text" id="newTeamAccessCode" placeholder="Access code (ask your HitterLoop contact)">
       <button class="primary tap-target" id="createTeamBtn">Create Team</button>
@@ -82,6 +83,7 @@
   // to sign in or create an account, then back. Only this app's own family
   // page is ever a valid return target (no open redirect).
   const familyNext = familyReturnPath(qs("next"));
+  const simpleNext = qs("next") === "./simple.html" ? "./simple.html" : null;
   // The "join your child's page" copy (and the parent sign-up: no coach name or
   // coach profile) is only for an actual invite link.
   const familyInvite = Boolean(familyNext && familyNext.includes("?invite="));
@@ -108,6 +110,10 @@
     if (!session) return false;
     if (familyNext) {
       window.location.href = familyNext;
+      return true;
+    }
+    if (simpleNext) {
+      window.location.href = simpleNext;
       return true;
     }
 
@@ -146,11 +152,9 @@
       div.className = "card";
       div.innerHTML = `
         <div style="font-family:var(--font-display);font-weight:600;font-size:18px;text-transform:uppercase;margin-bottom:10px;">${escapeHtml(a.teams.name)}</div>
-        <div class="hint" data-team-summary style="margin-bottom:10px;">&nbsp;</div>
         <a class="tap-target" style="display:inline-flex;align-items:center;" href="./team.html?team=${encodeURIComponent(a.teams.slug)}">Open team view →</a>
       `;
       teamsList.appendChild(div);
-      fillTeamSummary(div.querySelector("[data-team-summary]"), a.teams.id);
     }
     if (isFamily) {
       const family = document.createElement("div");
@@ -159,20 +163,6 @@
       teamsList.appendChild(family);
     }
     return true;
-  }
-
-  /** Value-first one-liner per team: what needs the coach's attention. Best-effort - a failure just leaves it blank. */
-  async function fillTeamSummary(el, teamId) {
-    try {
-      const [{ count: drafts }, { count: active }] = await Promise.all([
-        supabase.from("issues").select("id, players!inner(team_id)", { count: "exact", head: true }).eq("players.team_id", teamId).eq("review_status", "draft"),
-        supabase.from("player_priorities").select("id, players!inner(team_id)", { count: "exact", head: true }).eq("players.team_id", teamId).in("status", ["active", "monitoring"]),
-      ]);
-      const parts = [];
-      parts.push(drafts ? `<b>${drafts}</b> AI observation${drafts === 1 ? "" : "s"} to review` : "Nothing waiting for review");
-      parts.push(`${active ?? 0} active priorit${active === 1 ? "y" : "ies"}`);
-      el.innerHTML = parts.join(" · ");
-    } catch { el.textContent = ""; }
   }
 
   document.getElementById("signInBtn").addEventListener("click", async () => {
@@ -215,8 +205,9 @@
 
     // A parent signing up from an invite comes back to it after confirming their email
     // (the same validated family return path, carried through index.html?next=).
-    const { data, error } = await supabase.auth.signUp(familyNext
-      ? { email, password, options: { emailRedirectTo: new URL(`./index.html?next=${encodeURIComponent(familyNext)}`, window.location.href).href } }
+    const returnPath = familyNext ?? simpleNext;
+    const { data, error } = await supabase.auth.signUp(returnPath
+      ? { email, password, options: { emailRedirectTo: new URL(`./index.html?next=${encodeURIComponent(returnPath)}`, window.location.href).href } }
       : { email, password });
     if (error) {
       errorMsg.textContent = error.message;
@@ -257,18 +248,23 @@
     const slug = document.getElementById("newTeamSlug").value.trim() || slugify(name);
     const accessCode = document.getElementById("newTeamAccessCode").value.trim();
     const sport = document.getElementById("newTeamSport").value || null;
+    const ageGroup = document.getElementById("newTeamAge").value || null;
     const levelLabel = document.getElementById("newTeamLevel").value.trim() || null;
     const errorMsg = document.getElementById("createTeamErrorMsg");
     errorMsg.textContent = "";
 
     if (!name) { errorMsg.textContent = "Enter a team name."; return; }
     if (!slug) { errorMsg.textContent = "Enter a URL slug."; return; }
+    if (!sport || !ageGroup) { errorMsg.textContent = "Choose the sport and age group."; return; }
     if (!accessCode) { errorMsg.textContent = "Enter your access code."; return; }
 
-    const { data, error } = await supabase.rpc("create_team", {
+    const { data, error } = await supabase.rpc("create_simple_team", {
       p_slug: slug,
       p_name: name,
       p_access_code: accessCode,
+      p_sport: sport,
+      p_age_group: ageGroup,
+      p_level_label: levelLabel,
     });
     if (error) {
       errorMsg.textContent = error.message.includes("duplicate key")
@@ -292,11 +288,6 @@
       errorMsg.textContent =
         `That access code isn't right, or you've tried too many times - wait a few minutes and try again, ` +
         `or ask your HitterLoop contact for the team setup code.`;
-      return;
-    }
-    const { error: contextError } = await supabase.from("teams").update({ sport, level_label: levelLabel }).eq("id", data.id);
-    if (contextError) {
-      errorMsg.textContent = `Team created, but its context could not be saved: ${contextError.message}`;
       return;
     }
     window.location.href = `./team.html?team=${data.slug}`;

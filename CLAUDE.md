@@ -204,17 +204,18 @@ Core loop:
 **WATCH → UNDERSTAND → FOCUS → TRAIN → RECHECK**
 
 The original swing video is the source of truth.
-The coach is the final authority.
+The simplified app's approved direction is automatic reports for parents and coaches.
+The coach owns the team and can hide a finding that does not look right.
 
 Prioritize:
 - what is working;
 - what needs attention;
 - evidence;
 - next development step;
-- Priority;
-- Drill;
-- Practice;
-- Progress.
+- one fix per readable at-bat;
+- vetted drills;
+- game and practice kept distinct;
+- deterministic progress from repeated game swings.
 
 De-emphasize:
 - batting result;
@@ -227,12 +228,15 @@ De-emphasize:
 
 Truth rules:
 - never invent observations/findings;
-- never invent Priorities;
 - never invent Drills;
 - never invent progress;
 - never invent metrics;
 - insufficient evidence fails closed;
-- AI drafts are not coach conclusions.
+- automatic reports show only video-supported findings that meet the display threshold;
+- a parent or coach can hide a finding that does not look right.
+
+See `docs/SIMPLIFIED_APP_SPEC.md` for the approved target. Existing screens and historical
+coach-reviewed data still follow their original behavior until their replacement ships.
 
 ## Engineering Safety Rules
 

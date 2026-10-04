@@ -88,7 +88,7 @@ test("a resolved-only Priority list is not shown as current", () => {
   assert.match(html, /hasn.t picked a Priority yet/);
 });
 
-test("swings list: chips, Delete only on your own uploads, reviewed rows open", () => {
+test("swings list: linked parents can delete any of their child's videos", () => {
   const report = {
     ...base,
     clips: [
@@ -101,8 +101,10 @@ test("swings list: chips, Delete only on your own uploads, reviewed rows open", 
   const html = swingsList(report, new Date(2026, 9, 2));
   assert.match(html, /Coach reviewed/);
   assert.match(html, /Processing/);
-  assert.equal((html.match(/data-delete-clip=/g) ?? []).length, 1);
+  assert.equal((html.match(/data-delete-clip=/g) ?? []).length, 3);
   assert.match(html, /data-delete-clip="a1"/);
+  assert.match(html, /data-delete-clip="b2"/);
+  assert.match(html, /data-delete-clip="c3"/);
   assert.equal((html.match(/data-open-clip=/g) ?? []).length, 1);
   assert.match(html, /data-open-clip="a1"/);
 });
@@ -229,7 +231,7 @@ test("upload and delete errors are friendly, never raw backend text", async () =
   assert.match(uploadErrorMessage("Uploads are disabled in this demo. Explore the pre-seeded swings instead."), /disabled in this demo/);
   assert.match(uploadErrorMessage("Couldn't get an upload destination: FunctionsHttpError"), /didn.t send/);
   assert.doesNotMatch(uploadErrorMessage("Couldn't get an upload destination: FunctionsHttpError"), /Functions|destination/);
-  assert.match(deleteErrorMessage(403), /only delete videos you sent/);
+  assert.match(deleteErrorMessage(403), /no longer have permission/);
   assert.match(deleteErrorMessage(409), /can.t be deleted right now/);
   assert.doesNotMatch(deleteErrorMessage(409), /demo/i);
   assert.match(deleteErrorMessage(500), /try again/);

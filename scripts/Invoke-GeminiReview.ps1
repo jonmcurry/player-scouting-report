@@ -2,7 +2,7 @@
     [Parameter(Mandatory = $true)]
     [string]$Prompt,
     [string]$Model = "gemini-3.1-pro-high",
-    [int]$TimeoutSeconds = 180
+    [int]$TimeoutSeconds = 360
 )
 
 $ErrorActionPreference = "Stop"

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.31.0] - 2026-10-04
+
+Simplified app foundations are committed for continued work. The existing coach and family screens remain the default; nothing in this version was deployed.
+
+### Added
+
+- A preview Home, Record, Report, and Progress flow with an on-device upload queue, coach roster access, parent invites, scoped sharing, feedback, and deletion recovery.
+- GameChanger CSV and pasted-roster import with explicit identity-column mapping and player review; statistics are discarded.
+- Automatic report and focus foundations: evidence-validated summaries and strengths, one eligible fix, curated-drill filtering, deterministic game-swing progress, and additive migrations 00046–00047.
+- Rollback-only local SQL smoke coverage for coach and guardian capture, sharing, opaque video paths, and upload retries.
+
+### Changed
+
+- New video uploads use opaque storage paths. Scoped reports redact known player and team identifiers in shared text; existing paths require a separate copy-and-verify migration before playback.
+- Coach deletion paths use the audited `delete-clip` flow, and queued uploads can resume after interrupted at-bat creation or object upload.
+- Analysis prompts produce parent-facing summaries and strengths while keeping unsupported outcomes and uncertain fixes out of reports.
+
+### Removed
+
+- Verified unused report-rendering, static skeleton publication, setup, backup, and superseded handoff files. The legacy UI remains for rollback until the replacement flow is ready.
+
 ## [0.30.0] - 2026-10-02
 
 Adds schema migrations 00041-00045. Nothing deployed; hosted needs the pre-deploy steps in `NEXT_STEPS.md` first.

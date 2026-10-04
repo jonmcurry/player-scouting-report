@@ -11,6 +11,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Storage } from "npm:@google-cloud/storage@7";
 import { buildFamilyReport } from "../_shared/familyReport.ts";
+import { opaqueRawObject } from "../_shared/opaqueStoragePath.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,14 +45,14 @@ Deno.serve(async (req) => {
 
     const { data: link, error: linkError } = await supabase
       .from("player_share_links")
-      .select("player_id, revoked_at, expires_at")
+      .select("player_id, revoked_at, expires_at, share_scope")
       .eq("token", token)
       .maybeSingle();
 
     // Same generic message for revoked/expired/never-existed - deliberately
     // not distinguishing them to an anonymous caller (no reason to leak
     // which case applies).
-    if (linkError || !link || link.revoked_at || new Date(link.expires_at) < new Date()) {
+    if (linkError || !link || link.share_scope || link.revoked_at || new Date(link.expires_at) < new Date()) {
       return jsonResponse({ error: "This link is invalid or has been revoked." }, 404);
     }
 
@@ -68,18 +69,21 @@ Deno.serve(async (req) => {
         .neq("player_priorities.status", "archived")
         .limit(1);
       if (!obs?.length) return jsonResponse({ error: "Clip not available." }, 404);
-      const { data: clip } = await supabase.from("video_clips").select("raw_gcs_path").eq("id", videoClipId).single();
-      const m = clip?.raw_gcs_path?.match(/^gs:\/\/([^/]+)\/(.+)$/);
-      if (!m) return jsonResponse({ error: "Clip not available." }, 404);
+      const { data: deleting, error: deletingError } = await supabase.from("clip_deletions").select("clip_id").eq("clip_id", videoClipId).limit(1);
+      if (deletingError || (deleting ?? []).length) return jsonResponse({ error: "Clip not available." }, 404);
+      const { data: clip } = await supabase.from("video_clips").select("id, raw_gcs_path, game_log_entry_id, clip_slug").eq("id", videoClipId).single();
+      const bucket = Deno.env.get("GCS_BUCKET_NAME") ?? "";
+      const object = opaqueRawObject(clip?.raw_gcs_path ?? null, bucket, clip?.game_log_entry_id ?? "", clip?.clip_slug ?? "", clip?.id);
+      if (!object) return jsonResponse({ error: "Clip not available." }, 404);
       const emulator = Deno.env.get("GCS_EMULATOR_HOST");
-      if (emulator) return jsonResponse({ url: `${emulator}/download/storage/v1/b/${encodeURIComponent(m[1])}/o/${encodeURIComponent(m[2])}?alt=media` });
+      if (emulator) return jsonResponse({ url: `${emulator}/download/storage/v1/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(object)}?alt=media` });
       const storage = new Storage({ projectId: Deno.env.get("GCP_PROJECT_ID") });
-      const [url] = await storage.bucket(m[1]).file(m[2]).getSignedUrl({ version: "v4", action: "read", expires: Date.now() + 15 * 60 * 1000 });
+      const [url] = await storage.bucket(bucket).file(object).getSignedUrl({ version: "v4", action: "read", expires: Date.now() + 15 * 60 * 1000 });
       return jsonResponse({ url });
     }
 
-    // Same queries and shape as before the family surface shared them
-    // (familyReport.ts); includeVideoIds: false keeps the payload unchanged.
+    // The family-report builder omits guardian-only sections and redacts
+    // identity for this anonymous share link.
     const report = await buildFamilyReport(supabase, link.player_id, { includeVideoIds: false });
     if (!report) {
       return jsonResponse({ error: "Player not found." }, 404);

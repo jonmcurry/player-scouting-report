@@ -22,7 +22,7 @@
  * a parent who unlinked and kept their videos). Rows older than 15 minutes
  * are finished here with the service role: delete the raw object recorded in
  * the audit row (already-absent counts as deleted; the path must still be this
- * bucket's <team>/<player_slug>/raw/<file> - begin_clip_deletion verified it
+ * bucket's verified legacy or opaque raw path - begin_clip_deletion verified it
  * when the row was written), then finish_clip_deletion() - the same SQL
  * function the Edge Function calls. Both steps are idempotent, so a retry
  * racing a user's own retry is harmless. begin_clip_deletion is NOT re-run: it
@@ -104,7 +104,13 @@ export async function purgeDeletedClips(db: PurgeDb, framesRoot: string): Promis
 /** How long a started deletion may sit unfinished before the worker finishes it. */
 export const UNFINISHED_RETRY_AFTER_MS = 15 * 60 * 1000;
 
-export interface UnfinishedDeletion { clip_id: string; player_slug: string; raw_gcs_path: string | null }
+export interface UnfinishedDeletion {
+  clip_id: string;
+  player_slug: string;
+  clip_slug: string | null;
+  game_log_entry_id: string | null;
+  raw_gcs_path: string | null;
+}
 
 /** The two queries the retry needs (a fake in tests). */
 export interface RetryDb {
@@ -119,7 +125,7 @@ export function supabaseRetryDb(client: SupabaseClient): RetryDb {
     async staleUnfinished(before: Date) {
       const { data, error } = await client
         .from("clip_deletions")
-        .select("clip_id, player_slug, raw_gcs_path")
+        .select("clip_id, player_slug, clip_slug, game_log_entry_id, raw_gcs_path")
         .is("gcs_deleted_at", null)
         .lt("requested_at", before.toISOString())
         .order("requested_at");
@@ -142,6 +148,19 @@ export function isOwnRawObject(gcsPath: string, bucket: string, playerSlug: stri
   return parts.length === 4 && safeSegment(parts[0]!) && parts[1] === playerSlug && parts[2] === "raw" && safeSegment(parts[3]!);
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isDeletionRawObject(row: UnfinishedDeletion, bucket: string): boolean {
+  if (!row.raw_gcs_path) return true;
+  if (isOwnRawObject(row.raw_gcs_path, bucket, row.player_slug)) return true;
+  if (!bucket || !row.game_log_entry_id || !UUID.test(row.game_log_entry_id)) return false;
+  for (const id of [row.clip_slug, row.clip_id]) {
+    if (!id || !UUID.test(id)) continue;
+    const prefix = `gs://${bucket}/${row.game_log_entry_id}/raw/${id}.`;
+    if (row.raw_gcs_path.startsWith(prefix) && /^[A-Za-z0-9]{1,10}$/.test(row.raw_gcs_path.slice(prefix.length))) return true;
+  }
+  return false;
+}
+
 /**
  * Finishes deletions stuck for longer than UNFINISHED_RETRY_AFTER_MS. `deleteRawObject` must treat an
  * already-absent object as deleted. Returns how many were finished; a failure on one row is logged
@@ -157,10 +176,10 @@ export async function retryUnfinishedDeletions(
   for (const row of await db.staleUnfinished(new Date(now.getTime() - UNFINISHED_RETRY_AFTER_MS))) {
     try {
       if (row.raw_gcs_path) {
-        if (!isOwnRawObject(row.raw_gcs_path, bucket, row.player_slug)) {
+        if (!isDeletionRawObject(row, bucket)) {
           console.error(
             `[purge-deleted-clips] Clip ${row.clip_id}: stuck deletion's stored path ${JSON.stringify(row.raw_gcs_path)} ` +
-              `isn't this bucket's <team>/${JSON.stringify(row.player_slug)}/raw/<file> - left for a human.`,
+              `isn't this clip's verified raw object in the configured bucket - left for a human.`,
           );
           continue;
         }

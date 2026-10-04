@@ -15,7 +15,7 @@ const input: AnalysisInput = {
 };
 const validNoAction = JSON.stringify({
   noActionNeeded: true, noActionReason: "Stills are too small to judge.",
-  checklist: [], issues: [], comps: [], compNotes: [], drills: [],
+  summary: "The batter is too small to describe this swing reliably.", strengths: [], issues: [],
 });
 
 // Scripted fake client: each step either throws the given error or returns a response with that text.

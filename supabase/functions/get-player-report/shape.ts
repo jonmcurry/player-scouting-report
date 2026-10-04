@@ -25,6 +25,13 @@ export interface RawDrillAssignment {
 }
 export interface RawScore { score: number | null; reviewed_by: string | null; review_status?: string | null; checkpoints: { label: string; sort_order?: number } }
 
+/** Public share links identify a child by first name and last initial only. */
+export function sharedPlayerName(name: string): string {
+  const parts = name.trim().split(/\s+/u).filter(Boolean);
+  if (parts.length < 2) return parts[0] ?? "";
+  return `${parts[0]} ${Array.from(parts[parts.length - 1])[0]}.`;
+}
+
 /** Coach-confirmed score (00040 review_status; rows read without it fall back to reviewed_by + a score). */
 const isVerified = (s: RawScore) => (s.review_status ? s.review_status === "verified" : Boolean(s.reviewed_by) && s.score != null);
 const byCheckpointOrder = (a: RawScore, b: RawScore) => (a.checkpoints.sort_order ?? Number.MAX_SAFE_INTEGER) - (b.checkpoints.sort_order ?? Number.MAX_SAFE_INTEGER);

@@ -53,6 +53,25 @@ test("G: sparse outputs pass - no issues, no checklist, or noActionNeeded", () =
   assert.doesNotThrow(() => validate(response({ issues: [issue({ confidence: "medium" })] })), "medium stays allowed");
 });
 
+test("simplified report rejects an unsupported result claim in its summary", () => {
+  rejects(response({ summary: "She hit a hard line drive to center field.", strengths: [] }), /response.summary asserts this swing's outcome/);
+});
+
+test("optional at-bat result supports only its broad label and never decides whether this swing happened", () => {
+  const strikeout = input({ atBatResult: "strikeout" });
+  assert.doesNotThrow(() => validate(response({ summary: "She struck out. Her setup stayed balanced." }), strikeout));
+  rejects(response({ summary: "She took the pitch." }), /response.summary asserts this swing's outcome/, strikeout);
+  const hit = input({ atBatResult: "hit" });
+  assert.doesNotThrow(() => validate(response({ summary: "She got a hit. Her setup stayed balanced." }), hit));
+  rejects(response({ summary: "She made hard contact." }), /response.summary asserts this swing's outcome/, hit);
+});
+
+test("simplified report strengths need a supplied phase and visible evidence", () => {
+  assert.throws(() => validate(response({ summary: "She stayed balanced.", strengths: [{ text: "Balanced finish", evidence: "At finish", phase: "follow_through" }] })), /no supplied still/);
+  assert.throws(() => validate(response({ summary: "She stayed balanced.", strengths: [{ text: "Balanced setup", evidence: "", phase: "stance" }] })), /visible evidence/);
+  assert.doesNotThrow(() => validate(response({ summary: "She starts with a balanced stance.", strengths: [{ text: "Balanced stance", evidence: "Feet set under shoulders in the stance still", phase: "stance" }] })));
+});
+
 test("A: a single-swing observation marked high confidence is rejected", () => {
   rejects(response({ issues: [issue({ confidence: "high" })] }), /confidence is "high"/);
 });
@@ -275,7 +294,7 @@ test("the Gemini provider path rejects a semantically invalid response before re
   const saved = process.env.GEMINI_MODEL;
   process.env.GEMINI_MODEL = "test-model";
   try {
-    const client = { models: { generateContent: async () => ({ text: JSON.stringify(response({ issues: [issue({ confidence: "high" })] })) }) } } as unknown as Pick<GoogleGenAI, "models">;
+    const client = { models: { generateContent: async () => ({ text: JSON.stringify(response({ summary: "The swing is visible.", strengths: [], issues: [issue({ confidence: "high" })] })) }) } } as unknown as Pick<GoogleGenAI, "models">;
     await assert.rejects(analyzeSwing([{ data: Buffer.from("png"), mimeType: "image/png" }], input(), { client }), SemanticValidationError);
   } finally {
     if (saved === undefined) delete process.env.GEMINI_MODEL; else process.env.GEMINI_MODEL = saved;
@@ -352,7 +371,7 @@ test("6-7. hip-shoulder separation is never AI-scored; leaving it unscored is fi
     }
   }
   assert.doesNotThrow(() => validate(response({ checklist: [{ checkpointSlug: "stance-setup", score: 3, notes: "Athletic base." }] })), "unscored is allowed");
-  assert.match(renderSwingAnalysisPrompt(input()), /- hip-shoulder-sep: Hip-shoulder separation \(never AI-scored: [^)]*do not score\)/);
+  assert.doesNotMatch(renderSwingAnalysisPrompt(input()), /Checkpoints \(score/);
 });
 
 test("8. a single-instant checkpoint with its phase still is allowed when otherwise valid", () => {
@@ -428,15 +447,15 @@ test("the rejected ab1_hit draft pattern fails with every violation listed", () 
   });
 });
 
-test("prompt states the hardened rules and each checkpoint's evidence requirement", () => {
+test("simplified prompt states evidence rules and omits checklist scoring", () => {
   const prompt = renderSwingAnalysisPrompt(input());
   assert.match(prompt, /is never high/);
   assert.match(prompt, /Unknown pitch stays unknown/);
   assert.match(prompt, /Unknown outcome stays unknown/);
-  assert.match(prompt, /Score a checkpoint only when the evidence it requires was supplied/);
+  assert.match(prompt, /Write for a parent/);
   assert.match(prompt, /does not apply when/);
-  assert.match(prompt, /- follow-through: Follow-through & finish \(requires: follow_through still - NOT SUPPLIED \(follow_through still\): do not score\)/);
-  assert.match(prompt, /- contact-point: Contact point \(requires: contact still\)\n/);
+  assert.doesNotMatch(prompt, /Checkpoints \(score/);
+  assert.match(prompt, /visible strengths/);
   assert.match(prompt, /"swing_context": "game"/);
   assert.match(SWING_ANALYSIS_JSON_SHAPE_INSTRUCTIONS, /"confidence": "medium"\|"low"/);
 });

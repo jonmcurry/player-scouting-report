@@ -1,0 +1,52 @@
+.simple-app { min-height:100vh; background:var(--bg); color:var(--text-1); }
+.simple-top { max-width:720px; margin:auto; min-height:64px; padding:0 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); }
+.simple-brand { font:700 1.6rem var(--font-display); text-decoration:none; color:var(--text-1); }
+.simple-main { max-width:720px; margin:auto; padding:20px 16px 110px; }
+.simple-main h1,.simple-main h2 { font-family:var(--font-display); text-transform:uppercase; letter-spacing:.02em; }
+.simple-main h1 { font-size:2rem; margin:12px 0 18px; }
+.simple-main h2 { font-size:1.3rem; margin:0 0 12px; }
+.simple-eyebrow { color:var(--brand-text); text-transform:uppercase; font-size:.75rem; font-weight:700; letter-spacing:.08em; }
+.simple-card { background:var(--surface-1); border:1px solid var(--border); border-radius:16px; padding:16px; margin:12px 0; }
+.simple-card p { line-height:1.5; margin:8px 0; }
+.simple-muted { color:var(--text-2); }
+.simple-action { display:flex; align-items:center; justify-content:center; min-height:52px; padding:12px 18px; border:0; border-radius:12px; font-weight:700; text-decoration:none; cursor:pointer; }
+.simple-action.primary { background:var(--brand-fill); color:var(--on-brand); width:100%; }
+.simple-action.secondary { background:var(--surface-2); color:var(--text-1); }
+.simple-action.link { background:transparent; color:var(--text-1); text-decoration:underline; }
+.simple-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+.simple-actions > * { flex:1 1 130px; }
+.simple-row { width:100%; display:flex; justify-content:space-between; gap:12px; align-items:center; min-height:64px; padding:10px 4px; background:transparent; color:var(--text-1); border:0; border-bottom:1px solid var(--border); text-align:left; cursor:pointer; }
+.simple-row strong { display:block; }
+.simple-row small { display:block; color:var(--text-2); margin-top:4px; }
+.simple-roster-row { display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border); }
+.simple-roster-row .simple-row { flex:1; border:0; }
+.simple-roster-row .simple-action { flex:0 0 auto; }
+.simple-invite-link { width:100%; min-height:48px; margin:12px 0; }
+.simple-switcher { display:flex; gap:8px; overflow:auto; margin:0 0 20px; }
+.simple-switcher button { flex:0 0 auto; min-height:48px; border-radius:24px; padding:0 18px; }
+.simple-switcher [aria-pressed="true"] { background:var(--brand-fill); color:white; }
+.simple-nav { position:fixed; bottom:0; left:0; right:0; z-index:10; display:flex; justify-content:center; background:var(--surface-1); border-top:1px solid var(--border); padding:8px 8px calc(8px + env(safe-area-inset-bottom)); }
+.simple-nav button { flex:1; max-width:220px; min-height:52px; border:0; border-radius:10px; background:transparent; color:var(--text-2); font-weight:700; }
+.simple-nav button[aria-current="page"] { color:white; background:var(--surface-3); }
+.simple-dialog { width:min(calc(100vw - 16px),520px); max-height:85vh; margin:auto auto 0; padding:20px; background:var(--surface-1); color:var(--text-1); border:1px solid var(--border-strong); border-radius:20px 20px 0 0; }
+.simple-dialog::backdrop { background:var(--scrim); }
+.simple-dialog label { display:block; margin:12px 0; }
+.simple-dialog select { width:100%; min-height:48px; margin-top:5px; }
+.simple-chip-row { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+.simple-chip-row button { min-height:48px; border-radius:24px; padding:0 16px; }
+.simple-chip-row [aria-pressed="true"] { background:var(--brand-fill); color:white; }
+.simple-video { width:100%; max-height:410px; background:black; border-radius:12px; }
+.simple-compare { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.simple-compare figure { margin:0; min-width:0; }
+.simple-compare video { width:100%; background:black; border-radius:10px; }
+.simple-compare figcaption { color:var(--text-2); margin-top:4px; }
+.simple-strength { color:var(--success); }
+.simple-cue { font:600 1.5rem/1.25 var(--font-display); color:var(--text-1); }
+.simple-drill summary { min-height:48px; display:flex; align-items:center; cursor:pointer; font-weight:700; }
+.simple-drill ol { padding-left:22px; line-height:1.5; }
+.simple-guide { padding-left:24px; line-height:1.5; }
+.simple-guide li { margin:10px 0; }
+.simple-error { color:var(--warning); }
+#simpleMessage:not(:empty) { background:var(--surface-2); border-radius:10px; padding:12px; margin-bottom:12px; }
+.simple-nav[hidden] { display:none; }
+@media (min-width:700px) { .simple-dialog { margin:auto; border-radius:20px; } }

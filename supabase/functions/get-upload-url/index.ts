@@ -13,8 +13,7 @@
 // Access control: the caller's own JWT must pass can_upload_for_entry()
 // (coach of the entry's team, or guardian of the entry's player). Only then
 // is the entry resolved - with the service-role client, since guardians have
-// no table access - and teamSlug/playerSlug are derived SERVER-SIDE from it,
-// never trusted from client input.
+// no table access. The object name contains only the entry and clip UUIDs.
 //
 // Local-dev fallback: fake-gcs-server's simple-upload JSON API endpoint
 // (`POST /upload/storage/v1/b/{bucket}/o?uploadType=media&name={object}`)
@@ -28,7 +27,7 @@
 // can_upload_for_entry passed as a linked guardian). Before minting, it
 // enforces what guardian_register_clip enforces afterwards, so a guardian
 // can't get a writable URL for anything the RPC would refuse:
-//   * clipSlug ^[A-Za-z0-9_-]{1,200}$ and ext ^\.[A-Za-z0-9]{1,10}$ (400);
+//   * clipSlug is a UUID and ext is ^\.[A-Za-z0-9]{1,10}$ (400);
 //   * the per-guardian quota (10 registered clips per rolling 24h) - a
 //     read-only check here (429); guardian_register_clip still records the
 //     event and re-checks under its lock;
@@ -41,7 +40,7 @@
 //     PRE-DEPLOY; unverified against real GCP); the emulator URL gets
 //     `ifGenerationMatch=0` (fake-gcs-server answers 412 on an existing
 //     object - verified locally).
-// The coach branch is unchanged (no extra checks, no precondition).
+// Coaches use the same create-only opaque destination.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Storage } from "npm:@google-cloud/storage@7";
@@ -60,6 +59,7 @@ function jsonResponse(body: unknown, status = 200) {
 
 // guardian_register_clip's limit (00042): 10 registered clips per guardian per rolling 24h.
 const GUARDIAN_DAILY_LIMIT = 10;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Is there already an object at bucket/object? (service-role GCS client; the emulator's JSON API locally). */
 async function objectExists(bucket: string, object: string, emulatorHost: string | undefined): Promise<boolean> {
@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
     );
     const { data: entry, error } = await serviceClient
       .from("game_log_entries")
-      .select("id, players!inner(slug, team_id, teams!inner(slug))")
+      .select("id, players!inner(team_id)")
       .eq("id", gameLogEntryId)
       .single();
 
@@ -125,13 +125,11 @@ Deno.serve(async (req) => {
       return notAccessible();
     }
 
-    const teamSlug = (entry.players as unknown as { teams: { slug: string } }).teams.slug;
-    const playerSlug = (entry.players as unknown as { slug: string }).slug;
     const teamId = (entry.players as unknown as { team_id: string }).team_id;
     const bucketName = Deno.env.get("GCS_BUCKET_NAME")!;
     const emulatorHost = Deno.env.get("GCS_EMULATOR_HOST");
 
-    // Coach of the entry's team -> the unchanged coach branch. Anyone else who
+    // Coach of the entry's team -> coach branch. Anyone else who
     // passed can_upload_for_entry is a linked guardian of the entry's player.
     const { data: userData, error: userError } = await supabase.auth.getUser(authHeader.replace(/^Bearer\s+/i, ""));
     const userId = userData?.user?.id;
@@ -145,11 +143,26 @@ Deno.serve(async (req) => {
     if (coachError) return jsonResponse({ error: "Couldn't check upload access" }, 500);
     const asGuardian = (coachRows ?? []).length === 0;
 
-    if (asGuardian) {
-      // Same rules as guardian_register_clip (00042).
-      if (typeof clipSlug !== "string" || !/^[A-Za-z0-9_-]{1,200}$/.test(clipSlug) || typeof ext !== "string" || !/^\.[A-Za-z0-9]{1,10}$/.test(ext)) {
+    // Both roles receive the same opaque path. A UUID clip slug is also the
+    // worker's stable local directory key for retries.
+    if (typeof clipSlug !== "string" || !UUID.test(clipSlug) || typeof ext !== "string" || !/^\.[A-Za-z0-9]{1,10}$/.test(ext)) {
         return jsonResponse({ error: "invalid clip slug or extension" }, 400);
-      }
+    }
+    const destination = `${gameLogEntryId}/raw/${clipSlug}${ext}`;
+    const gcsPath = `gs://${bucketName}/${destination}`;
+    const resolvedContentType = contentType || "video/mp4";
+
+    const exists = await objectExists(bucketName, destination, emulatorHost);
+    if (exists) {
+      const { data: owned, error: ownershipError } = await supabase.rpc("has_simple_upload_reservation", {
+        p_entry_id: gameLogEntryId, p_clip_slug: clipSlug, p_object_name: destination,
+      });
+      if (ownershipError) return jsonResponse({ error: "Couldn't check this upload" }, 500);
+      if (owned !== true) return jsonResponse({ error: "A video with this name already exists" }, 409);
+      return jsonResponse({ alreadyUploaded: true, gcsPath });
+    }
+
+    if (asGuardian) {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { count, error: quotaError } = await serviceClient
         .from("guardian_upload_events")
@@ -162,13 +175,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    const destination = `${teamSlug}/${playerSlug}/raw/${clipSlug}${ext}`;
-    const gcsPath = `gs://${bucketName}/${destination}`;
-    const resolvedContentType = contentType || "video/mp4";
-
-    if (asGuardian && await objectExists(bucketName, destination, emulatorHost)) {
-      return jsonResponse({ error: "A video with this name already exists" }, 409);
-    }
+    const { data: reserved, error: reservationError } = await supabase.rpc("reserve_simple_upload", {
+      p_entry_id: gameLogEntryId, p_clip_slug: clipSlug, p_object_name: destination,
+    });
+    if (reservationError) return jsonResponse({ error: "Couldn't check the upload limit" }, 500);
+    if (reserved !== true) return jsonResponse({ error: "At most 10 videos per day" }, 429);
 
     let uploadUrl: string;
     let method: string;
@@ -177,11 +188,11 @@ Deno.serve(async (req) => {
       uploadUrl =
         `${emulatorHost}/upload/storage/v1/b/${bucketName}/o` +
         `?uploadType=media&name=${encodeURIComponent(destination)}` +
-        (asGuardian ? "&ifGenerationMatch=0" : "");
+        "&ifGenerationMatch=0";
       method = "POST";
     } else {
       const storage = new Storage({ projectId: Deno.env.get("GCP_PROJECT_ID") });
-      const createOnly = asGuardian ? { "x-goog-if-generation-match": "0" } : undefined;
+      const createOnly = { "x-goog-if-generation-match": "0" };
       const [signedUrl] = await storage
         .bucket(bucketName)
         .file(destination)
@@ -190,7 +201,7 @@ Deno.serve(async (req) => {
           action: "write",
           expires: Date.now() + 15 * 60 * 1000,
           contentType: resolvedContentType,
-          ...(createOnly ? { extensionHeaders: createOnly } : {}),
+          extensionHeaders: createOnly,
         });
       uploadUrl = signedUrl;
       method = "PUT";

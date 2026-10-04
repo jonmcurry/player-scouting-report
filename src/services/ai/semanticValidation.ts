@@ -16,7 +16,7 @@
  * (e.g. a posture claim) can contaminate others (the contact-point score built on it).
  */
 import type { PitchContext, SwingContext } from "./analysisContext.js";
-import type { ChecklistDraft, CompDraft, DrillDraft, IssueDraft } from "./swingAnalysisShared.js";
+import type { ChecklistDraft, CompDraft, DrillDraft, IssueDraft, StrengthDraft } from "./swingAnalysisShared.js";
 import { CHECKPOINT_EVIDENCE_TIERS, type CheckpointEvidenceTier } from "../../types/scouting.js";
 
 export class SemanticValidationError extends Error {
@@ -29,6 +29,7 @@ export class SemanticValidationError extends Error {
 /** What the model was actually given - the only facts a draft may assert. */
 export interface ValidationEvidence {
   pitch: PitchContext;
+  atBatResult?: "hit" | "out" | "walk" | "strikeout" | null;
   frameNames: string[];
   /** does_not_apply_when of each methodology claim offered this run, keyed by claim id. */
   claimExclusions?: Record<string, string>;
@@ -161,15 +162,15 @@ const PITCH_TYPES: { re: RegExp; supportedBy: string[] }[] = [
 // Outcome language, each with the recorded pitch facts that make it true. The schema records only
 // ball / called_strike / swinging_strike / foul / ball_in_play / hit_by_pitch / take / other (+ swung)
 // - never contact quality or the batted-ball result - so those claims are never supported.
-const OUTCOMES: { re: RegExp; supported: (p: PitchContext) => boolean }[] = [
+const OUTCOMES: { re: RegExp; supported: (p: PitchContext, result: ValidationEvidence["atBatResult"]) => boolean }[] = [
   { re: /\b(weak|hard|solid|poor|clean|square|flush|soft|good)\s+contact\b(?![- ]point)/i, supported: never },
   { re: /\b(mis-?hit|jammed|popped up|pop[- ]?up|pop fly|fly ?ball|ground ?ball|grounder|line ?drive|base hit|home run|homered)\b/i, supported: never },
-  { re: /\b(got|get|gets|for|recorded) a hit\b/i, supported: never },
-  { re: /\b(struck out|strike ?out)\b/i, supported: never },
+  { re: /\b(got|get|gets|for|recorded) a hit\b/i, supported: (_p, result) => result === "hit" },
+  { re: /\b(struck out|strike ?out)\b/i, supported: (_p, result) => result === "strikeout" },
   { re: /\b(whiff(ed)?|swung and missed|missed the ball)\b|\bswing(ing)?[- ](and|&)[- ]miss\b/i, supported: outcomeIs("swinging_strike") },
   { re: /\b(singled|doubled|tripled|drew a walk|base on balls|ball four)\b/i, supported: never },
   { re: /\b(hit|had|got|for|lined|blooped|legged out) an? (single|double|triple|homer)\b/i, supported: never },
-  { re: /\bwalked\b(?! (through|into|up|back|toward|forward|over))|\bfor a walk\b/i, supported: never },
+  { re: /\bwalked\b(?! (through|into|up|back|toward|forward|over))|\bfor a walk\b/i, supported: (_p, result) => result === "walk" },
   { re: /\bfoul(ed|s)?\b(?![- ](line|pole|territory))/i, supported: outcomeIs("foul") },
   { re: /\bput (it|the ball) in play\b|\bball in play\b/i, supported: outcomeIs("ball_in_play") },
   { re: /\bhit by (the |a )?pitch\b/i, supported: outcomeIs("hit_by_pitch") },
@@ -226,6 +227,8 @@ function findPhrase(text: string, re: RegExp, opts: { allowHedged: boolean; kind
 }
 
 export interface SemanticResult {
+  summary?: string | null;
+  strengths?: StrengthDraft[];
   noActionReason: string | null;
   checklist: ChecklistDraft[];
   issues: IssueDraft[];
@@ -238,6 +241,11 @@ export interface SemanticResult {
  * fields describe this swing; "prescriptive" fields describe practice or what to watch next. */
 function textFields(result: SemanticResult): { where: string; field: string; text: string; kind: FieldKind }[] {
   const out: { where: string; field: string; text: string; kind: FieldKind }[] = [];
+  if (result.summary) out.push({ where: "response", field: "summary", text: result.summary, kind: "observed" });
+  result.strengths?.forEach((strength, i) => {
+    out.push({ where: `strengths[${i}]`, field: "text", text: strength.text, kind: "observed" });
+    out.push({ where: `strengths[${i}]`, field: "evidence", text: strength.evidence, kind: "observed" });
+  });
   if (result.noActionReason) out.push({ where: "response", field: "noActionReason", text: result.noActionReason, kind: "observed" });
   result.issues.forEach((issue, i) => {
     for (const field of ["issue", "seenInAtBats", "likelyCause", "effect", "evidence"] as const) out.push({ where: `issues[${i}]`, field, text: issue[field], kind: "observed" });
@@ -296,7 +304,7 @@ export function assertSemanticallyValid(result: SemanticResult, evidence: Valida
     for (const { re, supported } of OUTCOMES) {
       // `effect` is the "why it may matter" field: a hedged general consequence is allowed there.
       const t = findPhrase(text, re, { allowHedged: field === "effect", kind });
-      if (t && !supported(evidence.pitch)) {
+      if (t && !supported(evidence.pitch, evidence.atBatResult)) {
         const recorded = `outcome ${knownOutcome ?? "unknown"}, swung ${evidence.pitch.swung ?? "unknown"}`;
         violations.push(`${where}.${field} asserts this swing's outcome ("${t}") but the recorded pitch (${recorded}) does not support it`);
       }

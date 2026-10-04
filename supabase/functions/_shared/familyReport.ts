@@ -2,8 +2,8 @@
 // stays in each function; this module only reads, with whatever client the
 // caller hands it (always the service role - both callers authorize first):
 //   * get-player-report  - anonymous share-link viewer (token checked there).
-//                          { includeVideoIds: false } -> exactly the payload it
-//                          has always returned (snapshot-tested).
+//                          { includeVideoIds: false } -> anonymous payload
+//                          with redacted player identity (snapshot-tested).
 //   * get-family-report  - a linked guardian (is_guardian_for_player checked
 //                          there). { includeVideoIds: true } adds the family-
 //                          only sections below, which carry clip ids.
@@ -26,8 +26,9 @@
 //             (clip_removed_findings), else null.
 // Never: AI drafts, notes, source, confidence, analysis metrics, storage paths.
 
-import { shapePlayerReport } from "../get-player-report/shape.ts";
+import { shapePlayerReport, sharedPlayerName } from "../get-player-report/shape.ts";
 import { clipReviewState, type ClipReviewStatus } from "./clipReviewState.ts";
+import { redactSharedValue } from "./sharedText.ts";
 
 export type FamilyClip = { id: string; recordedAt: string; status: ClipReviewStatus; uploadedByYou: boolean; deleteUnfinished: boolean };
 export type FamilyFinding = {
@@ -47,7 +48,7 @@ type Db = any;
 export async function buildFamilyReport(db: Db, playerId: string, opts: { includeVideoIds: false }): Promise<PlayerReport | null>;
 export async function buildFamilyReport(db: Db, playerId: string, opts: { includeVideoIds: true; viewerUserId: string }): Promise<FamilyReport | null>;
 export async function buildFamilyReport(db: Db, playerId: string, opts: { includeVideoIds: boolean; viewerUserId?: string }): Promise<PlayerReport | FamilyReport | null> {
-  const report = await buildPlayerReport(db, playerId);
+  const report = await buildPlayerReport(db, playerId, !opts.includeVideoIds);
   if (!report || !opts.includeVideoIds) return report;
   if (!opts.viewerUserId) throw new Error("viewerUserId is required for the family report");
   const [clips, findings] = await Promise.all([familyClips(db, playerId, opts.viewerUserId), reviewedFindings(db, playerId)]);
@@ -55,7 +56,7 @@ export async function buildFamilyReport(db: Db, playerId: string, opts: { includ
 }
 
 // The queries get-player-report has always run (moved here unchanged).
-async function buildPlayerReport(supabase: Db, playerId: string): Promise<PlayerReport | null> {
+async function buildPlayerReport(supabase: Db, playerId: string, publicLink: boolean): Promise<PlayerReport | null> {
   const { data: player, error: playerError } = await supabase
     .from("players")
     .select("name, jersey_number, what_to_check_next, teams!inner(name)")
@@ -88,14 +89,20 @@ async function buildPlayerReport(supabase: Db, playerId: string): Promise<Player
       ])
     : [{ data: [] }, { data: [] }];
 
-  return shapePlayerReport({
-    player: { name: player.name, jersey_number: player.jersey_number, teamName: (player.teams as unknown as { name: string }).name, whatToCheckNext: player.what_to_check_next },
+  const shaped = shapePlayerReport({
+    player: {
+      name: publicLink ? sharedPlayerName(player.name) : player.name,
+      jersey_number: publicLink ? null : player.jersey_number,
+      teamName: publicLink ? "" : (player.teams as unknown as { name: string }).name,
+      whatToCheckNext: player.what_to_check_next,
+    },
     scores: scores ?? [],
     priorities: priorities ?? [],
     drills: drills ?? [],
     observations: observations ?? [],
     loggedAtBats: loggedAtBats ?? 0,
   });
+  return publicLink ? redactSharedValue(shaped, player.name, (player.teams as { name: string }).name) as PlayerReport : shaped;
 }
 
 function must<T>(res: { data: T | null; error: { message: string } | null }, what: string): T {

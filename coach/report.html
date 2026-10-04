@@ -1,6 +1,6 @@
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>HitterLoop — Player Report</title>
-<link rel="stylesheet" href="./coach.css?v=6faa2dd8c8"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
+<link rel="stylesheet" href="./coach.css?v=a51b5ba5c8"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
 </head><body class="bt-public-report"><div class="bt-report-brand">HitterLoop</div><main class="wrap"><div id="reportRoot"><div class="bt-report-skeleton"><div></div><div></div><div></div></div></div></main>
 <script src="./demo.local.js"></script><script src="./config.local.js"></script><script type="module">
 import { supabase, qs, escapeHtml } from "./shared.js";
@@ -29,7 +29,7 @@ function network(){root.innerHTML='<section class="bt-report-state"><h1>Couldn�
 function render(data){
   const priorities=data.priorities??[],focus=priorities.find((p)=>p.status!=="resolved")??null,others=priorities.filter((p)=>p!==focus),drill=focus?.drills?.[0]??null;
   const progress=focus?.progress??[],strengths=data.strengths??[],clips=focus?.clips??[];
-  root.innerHTML=`<header class="bt-report-player"><span class="jersey-badge lg">${escapeHtml(data.jerseyNumber??"")}</span><div><h1>${escapeHtml(data.playerName)}</h1><p>${escapeHtml(data.teamName)}</p></div></header>
+  root.innerHTML=`<header class="bt-report-player">${isDemoMode()?`<span class="jersey-badge lg">${escapeHtml(data.jerseyNumber??"")}</span>`:""}<div><h1>${escapeHtml(data.playerName)}</h1>${isDemoMode()?`<p>${escapeHtml(data.teamName??"")}</p>`:""}</div></header>
     <section><h2>What’s going well</h2>${strengths.length||priorities.some((p)=>p.status==="resolved")?`<ul class="bt-strengths">${strengths.map((item)=>`<li>${icon("check",{size:18})}<span>${escapeHtml(typeof item === "string" ? item : item.note || item.label)}</span></li>`).join("")}${priorities.filter((p)=>p.status==="resolved").map((p)=>`<li>${icon("check",{size:18})}<span>Got it: ${escapeHtml(p.title)}</span></li>`).join("")}</ul>`:'<p>Strengths will appear here as your coach reviews more swings.</p>'}</section>
     ${focus ? `<section class="bt-card bt-report-focus"><span class="bt-eyebrow">Current Priority</span><div class="bt-report-title-row"><h2>${escapeHtml(focus.title)}</h2><span class="bt-public-status">${escapeHtml(focus.statusLabel)}</span></div>${focus.why?`<p>${escapeHtml(focus.why)}</p>`:""}</section>
     <section class="bt-card bt-report-next"><span class="bt-eyebrow">Next step</span>${focus?.nextCheck?`<h2>${escapeHtml(focus.nextCheck)}</h2>`:`<h2>${escapeHtml(data.nextStep || "Your coach will review more swing video.")}</h2>${data.nextStep ? "" : "<p>The most useful next video shows the whole body and the bat all the way through contact.</p>"}`}</section>

@@ -1,5 +1,5 @@
 // Edge Function: really deletes a clip - for a coach of the clip's team, or
-// for the guardian who uploaded it (parent pathway). Replaces the coach app's
+// for any linked guardian of its player. Replaces the coach app's
 // old row-only `delete from video_clips`, which left the raw video in GCS, the
 // worker's derived files, and the unreviewed AI drafts behind.
 //
@@ -9,7 +9,7 @@
 //   2-4. begin_clip_deletion() (service role, one transaction): refuses a clip
 //        that is in a stored demo fixture (and every clip while any stored
 //        fixture is in a shape it can't check), or whose raw_gcs_path is not this
-//        clip's own <team>/<player>/raw/ object (409, nothing changed); writes
+//        clip's own verified raw object (409, nothing changed); writes
 //        the clip_deletions audit row (on conflict do nothing); deletes draft
 //        issues and the AI output of the clip's analysis runs; records which
 //        reviewed findings lose their video.
@@ -104,7 +104,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: `Couldn't delete the clip: ${beginError.message}` }, 500);
     }
 
-    // 5. begin_clip_deletion verified the path is gs://<bucket>/<team>/<player>/raw/<file>.
+    // 5. begin_clip_deletion verified the clip's own raw object path.
     const rawPath = (begun as { raw_gcs_path: string | null }).raw_gcs_path;
     if (rawPath) {
       const object = rawPath.slice(`gs://${bucket}/`.length);

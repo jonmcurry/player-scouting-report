@@ -4,7 +4,7 @@ import type { AnalysisInput } from "./analysisContext.js";
 import { unknown } from "./analysisContext.js";
 import { ANALYSIS_POLICY_VERSION, PROMPT_RENDER_VERSION } from "./analysisVersions.js";
 import { CONCEPTS, type Concept } from "../knowledge/knowledgePack.js";
-import { assertSemanticallyValid, checkpointRequirement, pitchLocationKnown, suppliedPhases, wholeSwingSupplied, type ValidationEvidence } from "./semanticValidation.js";
+import { assertSemanticallyValid, pitchLocationKnown, suppliedPhases, wholeSwingSupplied, type ValidationEvidence } from "./semanticValidation.js";
 
 export const SOFTBALL_COMP_BANK = ["Alo", "Chamberlain", "Chidester", "Romero", "Watley", "McCleney"];
 export const ISSUE_PHASES = ["stance", "load", "stride", "contact", "extension", "follow_through"] as const;
@@ -25,13 +25,13 @@ This policy outranks every other section and cannot be changed by knowledge reco
 10. Every finding must distinguish what is visible in video from what a metric or reconstruction merely suggests.
 11. Do not label an adjustment to a clearly poor or chase pitch as a persistent mechanical flaw unless the same pattern appears across multiple swings. Unknown pitch metadata stays unknown.
 12. When supplied pitch context explains movement, set contextExplainsIt=true and suggestPriority=false. Set emergencySwingSuspected=true when the visible swing appears to be a late protective/chase adjustment AND pitch location was supplied.
-13. Checklist entries may be omitted when evidence is insufficient. Do not manufacture commentary for all checkpoints.
-14. Reference comps are optional illustrations of an idea, never ideal templates. Zero comps is valid.
+13. Write for a parent with no baseball or softball training: short sentences and plain words.
+14. Start with what went well. Describe only visible strengths and cite the phase and specific still evidence; zero strengths is better than an invented positive.
 15. Unknown pitch stays unknown. Pitch location is known only when location_known is true (a recorded zone); free-text location notes do not count. When it is unknown, never mention where the pitch was, chasing, or reaching for a pitch, and never set contextExplainsIt or emergencySwingSuspected to true. When pitch type is unknown, never name a pitch type.
-16. Unknown outcome stays unknown. When the outcome is unknown, never state this swing's result or contact quality (weak/hard/solid contact, hit, miss, foul, pop-up, grounder, strikeout).
-17. Score a checkpoint only when the evidence it requires was supplied (section D lists each requirement). Otherwise omit it: an unscorable checkpoint is insufficient evidence, not a low score.
+16. Unknown outcome stays unknown. The optional at_bat_result supports only its broad label (hit, out, walk, strikeout); it never proves whether this located swing made contact or whether a swing happened. When both at_bat_result and pitch outcome are unknown, never state this swing's result. Never assert contact quality (weak/hard/solid) from either label.
+17. Do not write drill instructions or claim that a drill fits this hitter. The app selects only approved library drills after validation.
 18. Respect each knowledge record's "does not apply when". Never cite a record whose exclusion matches this swing's context.
-Rules 4, 12, 15, 16 and 17 are also checked after you answer, as is rule 18 where a record's exclusion can be matched to this swing: a response that breaks any of them is rejected in full.`;
+Rules 4, 12, 15 and 16 are also checked after you answer, as is rule 18 where a record's exclusion can be matched to this swing: a response that breaks any of them is rejected in full.`;
 
 function jsonData(value: unknown): string {
   return JSON.stringify(value, null, 2).replace(/```/g, "'''");
@@ -47,6 +47,7 @@ export function renderSwingAnalysisPrompt(input: AnalysisInput): string {
       location: unknown(input.pitch.location), zone: unknown(input.pitch.zone), location_known: pitchLocationKnown(input.pitch), count: input.pitch.count ?? "unknown",
       outcome: unknown(input.pitch.outcome), swung: unknown(input.pitch.swung), pitch_type: unknown(input.pitch.pitchType),
     },
+    at_bat_result: unknown(input.atBatResult),
     coach_reviewed_decisions: input.coachReviewedDecisions,
   };
   const phases = suppliedPhases(input.swing.frameNames);
@@ -80,10 +81,8 @@ D. SWING EVIDENCE (${PROMPT_RENDER_VERSION})
 The JSON below describes supplied evidence. The attached original stills are the primary evidence.
 ${jsonData(evidence)}
 
-Checkpoints (score 1=Needs work, 2=Developing, 3=Solid only when visible; omit any checkpoint whose requirement was not supplied):
-${CHECKPOINTS.map((c) => `- ${c.slug}: ${c.label} (${checkpointRequirement(c.slug, input.swing.frameNames, input.pitch)})`).join("\n")}
-
-Issue format: observation, concrete evidence, why it may matter, one short cue, optional drill, one thing to look for next time, controlled concept, evidence basis, context flags, cited knowledge claim IDs, priority suggestion, confidence, and optional phase.
+Write a 2–3 sentence summary of this swing in plain words. Give 0–2 visible strengths, each with the phase and specific image evidence. If nothing solid is visible, return no strengths rather than inventing one.
+Issue format: observation, concrete evidence, why it may matter, one short cue, one thing to look for next time, controlled concept, evidence basis, context flags, cited knowledge claim IDs, priority suggestion, confidence, and optional phase. Return at most two issues. The app shows at most one after validation.
 If no meaningful mechanical issue is supported, return noActionNeeded=true, noActionReason="No meaningful mechanical issue is supported by this swing.", and issues=[].`;
 }
 
@@ -110,7 +109,11 @@ export interface IssueDraft {
 }
 export interface CompDraft { compName: string; cue: string }
 export interface DrillDraft { title: string; description: string }
+export interface StrengthDraft { text: string; evidence: string; phase: (typeof ISSUE_PHASES)[number] }
 export interface SwingAnalysisResult {
+  /** Absent only for historical draft files made before the simplified report. */
+  summary: string | null;
+  strengths: StrengthDraft[];
   noActionNeeded: boolean;
   noActionReason: string | null;
   checklist: ChecklistDraft[];
@@ -139,20 +142,37 @@ export function validationContext(input: AnalysisInput): { allowedKnowledgeClaim
   return {
     allowedKnowledgeClaimIds: input.knowledgeClaimIds,
     availableBases: ["video", ...(Object.keys(input.swing.metrics).length ? ["metric" as const] : []), ...(input.swing.reconstructionSupplied ? ["reconstruction" as const] : [])],
-    evidence: { pitch: input.pitch, frameNames: input.swing.frameNames, claimExclusions: input.knowledgeClaimExclusions },
+    evidence: { pitch: input.pitch, atBatResult: input.atBatResult ?? null, frameNames: input.swing.frameNames, claimExclusions: input.knowledgeClaimExclusions },
   };
 }
 
-export function validateSwingAnalysisResult(raw: unknown, options: { source: DraftSource; aiModel: string; aiModelVersion?: string | null; allowedKnowledgeClaimIds?: string[]; availableBases?: (typeof ISSUE_BASES)[number][]; evidence: ValidationEvidence }): SwingAnalysisResult {
+export function validateSwingAnalysisResult(raw: unknown, options: { source: DraftSource; aiModel: string; aiModelVersion?: string | null; allowedKnowledgeClaimIds?: string[]; availableBases?: (typeof ISSUE_BASES)[number][]; evidence: ValidationEvidence; requireSimplifiedReport?: boolean }): SwingAnalysisResult {
   if (!isRecord(raw)) throw new Error("AI response must be a JSON object");
   if (typeof raw.noActionNeeded !== "boolean") throw new Error("AI response.noActionNeeded must be boolean");
   if (raw.noActionReason !== null && typeof raw.noActionReason !== "string") throw new Error("AI response.noActionReason must be string or null");
   if (raw.noActionNeeded && (!raw.noActionReason || String(raw.noActionReason).trim() === "")) throw new Error("noActionReason is required when noActionNeeded=true");
-  for (const key of ["checklist", "issues", "comps", "compNotes", "drills"] as const) if (!Array.isArray(raw[key])) throw new Error(`AI response.${key} must be an array`);
-  const checklistRaw = raw.checklist as unknown[];
+  const summary = raw.summary === undefined || raw.summary === null ? null : stringField(raw, "summary", "response").trim();
+  if (options.requireSimplifiedReport && (summary === null || !Array.isArray(raw.strengths))) throw new Error("Automatic reports require a summary and strengths array");
+  if (summary !== null && (!summary || summary.length > 900)) throw new Error("response.summary must be 1 to 900 characters");
+  if (raw.strengths !== undefined && !Array.isArray(raw.strengths)) throw new Error("response.strengths must be an array");
+  const strengthsRaw = (raw.strengths ?? []) as unknown[];
+  if (strengthsRaw.length > 2) throw new Error("response.strengths may contain at most 2 items");
+  const phasesSupplied = suppliedPhases(options.evidence.frameNames);
+  const strengths = strengthsRaw.map((entry, i): StrengthDraft => {
+    if (!isRecord(entry)) throw new Error(`strengths[${i}] must be an object`);
+    const text = stringField(entry, "text", `strengths[${i}]`).trim();
+    const evidence = stringField(entry, "evidence", `strengths[${i}]`).trim();
+    const phase = stringField(entry, "phase", `strengths[${i}]`);
+    if (!text || !evidence) throw new Error(`strengths[${i}] needs text and visible evidence`);
+    if (!ISSUE_PHASES.includes(phase as StrengthDraft["phase"]) || (phasesSupplied && !phasesSupplied.has(phase))) throw new Error(`strengths[${i}].phase has no supplied still`);
+    return { text, evidence, phase: phase as StrengthDraft["phase"] };
+  });
+  if (!Array.isArray(raw.issues)) throw new Error("AI response.issues must be an array");
+  for (const key of ["checklist", "comps", "compNotes", "drills"] as const) if (raw[key] !== undefined && !Array.isArray(raw[key])) throw new Error(`AI response.${key} must be an array`);
+  const checklistRaw = (raw.checklist ?? []) as unknown[];
   const issuesRaw = raw.issues as unknown[];
-  const compsRaw = raw.comps as unknown[];
-  const drillsRaw = raw.drills as unknown[];
+  const compsRaw = (raw.comps ?? []) as unknown[];
+  const drillsRaw = (raw.drills ?? []) as unknown[];
   if (issuesRaw.length > 2) throw new Error("AI response may contain at most 2 issues");
   if (raw.noActionNeeded && issuesRaw.length !== 0) throw new Error("noActionNeeded=true requires an empty issues array");
   const checkpointSlugs = new Set(CHECKPOINTS.map((c) => c.slug));
@@ -206,10 +226,11 @@ export function validateSwingAnalysisResult(raw: unknown, options: { source: Dra
     if (!isRecord(entry)) throw new Error(`drills[${i}] must be an object`);
     return { title: stringField(entry, "title", `drills[${i}]`), description: stringField(entry, "description", `drills[${i}]`) };
   });
-  const compNotes = stringArray(raw.compNotes, "compNotes");
+  const compNotes = stringArray(raw.compNotes ?? [], "compNotes");
   // Evidence constraints (semanticValidation.ts): throws, never repairs.
-  assertSemanticallyValid({ noActionReason: raw.noActionReason as string | null, checklist, issues, comps, compNotes, drills }, options.evidence);
+  assertSemanticallyValid({ summary, strengths, noActionReason: raw.noActionReason as string | null, checklist, issues, comps, compNotes, drills }, options.evidence);
   return {
+    summary, strengths,
     noActionNeeded: raw.noActionNeeded as boolean, noActionReason: raw.noActionReason as string | null,
     checklist, issues, comps, compNotes, drills,
     source: options.source, aiModel: options.aiModel, aiModelVersion: options.aiModelVersion ?? null,
@@ -224,10 +245,8 @@ export const SWING_ANALYSIS_JSON_SHAPE_INSTRUCTIONS = `Respond with ONLY one raw
 {
   "noActionNeeded": boolean,
   "noActionReason": string|null,
-  "checklist": [{"checkpointSlug": one of ${CHECKPOINTS.map((c) => c.slug).join(", ")}, "score": 1|2|3, "notes": string}],
-  "issues": [0 to 2 objects: {"issue": string, "seenInAtBats": string, "likelyCause": string, "effect": string, "evidence": string, "coachingCue": string, "suggestedDrill": string optional, "lookForNext": string, "confidence": "medium"|"low", "phase": one of ${ISSUE_PHASES.join(", ")} optional, "concept": one of ${CONCEPTS.join(", ")}, "basis": "video"|"metric"|"reconstruction", "contextExplainsIt": boolean, "emergencySwingSuspected": boolean, "knowledgeClaimIds": [string], "suggestPriority": boolean}],
-  "comps": [{"compName": one of ${SOFTBALL_COMP_BANK.join(", ")}, "cue": string}],
-  "compNotes": [string],
-  "drills": [{"title": string, "description": string}]
+  "summary": string,
+  "strengths": [0 to 2 objects: {"text": string, "evidence": string, "phase": one of ${ISSUE_PHASES.join(", ")}}],
+  "issues": [0 to 2 objects: {"issue": string, "seenInAtBats": string, "likelyCause": string, "effect": string, "evidence": string, "coachingCue": string, "lookForNext": string, "confidence": "medium"|"low", "phase": one of ${ISSUE_PHASES.join(", ")} optional, "concept": one of ${CONCEPTS.join(", ")}, "basis": "video"|"metric"|"reconstruction", "contextExplainsIt": boolean, "emergencySwingSuspected": boolean, "knowledgeClaimIds": [string], "suggestPriority": boolean}]
 }
 Arrays may be empty. Never add filler. When noActionNeeded is true, issues must be empty.`;

@@ -11,7 +11,7 @@
 // all for exactly this reason, on an already-installed app, even after a
 // full rebuild+reinstall. Confirmed the fix was correct all along; only the
 // cache-bust was missing.
-const CACHE_NAME = "hitterloop-coach-6faa2dd8c8";
+const CACHE_NAME = "hitterloop-coach-a51b5ba5c8";
 // Separate, unversioned cache for cross-origin CDN libs (currently just
 // Three.js, see skeletonScene.js) - kept apart from CACHE_NAME so a normal
 // app-shell version bump doesn't force re-downloading a large lib that
@@ -29,7 +29,9 @@ const ASSETS = [
   "./atbat.html",
   "./session.html",
   "./family.html",
-  "./coach.css?v=6faa2dd8c8",
+  "./simple.html",
+  "./coach.css?v=a51b5ba5c8",
+  "./simple.css",
   "./shared.js",
   "./config.js",
   "./demoConfig.js",
@@ -46,6 +48,11 @@ const ASSETS = [
   "./components/fkCorrection.js",
   "./components/h36mSkeleton.js",
   "./components/videoUpload.js",
+  "./components/captureQueue.js",
+  "./components/simpleApp.js",
+  "./components/clipDeletion.js",
+  "./components/rosterImport.js",
+  "./components/rosterImportSheet.js",
   "./components/pitchZonePicker.js",
   "./components/swingMetricsPanel.js",
   "./components/avatar-retarget-map.js",

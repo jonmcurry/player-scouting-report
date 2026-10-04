@@ -1,4 +1,68 @@
-- Verify the Claude/Gemini orchestrator workflow after removing Codex.
+## 2026-10-04: 0.31.0 follow-up todo — simplified app is not ready to release
+
+- [ ] Finish the replacement screen against the approved prototype: settings, contact marker and
+  synchronized progress video, current-focus drill, practice line, and accessible mobile layout.
+  Run authenticated coach and guardian browser flows, then switch the default routes. Only after
+  those routes work, remove the obsolete Group B UI files identified in `docs/simplified_questions.md`.
+- [ ] Add GameChanger screenshot import with a clear notice before sending children's names to
+  Gemini. Keep CSV/paste as the fallback, and verify import mapping with a real GameChanger export.
+- [ ] Curate and approve drill candidates, including age and screen/feeder safety fields, before
+  activating them. Confirm selected cards match the fix and do not invent instructions.
+- [ ] Complete the confirmed-no-swing state, focus persistence after feedback/deletion, notification
+  delivery and settings, and the guardian re-consent gate. Get approval for the consent v2 draft;
+  keep separate public-demo permission for coach and guardian uploads.
+- [ ] Validate the Edge Function bundle, real GCS upload/playback/delete, old-object copy-and-verify
+  migration, 20 real at-bat reports, and end-to-end parent access. The local schema smoke test was
+  rolled back; hosted migrations 00041–00047, storage migration, hosting, and deployment are pending.
+- [ ] Perform manual rendered visual QA (the AGY headless browser was permission-blocked) and the
+  release privacy review. Do not invite families or enable the new default route before these pass.
+
+## 2026-10-03: simplified app refactor in progress (0.31.0)
+
+- Privacy groundwork is local only: anonymous share reports redact player identity and team;
+  new uploads use opaque object paths; playback refuses old paths until the separate copy-and-
+  verify migration runs; coach and family deletes use the audited `delete-clip` route. Migration
+  00046 and the storage copy script have not been applied to any cloud project.
+- GameChanger CSV import now offers explicit column mapping and player review, because the
+  published export instructions do not include stable column headers. A real export remains
+  unavailable; screenshot OCR is still open. CSV statistics stay in browser memory and are not
+  sent to the database.
+- Cleanup removed verified orphaned report rendering and static skeleton publication scripts,
+  an obsolete setup script, a committed backup, and the superseded handoff after carrying its
+  semantic-validation follow-ups here. The MediaPipe fallback and research provenance remain.
+- Pure report assembly, focus transitions, drill filtering, an authenticated/share-token read
+  endpoint, and additive schema foundations are in the working tree. A first replacement Home,
+  Record, Report, and Progress UI exists at `coach/simple.html`, including a persistent IndexedDB
+  upload queue and an invite-parent action, but it has not been switched into the default routes or
+  rendered end to end. The classic coach review UI is still the default. Do not invite families on
+  this build. Drill curation, screenshot import, notifications, hosting, and the 20 real at-bat check
+  remain open. The new report and focus UI still needs polish against the approved prototype.
+- The 00036–00047 migration chain and `supabase/tests/simplifiedFoundations.smoke.sql` passed in a
+  local Postgres transaction that was rolled back; no hosted schema was changed. The SQL fixture
+  covers coach and guardian capture/share permissions and a same-owner upload resume reservation.
+  Local `npm test` (211), focused analysis/development tests (57), roster tests (3), and Deno path
+  tests pass. Upload retries now reuse both a reserved storage object and an idempotent at-bat row.
+  The current Edge Function bundle and a real GCS upload remain unverified. Gemini review found
+  pending-deletion feed recovery and multi-video at-bat deletion defects; both were fixed and
+  re-reviewed. Its final warning that nullable drill instructions could crash shared reports is
+  contradicted by the existing `drill_library.instructions not null` and new
+  `common_mistakes text[] not null` schema; its path-prefix concern is guarded by
+  `begin_clip_deletion`. Historical hidden findings still conservatively mask a reanalysis
+  summary because sentence-to-finding attribution is unavailable. The browser visual pass is open:
+  the AGY headless wrapper could not obtain browser command permission.
+- Guardian consent has a draft in `docs/review/guardian-consent-v2-draft.md`; it needs a re-consent gate before any version change or
+  release. Explicit guardian permission for public use remains separate. Prepare rollback only
+  when an actual release is authorized.
+- The old 2026-10-02 items below remain historical context; the privacy bypass and false consent
+  statements there are being addressed here and should be reconciled after validation.
+
+- The Codex/Gemini orchestrated QA wrapper ran successfully for this refactor; its visual wrapper
+  could not access a browser in headless mode.
+
+Semantic validation follow-ups carried from the superseded `todo.md` handoff:
+- Check that a known pitch zone cannot be described as an unknown location.
+- Exercise database-derived game pitch context and practice repetition context in `buildAnalysisInput`.
+- Add wording cases where inside, outside, high, or low describe body position rather than pitch location.
 
 ## 2026-10-02: parent pathway (0.30.0, uncommitted)
 
