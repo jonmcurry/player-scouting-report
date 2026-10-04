@@ -8,6 +8,8 @@ import { advanceFocus, type Finding, type FocusRecord, type ReadableSwing } from
 import { opaqueRawObject } from "../_shared/opaqueStoragePath.ts";
 import { privateName, redactSharedText } from "../_shared/sharedText.ts";
 import { selectVisibleClips } from "./visibility.ts";
+import { selectDrills } from "../../../src/services/development/drillSelection.ts";
+import { practiceEvidence } from "../../../src/services/development/progressPractice.ts";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -145,6 +147,51 @@ Deno.serve(async (request) => {
       history: computed.history.map((row) => ({ concept: row.concept, status: row.status,
       startedAt: row.startedAt, endedAt: row.endedAt })), thenClipId: thenClip?.id ?? null,
       nowClipId: recent?.[0]?.id ?? null };
+    const { data: practiceClips, error: practiceError } = await service.from("video_clips")
+      .select("id, created_at, game_log_entries!inner(player_id, session_type)")
+      .eq("game_log_entries.player_id", playerId).eq("game_log_entries.session_type", "practice")
+      .eq("status", "ready").order("created_at", { ascending: false }).limit(20);
+    if (practiceError) throw practiceError;
+    const { data: practiceDeletions, error: practiceDeletionError } = (practiceClips ?? []).length
+      ? await service.from("clip_deletions").select("clip_id").in("clip_id", (practiceClips ?? []).map((clip) => clip.id))
+      : { data: [], error: null };
+    if (practiceDeletionError) throw practiceDeletionError;
+    const deletedPracticeIds = new Set((practiceDeletions ?? []).map((row) => row.clip_id));
+    const visiblePractice = (practiceClips ?? []).filter((clip) => !deletedPracticeIds.has(clip.id));
+    const { data: practiceRuns, error: practiceRunError } = visiblePractice.length
+      ? await service.from("analysis_runs").select("id, video_clip_id, created_at, summary, strengths")
+        .in("video_clip_id", visiblePractice.map((clip) => clip.id)).not("summary", "is", null)
+        .order("created_at", { ascending: false }) : { data: [], error: null };
+    if (practiceRunError) throw practiceRunError;
+    const { data: practiceIssues, error: practiceIssueError } = visiblePractice.length
+      ? await service.from("issues").select("video_clip_id, analysis_run_id, concept, basis, review_status, context_explains_it, emergency_swing_suspected")
+        .in("video_clip_id", visiblePractice.map((clip) => clip.id)) : { data: [], error: null };
+    if (practiceIssueError) throw practiceIssueError;
+    const practice = current ? practiceEvidence(visiblePractice.map((clip) => clip.id), practiceRuns ?? [],
+      practiceIssues ?? [], current.concept) : null;
+    let focusDrill: ReportDrill | null = null;
+    if (current) {
+      const { data: focusDrills, error: focusDrillError } = await service.from("drill_library")
+        .select("id, name, target_tags, best_for, is_active, min_age, sport, home_friendly, equipment, phase, requires_screen, weighted_or_overspeed, instructions, cue, looks_right_when, common_mistakes, demo_url, demo_timestamp, source_credit")
+        .eq("is_active", true);
+      if (focusDrillError) throw focusDrillError;
+      const age = player.age_band ? Number(player.age_band.match(/\d+/)?.[0] ?? 12) : Number(team.age_group?.match(/\d+/)?.[0] ?? 12);
+      const candidates: ReportDrill[] = (focusDrills ?? []).map((row) => ({ id: row.id, name: row.name,
+        targetTags: row.target_tags, bestFor: row.best_for ?? "", isActive: row.is_active, minAge: row.min_age,
+        sport: row.sport, homeFriendly: row.home_friendly, equipment: row.equipment, phase: row.phase,
+        requiresScreen: row.requires_screen, weightedOrOverspeed: row.weighted_or_overspeed,
+        instructions: row.instructions, cue: row.cue, looksRightWhen: row.looks_right_when,
+        commonMistakes: row.common_mistakes, demoUrl: row.demo_url, demoTimestamp: row.demo_timestamp,
+        sourceCredit: row.source_credit }));
+      focusDrill = selectDrills(candidates, { concept: current.concept, phase: null,
+        sport: team.sport === "baseball" || team.sport === "softball" ? team.sport : null, age })[0] ?? null;
+      if (focusDrill && shared) focusDrill = { ...focusDrill, name: sharedText(focusDrill.name),
+        bestFor: sharedText(focusDrill.bestFor), instructions: sharedText(focusDrill.instructions),
+        cue: focusDrill.cue ? sharedText(focusDrill.cue) : null,
+        looksRightWhen: focusDrill.looksRightWhen ? sharedText(focusDrill.looksRightWhen) : null,
+        commonMistakes: focusDrill.commonMistakes.map(sharedText),
+        sourceCredit: focusDrill.sourceCredit ? sharedText(focusDrill.sourceCredit) : null };
+    }
     if (shareScope === "progress" && clipId) return notFound();
     const { data: headlines, error: headlineError } = (clips ?? []).length
       ? await service.from("analysis_runs").select("video_clip_id, summary, created_at")
@@ -179,7 +226,7 @@ Deno.serve(async (request) => {
         progress.nowClipId === progress.thenClipId ? null : progressVideo(service, playerId, progress.nowClipId),
       ]);
       return reply({ playerId, playerName: identity,
-        progress: { ...progress, thenVideo, nowVideo: nowVideo ?? (progress.nowClipId === progress.thenClipId ? thenVideo : null) },
+        progress: { ...progress, practice, focusDrill, thenVideo, nowVideo: nowVideo ?? (progress.nowClipId === progress.thenClipId ? thenVideo : null) },
         feed: shareScope === "progress" ? [] : feed });
     }
     const { data: clip, error: clipError } = await service.from("video_clips")

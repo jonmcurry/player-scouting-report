@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.32.0] - 2026-10-04
+
+The simplified app remains a preview. Default coach and family routes are unchanged; nothing was deployed.
+
+### Added
+
+- Progress shows an eligible library drill for the current focus, its start date, and a separate practice evidence line when readable practice clips exist.
+- Preview settings save the report notification preference and provide an explicit sign-out action.
+
+### Changed
+
+- Report playback marks contact on a video timeline and can jump to it. Progress comparison waits for both videos to seek near contact before playing, with a pause control.
+- Drill cards show their "Best for" line and equipment before expansion, and progress history includes the completion date.
+
+### Fixed
+
+- Shared report prose with an isolated surname component or one-word team name is withheld when its meaning is ambiguous, preventing identity leaks and misleading replacements of coaching terms.
+
 ## [0.31.0] - 2026-10-04
 
 Simplified app foundations are committed for continued work. The existing coach and family screens remain the default; nothing in this version was deployed.

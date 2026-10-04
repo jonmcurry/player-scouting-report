@@ -1,8 +1,26 @@
-## 2026-10-04: 0.31.0 follow-up todo — simplified app is not ready to release
+## 2026-10-04: 0.32.0 follow-up todo — simplified app is not ready to release
 
-- [ ] Finish the replacement screen against the approved prototype: settings, contact marker and
-  synchronized progress video, current-focus drill, practice line, and accessible mobile layout.
-  Run authenticated coach and guardian browser flows, then switch the default routes. Only after
+- The preview now has settings, a visible contact marker and contact jump, contact-aligned
+  comparison playback, a current-focus drill, and a practice evidence line. These still need
+  authenticated coach/guardian browser checks and manual rendered review. Notifications are a
+  saved preference only; delivery remains a hosting phase task. The legacy routes remain default.
+- Local build and focused practice/report/focus tests pass. The full in-process test run had one
+  existing local-schema failure (`teams.age_group` is absent from the running local database),
+  and normal Node test isolation is permission-blocked. After Jon authorized transfer of the
+  current diff/source, the Gemini code-review wrapper completed. It found no blocking issue in
+  practice counting or shared-link redaction. The confirmed dialog-label gap and one-way video
+  synchronization were fixed and need re-review. Gemini raised a judgment call about the existing
+  strict `requires_screen` drill exclusion; keep it fail-closed until drill safety curation decides
+  how supervised drills can be shown. Offline settings caching is outside the approved offline
+  capture requirement. A second Gemini pass confirmed the dialog and playback fixes, then surfaced
+  a multi-word surname redaction gap. A later Gemini pass confirmed case-insensitive replacement
+  could corrupt ordinary coaching words; a case-sensitive alternative could leak lowercase names.
+  The current local fix withholds ambiguous shared prose instead. Final Gemini re-review found no
+  blocking defect; an unaccented full name may withhold the entire shared field, and a singularized
+  word from a plural team name remains a low-risk naming edge case. Rendered visual QA remains open.
+
+- [ ] Verify the replacement screen against the approved prototype, including accessible mobile
+  layout. Run authenticated coach and guardian browser flows, then switch the default routes. Only after
   those routes work, remove the obsolete Group B UI files identified in `docs/simplified_questions.md`.
 - [ ] Add GameChanger screenshot import with a clear notice before sending children's names to
   Gemini. Keep CSV/paste as the fallback, and verify import mapping with a real GameChanger export.

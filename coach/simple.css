@@ -1,6 +1,7 @@
 .simple-app { min-height:100vh; background:var(--bg); color:var(--text-1); }
 .simple-top { max-width:720px; margin:auto; min-height:64px; padding:0 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); }
 .simple-brand { font:700 1.6rem var(--font-display); text-decoration:none; color:var(--text-1); }
+.simple-top button { min-width:48px; min-height:48px; padding:0 12px; color:var(--text-1); background:var(--surface-2); border:1px solid var(--border); border-radius:10px; }
 .simple-main { max-width:720px; margin:auto; padding:20px 16px 110px; }
 .simple-main h1,.simple-main h2 { font-family:var(--font-display); text-transform:uppercase; letter-spacing:.02em; }
 .simple-main h1 { font-size:2rem; margin:12px 0 18px; }
@@ -36,13 +37,24 @@
 .simple-chip-row button { min-height:48px; border-radius:24px; padding:0 16px; }
 .simple-chip-row [aria-pressed="true"] { background:var(--brand-fill); color:white; }
 .simple-video { width:100%; max-height:410px; background:black; border-radius:12px; }
+.simple-video-wrap { min-width:0; }
+.simple-contact-track { position:relative; height:4px; margin:8px 8px 0; background:var(--surface-3); border-radius:4px; }
+.simple-contact-dot { position:absolute; top:50%; width:12px; height:12px; transform:translate(-50%,-50%); background:var(--brand-text); border:2px solid var(--text-1); border-radius:50%; }
+.simple-contact-dot[hidden] { display:none; }
 .simple-compare { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .simple-compare figure { margin:0; min-width:0; }
-.simple-compare video { width:100%; background:black; border-radius:10px; }
+.simple-compare video { width:100%; min-width:0; aspect-ratio:9/16; max-height:320px; object-fit:contain; background:black; border-radius:10px; }
 .simple-compare figcaption { color:var(--text-2); margin-top:4px; }
 .simple-strength { color:var(--success); }
 .simple-cue { font:600 1.5rem/1.25 var(--font-display); color:var(--text-1); }
-.simple-drill summary { min-height:48px; display:flex; align-items:center; cursor:pointer; font-weight:700; }
+.simple-drill summary { min-height:48px; display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; font-weight:700; }
+.simple-drill summary small { display:block; margin-top:6px; color:var(--text-2); font-weight:400; line-height:1.4; }
+.simple-drill summary::-webkit-details-marker { display:none; }
+.simple-drill[open] summary { margin-bottom:12px; }
+.simple-status { display:inline-block; padding:6px 12px; border-radius:100px; background:var(--success-subtle); color:var(--success); font-weight:700; }
+.simple-setting { display:flex !important; align-items:flex-start; gap:12px; padding:12px 0; }
+.simple-setting input { min-width:24px; min-height:24px; margin:12px; accent-color:var(--brand-fill); }
+.simple-setting small { display:block; margin-top:4px; color:var(--text-2); line-height:1.4; }
 .simple-drill ol { padding-left:22px; line-height:1.5; }
 .simple-guide { padding-left:24px; line-height:1.5; }
 .simple-guide li { margin:10px 0; }

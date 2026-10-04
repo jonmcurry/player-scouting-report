@@ -75,14 +75,53 @@ async function showHome() {
 
 function drillCard(drill) {
   const demo = eurl(drill.demoUrl);
-  return `<details class="simple-card simple-drill"><summary>${esc(drill.name)}</summary><p><strong>Best for:</strong> ${esc(drill.bestFor)}</p>
-    <p class="simple-muted">${esc(drill.equipment || "No equipment")}${drill.homeFriendly ? " · Home friendly" : ""}${drill.requiresScreen ? " · Protective screen required" : ""}</p>
+  return `<details class="simple-card simple-drill"><summary><span><strong>${esc(drill.name)}</strong><small>Best for: ${esc(drill.bestFor)}</small><small>${esc(drill.equipment || "No equipment")}${drill.homeFriendly ? " · Home friendly" : ""}${drill.requiresScreen ? " · Protective screen required" : ""}</small></span><span aria-hidden="true">⌄</span></summary>
     ${drill.instructions ? `<p>${esc(drill.instructions)}</p>` : ""}
     ${drill.cue ? `<p><strong>Say:</strong> ${esc(drill.cue)}</p>` : ""}
     ${drill.looksRightWhen ? `<p><strong>Looks right when:</strong> ${esc(drill.looksRightWhen)}</p>` : ""}
     ${drill.commonMistakes?.length ? `<p><strong>Watch out for:</strong> ${esc(drill.commonMistakes.join("; "))}</p>` : ""}
     ${demo ? `<a href="${demo}" target="_blank" rel="noopener noreferrer">Watch demo${drill.demoTimestamp ? ` at ${esc(drill.demoTimestamp)}` : ""}</a>` : ""}
     ${drill.sourceCredit ? `<p class="simple-muted">Credit: ${esc(drill.sourceCredit)}</p>` : ""}</details>`;
+}
+
+function contactMarker(time) {
+  return Number.isFinite(time) && time >= 0
+    ? `<div class="simple-contact-track" aria-label="Contact marker"><span class="simple-contact-dot" hidden></span></div>
+      <button class="simple-action link" data-action="jump-contact" type="button">Jump to contact</button>` : "";
+}
+
+function prepareContactMarker(video, time) {
+  const marker = video?.parentElement?.querySelector(".simple-contact-dot");
+  if (!marker) return;
+  const place = () => {
+    if (!Number.isFinite(video.duration) || time > video.duration) return;
+    marker.style.left = `${Math.min(100, time / video.duration * 100)}%`;
+    marker.hidden = false;
+  };
+  if (video.readyState >= 1) place();
+  else video.addEventListener("loadedmetadata", place, { once: true });
+}
+
+function seekTo(video, time) {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      video.removeEventListener("error", fail);
+      video.removeEventListener("loadedmetadata", seek);
+      video.removeEventListener("seeked", done);
+    };
+    const done = () => { cleanup(); resolve(); };
+    const fail = () => { cleanup(); reject(new Error("Video couldn't load. Refresh and try again.")); };
+    const seek = () => {
+      const at = Math.max(0, Math.min(time, video.duration || time));
+      if (Math.abs(video.currentTime - at) < 0.04) { done(); return; }
+      video.addEventListener("seeked", done, { once: true });
+      try { video.currentTime = at; } catch (error) { cleanup(); reject(error); }
+    };
+    if (video.error) { fail(); return; }
+    video.addEventListener("error", fail, { once: true });
+    if (video.readyState >= 1) seek();
+    else video.addEventListener("loadedmetadata", seek, { once: true });
+  });
 }
 
 async function showReport(clipId, token = null) {
@@ -100,9 +139,9 @@ async function showReport(clipId, token = null) {
     return;
   }
   root.innerHTML = `<span class="simple-eyebrow">At-bat report</span><h1>${esc(data.playerName)}</h1>
-    ${data.videoUrl ? `<video id="reportVideo" class="simple-video" src="${esc(data.videoUrl)}" controls playsinline preload="metadata"></video>
+    ${data.videoUrl ? `<div class="simple-video-wrap"><video id="reportVideo" class="simple-video" src="${esc(data.videoUrl)}" controls playsinline preload="metadata"></video>
+      ${contactMarker(data.contactTime)}</div>
       <div class="simple-actions"><button class="simple-action secondary" data-action="half-speed" type="button">½ speed</button>
-      ${data.contactTime !== null ? `<span class="simple-action">Contact at ${esc(Number(data.contactTime).toFixed(1))}s</span>` : ""}
       <button class="simple-action secondary" data-action="refresh-video" type="button">Refresh video</button></div>` : `<p class="simple-error">Video isn't available yet.</p>`}
     <section class="simple-card"><span class="simple-eyebrow">How it went</span><p>${esc(report.summary)}</p></section>
     <section class="simple-card"><span class="simple-eyebrow">What looked good</span>${report.strengths.length
@@ -118,9 +157,10 @@ async function showReport(clipId, token = null) {
       ${report.fix ? `<button class="simple-action secondary" data-action="hide-fix" type="button">Doesn't look right</button>` : ""}
       <button class="simple-action secondary" data-action="delete" type="button">Delete at-bat</button></div>`}`;
   const video = document.getElementById("reportVideo");
-  if (video && data.contactTime !== null) video.addEventListener("loadedmetadata", () => {
-    if (Number.isFinite(data.contactTime) && data.contactTime >= 0 && data.contactTime < video.duration) video.currentTime = Math.max(0, data.contactTime - 0.5);
-  }, { once: true });
+  if (video && Number.isFinite(data.contactTime) && data.contactTime >= 0) {
+    prepareContactMarker(video, data.contactTime);
+    seekTo(video, Math.max(0, data.contactTime - 0.5)).catch(() => {});
+  }
 }
 
 function progressSentence(progress) {
@@ -140,7 +180,12 @@ async function showProgress() {
   const progress = data.progress;
   root.innerHTML = `<span class="simple-eyebrow">Progress</span><h1>${esc(data.playerName)}</h1>
     <section class="simple-card"><h2>Current focus</h2>${progress.current
-      ? `<p class="simple-cue">${esc(progress.current.concept.replaceAll("_", " "))}</p><p>${esc(progressSentence(progress))}</p>
+      ? `<p class="simple-cue">${esc(progress.current.concept.replaceAll("_", " "))}</p>
+        <p class="simple-muted">Since ${esc(shortDate(progress.current.startedAt?.slice(0, 10)))}</p>
+        <p class="simple-status">${esc(progress.current.status === "improving" ? "Improving" : progress.current.status === "early_read" ? "Early read" : "Still showing up")}</p>
+        <p>${esc(progressSentence(progress))}</p>
+        ${progress.practice?.total ? `<p class="simple-muted">In practice: seen in ${esc(progress.practice.seen)} of the last ${esc(progress.practice.total)} readable swings.</p>` : ""}
+        ${progress.focusDrill ? `<h2>Drill for this focus</h2>${drillCard(progress.focusDrill)}` : ""}
         ${state.shared ? "" : `<button class="simple-action link" data-action="dismiss-focus" type="button">Doesn't look right</button>`}`
       : `<p>${esc(progressSentence(progress))}</p>`}</section>
     ${progress.thenVideo && progress.nowVideo ? `<section class="simple-card"><h2>Then vs. now</h2><p>Watch the two videos around contact. Camera views can differ.</p>
@@ -149,12 +194,32 @@ async function showProgress() {
       <div class="simple-actions"><button class="simple-action secondary" data-action="play-compare" type="button">Play together</button>
       <button class="simple-action secondary" data-action="refresh-progress" type="button">Refresh videos</button></div></section>` : ""}
     <section class="simple-card"><h2>History</h2>${progress.history.length ? progress.history.map((item) =>
-      `<p>${esc(item.concept.replaceAll("_", " "))} · ${esc(item.status.replaceAll("_", " "))}</p>`).join("") : `<p>No past focus yet.</p>`}</section>
+      `<p>${esc(item.concept.replaceAll("_", " "))} · ${esc(item.status === "fixed" ? "Looks fixed" : item.status === "dismissed" ? "Dismissed" : item.status.replaceAll("_", " "))} · ${esc(shortDate(item.endedAt?.slice(0, 10)))}</p>`).join("") : `<p>No past focus yet.</p>`}</section>
     ${state.shared ? "" : `<button class="simple-action secondary" data-action="share-progress" type="button">Share progress</button>`}`;
+  const thenVideo = document.getElementById("thenVideo");
+  const nowVideo = document.getElementById("nowVideo");
+  if (thenVideo && nowVideo) {
+    const thenContact = Number.isFinite(progress.thenVideo.contactTime) ? progress.thenVideo.contactTime : 0;
+    const nowContact = Number.isFinite(progress.nowVideo.contactTime) ? progress.nowVideo.contactTime : 0;
+    const align = (source, destination, sourceContact, destinationContact) => {
+      if (source.paused || destination.paused) return;
+      const wanted = Math.max(0, Math.min(destination.duration || Infinity,
+        source.currentTime - sourceContact + destinationContact));
+      if (Math.abs(destination.currentTime - wanted) <= 0.25) return;
+      destination.currentTime = wanted;
+    };
+    thenVideo.addEventListener("timeupdate", () => align(thenVideo, nowVideo, thenContact, nowContact));
+    nowVideo.addEventListener("timeupdate", () => align(nowVideo, thenVideo, nowContact, thenContact));
+    for (const video of [thenVideo, nowVideo]) video.addEventListener("ended", () => {
+      thenVideo.pause(); nowVideo.pause();
+      const button = root.querySelector('[data-action="play-compare"]');
+      if (button) button.textContent = "Play together";
+    });
+  }
 }
 
 function choiceSheet() {
-  sheet.innerHTML = `<h2>Record at-bat</h2><p>Film from the side with the batter and bat in frame.</p>
+  sheet.innerHTML = `<h2 id="simpleSheetTitle">Record at-bat</h2><p>Film from the side with the batter and bat in frame.</p>
     <div class="simple-actions"><button class="simple-action primary" data-action="record-now" type="button">Record now</button>
     <button class="simple-action secondary" data-action="choose-video" type="button">Choose video</button></div>
     <button class="simple-action link" data-action="guide" type="button">How to film</button>
@@ -163,7 +228,7 @@ function choiceSheet() {
 }
 
 function guideSheet() {
-  sheet.innerHTML = `<h2>How to film</h2><ol class="simple-guide">
+  sheet.innerHTML = `<h2 id="simpleSheetTitle">How to film</h2><ol class="simple-guide">
     <li>Film from behind home plate, as straight on as you can. Through the fence is fine; place the lens close to it.</li>
     <li>Keep the whole batter, head to feet, and some room for the bat in frame.</li>
     <li>Start before the pitch and stop after the follow-through. A whole at-bat in one clip is fine.</li>
@@ -173,10 +238,20 @@ function guideSheet() {
   if (!dialog.open) dialog.showModal();
 }
 
+async function settingsSheet() {
+  const { data, error } = await supabase.from("user_settings").select("notify_reports").eq("user_id", state.userId).maybeSingle();
+  if (error) throw error;
+  sheet.innerHTML = `<h2 id="simpleSheetTitle">Settings</h2><label class="simple-setting"><input id="notifyReports" type="checkbox" ${data?.notify_reports !== false ? "checked" : ""}>
+    <span><strong>Report notifications</strong><small>Tell me when a new report is ready, once notifications are available.</small></span></label>
+    <button class="simple-action secondary" data-action="sign-out" type="button">Sign out</button>
+    <button class="simple-action link" data-action="close-sheet" type="button">Done</button>`;
+  dialog.showModal();
+}
+
 function confirmSheet(files) {
   state.files = files;
   state.kind = "game"; state.result = null;
-  sheet.innerHTML = `<h2>Send ${files.length} video${files.length === 1 ? "" : "s"}</h2>
+  sheet.innerHTML = `<h2 id="simpleSheetTitle">Send ${files.length} video${files.length === 1 ? "" : "s"}</h2>
     <label>Player<select id="capturePlayer">${state.players.map((player) =>
       `<option value="${esc(player.id)}" ${player.id === state.selected ? "selected" : ""}>${esc(player.name)}</option>`).join("")}</select></label>
     <p>Game or practice?</p><div class="simple-chip-row"><button type="button" data-kind="game" aria-pressed="true">Game</button><button type="button" data-kind="practice" aria-pressed="false">Practice</button></div>
@@ -249,16 +324,24 @@ root.addEventListener("click", async (event) => {
       case "guide": guideSheet(); break;
       case "home": await showHome(); break;
       case "refresh-video": await showReport(state.report.clipId, state.shared ? params.get("share") : null); break;
+      case "jump-contact": {
+        const video = document.getElementById("reportVideo");
+        if (video && Number.isFinite(state.report?.contactTime)) await seekTo(video, state.report.contactTime);
+        break;
+      }
       case "progress": await showProgress(); break;
       case "refresh-progress": state.home = await reportApi(state.selected, null, state.shared ? params.get("share") : null); await showProgress(); break;
       case "play-compare": {
         const thenVideo = document.getElementById("thenVideo"); const nowVideo = document.getElementById("nowVideo");
         const pair = [state.home?.progress?.thenVideo, state.home?.progress?.nowVideo];
         if (!thenVideo || !nowVideo || pair.some((item) => !item)) break;
+        if (!thenVideo.paused || !nowVideo.paused) {
+          thenVideo.pause(); nowVideo.pause(); target.textContent = "Play together"; break;
+        }
         const offsets = pair.map((item) => Number.isFinite(item.contactTime) ? item.contactTime : 0);
-        thenVideo.currentTime = Math.max(0, offsets[0] - 0.5);
-        nowVideo.currentTime = Math.max(0, offsets[1] - 0.5);
+        await Promise.all([seekTo(thenVideo, Math.max(0, offsets[0] - 0.5)), seekTo(nowVideo, Math.max(0, offsets[1] - 0.5))]);
         await Promise.allSettled([thenVideo.play(), nowVideo.play()]);
+        target.textContent = "Pause both";
         break;
       }
       case "retry": await drainCaptureQueue(state.userId, state.role === "parent", () => loadHome()); break;
@@ -276,7 +359,7 @@ root.addEventListener("click", async (event) => {
         const invite = new URL("./family.html", location.href);
         invite.searchParams.set("invite", token);
         const url = invite.href;
-        sheet.innerHTML = `<h2>Invite parent</h2><p>Send this link only to the parent. It works once and expires in 7 days.</p>
+        sheet.innerHTML = `<h2 id="simpleSheetTitle">Invite parent</h2><p>Send this link only to the parent. It works once and expires in 7 days.</p>
           <input class="simple-invite-link" aria-label="Parent invite link" readonly value="${esc(url)}">
           <button class="simple-action primary" data-action="copy-invite" type="button">Copy link</button>
           <button class="simple-action link" data-action="close-sheet" type="button">Done</button>`;
@@ -320,6 +403,7 @@ sheet.addEventListener("click", async (event) => {
   if (target.dataset.result) { state.result = target.dataset.result === "skip" ? null : target.dataset.result;
     sheet.querySelectorAll("[data-result]").forEach((button) => button.setAttribute("aria-pressed", button === target ? "true" : "false")); }
   if (target.dataset.action === "close-sheet") dialog.close();
+  if (target.dataset.action === "sign-out") { await signOut(); location.href = "./index.html"; }
   if (target.dataset.action === "guide") guideSheet();
   if (target.dataset.action === "copy-invite") {
     try { await navigator.clipboard.writeText(sheet.querySelector(".simple-invite-link")?.value ?? ""); say("Invite link copied."); }
@@ -328,6 +412,12 @@ sheet.addEventListener("click", async (event) => {
   if (target.dataset.action === "record-now") document.getElementById("recordFile").click();
   if (target.dataset.action === "choose-video") document.getElementById("chooseFiles").click();
   if (target.dataset.action === "send") await sendCaptures(target);
+});
+sheet.addEventListener("change", async (event) => {
+  if (event.target.id !== "notifyReports") return;
+  const { error } = await supabase.from("user_settings").upsert({ user_id: state.userId, notify_reports: event.target.checked });
+  if (error) { event.target.checked = !event.target.checked; say("Couldn't save notification setting."); }
+  else say("Notification setting saved.");
 });
 
 for (const id of ["recordFile", "chooseFiles"]) document.getElementById(id).addEventListener("change", (event) => {
@@ -342,7 +432,9 @@ document.querySelectorAll(".simple-nav [data-tab]").forEach((button) => button.a
     else await showHome();
   } catch (error) { say(error.message); }
 }));
-document.getElementById("accountBtn").addEventListener("click", async () => { await signOut(); location.href = "./index.html"; });
+document.getElementById("accountBtn").addEventListener("click", async () => {
+  try { await settingsSheet(); } catch (error) { say(error.message); }
+});
 window.addEventListener("online", () => { if (state.userId) drainCaptureQueue(state.userId, state.role === "parent", () => loadHome()); });
 
 async function start() {
