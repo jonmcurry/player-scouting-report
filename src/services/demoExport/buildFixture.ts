@@ -48,6 +48,8 @@ export const EXPORTER = { name: "hitterloop-export-demo-fixture", version: 1 } a
 export interface SourceSnapshot {
   team: Row;
   player: Row;
+  /** Local-only guardian identities, loaded from player_guardians; never exported. */
+  linkedGuardianUserIds: string[];
   rows: {
     game_log_entries: Row[]; at_bat_pitches: Row[]; video_clips: Row[]; video_clip_metrics: Row[];
     video_clip_pose3d: Row[]; swing_phases: Row[]; analysis_runs: Row[]; checklist_scores: Row[];
@@ -100,6 +102,7 @@ const GAME_PITCH_OUTCOMES = new Set(["take", "foul", "ball_in_play"]);
 const AB_PITCH_OUTCOMES = new Set(["ball", "called_strike", "swinging_strike", "foul", "ball_in_play", "hit_by_pitch", "take", "other"]);
 const GROUPINGS = new Set(["baseline", "drill", "post_drill", "free_swing", "other"]);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const s = (v: unknown): string => String(v);
 const nonEmpty = (v: unknown): boolean => typeof v === "string" && v.trim().length > 0;
@@ -128,6 +131,11 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
   const R = snapshot.rows;
   const player = snapshot.player;
   const playerId = s(player.id);
+  const linkedGuardianIds = snapshot.linkedGuardianUserIds;
+  const guardianLinksKnown = Array.isArray(linkedGuardianIds) && linkedGuardianIds.every((id) => typeof id === "string" && UUID.test(id));
+  if (!guardianLinksKnown) {
+    err("GUARDIAN_LINKS_UNKNOWN", "linked guardian identities could not be verified; refuse public export");
+  }
 
   // ---- 0. Source-schema drift: every source column must have a rule ------------
   const driftCheck: Array<[FixtureTable, Row[]]> = [
@@ -463,6 +471,16 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
     if (clip.uploaded_by_role === "guardian" && mc.guardianPublicationPermission) {
       guardianPermissions.push({ clipId: fxClip, confirmedAt: mc.guardianPublicationPermission.confirmedAt });
     }
+    if (guardianLinksKnown && linkedGuardianIds.length) {
+      const required = new Set(linkedGuardianIds.map((id) => id.toLowerCase()));
+      const permissions = mc.linkedGuardianPublicationPermissions ?? [];
+      const valid = Array.isArray(permissions) && permissions.every((p) =>
+        typeof p?.guardianUserId === "string" && nonEmpty(p.confirmedBy) && typeof p.confirmedAt === "string" && DATE.test(p.confirmedAt));
+      const approved = valid ? new Set(permissions.map((p) => p.guardianUserId.toLowerCase())) : new Set<string>();
+      if (!valid || permissions.length !== required.size || approved.size !== required.size || [...required].some((id) => !approved.has(id))) {
+        err("LINKED_GUARDIAN_PERMISSION_MISSING", `clip ${s(clip.id)} needs separate public-demo permission from every linked guardian`, "video_clips", fxClip);
+      }
+    }
     const publicFilename = opts.mediaMode === "planned" ? `${manifest.fixtureId}-${mediaVersionTag(manifest.mediaFileVersion ?? manifest.fixtureVersion)}-clip-${String(index + 1).padStart(3, "0")}.mp4` : null;
     const ctx = opts.clipContext?.get(sourceClipId);
     const windowStart = mc.analysisWindowStartS ?? (ctx && !ctx.analysisWindowAmbiguous ? ctx.analysisWindowStartS : null);
@@ -670,6 +688,7 @@ export function collectSourceIds(snapshot: SourceSnapshot): Set<string> {
   };
   addRow(snapshot.team);
   addRow(snapshot.player);
+  for (const id of snapshot.linkedGuardianUserIds ?? []) if (typeof id === "string") out.add(id.toLowerCase());
   for (const [table, rows] of Object.entries(snapshot.rows)) {
     // Reference tables are resolved by slug, never by id, but their ids are
     // still source-side ids that must not leak.

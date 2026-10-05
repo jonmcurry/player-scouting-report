@@ -43,6 +43,12 @@ export interface CuratedClip {
    * it. Only the date reaches the fixture; who confirmed it stays in this local manifest.
    */
   guardianPublicationPermission?: { confirmedBy: string; confirmedAt: string };
+  /**
+   * Separate public-demo permission from EACH guardian currently linked to
+   * this child, regardless of who uploaded the clip. User IDs are checked
+   * against the local source database and never copied to the fixture.
+   */
+  linkedGuardianPublicationPermissions?: Array<{ guardianUserId: string; confirmedBy: string; confirmedAt: string }>;
   /** Privacy-treated media for this clip: <dir>/<name>.{mp4,summary.json,validation.json} from scripts/privacy/. */
   privacy?: { name: string; dir?: string };
   /** Human-audited phase allowlist and corrections for the demo copy only. */
@@ -231,6 +237,13 @@ export function parseCurationManifest(raw: unknown): { manifest: CurationManifes
         const gp = c.guardianPublicationPermission;
         if (!isObj(gp) || !nonEmpty(gp.confirmedBy) || !nonEmpty(gp.confirmedAt) || !DATE.test(String(gp.confirmedAt))) {
           add(`${at}.guardianPublicationPermission`, "must be { confirmedBy, confirmedAt: YYYY-MM-DD } - the uploading guardian's own permission to publish this clip");
+        }
+      }
+      if (c.linkedGuardianPublicationPermissions !== undefined) {
+        const approvals = c.linkedGuardianPublicationPermissions;
+        if (!Array.isArray(approvals) || approvals.some((p) => !isObj(p) || typeof p.guardianUserId !== "string" || !UUID.test(p.guardianUserId) || !nonEmpty(p.confirmedBy) || !nonEmpty(p.confirmedAt) || !DATE.test(String(p.confirmedAt))) ||
+          new Set(approvals.map((p) => String(p.guardianUserId).toLowerCase())).size !== approvals.length) {
+          add(`${at}.linkedGuardianPublicationPermissions`, "must list distinct linked guardian user IDs with confirmedBy and confirmedAt: YYYY-MM-DD");
         }
       }
       if (c.phaseReview !== undefined) {

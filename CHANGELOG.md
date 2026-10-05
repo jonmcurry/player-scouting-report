@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.34.0] - 2026-10-05
+
+The simplified app remains a local preview. Guardian re-consent and integration behavior still need the Windows Supabase stack before release.
+
+### Added
+
+- A consent-version access gate and linked-guardian renewal path. When a recorded version becomes stale, family and simplified routes require renewed consent before showing that child's data.
+
+### Changed
+
+- Guardian integration fixtures use opaque video paths and check that invalid paths are rejected at insert time.
+- Public-demo export now requires a separate recorded permission from each currently linked guardian for every selected clip, including footage uploaded by a coach. Guardian identities stay in the local curation files.
+
+### Fixed
+
+- Uppercase upload file extensions are normalized before reserving a private storage path.
+
 ## [0.33.0] - 2026-10-04
 
 The simplified app remains a preview. The new Progress rule is local only; the Edge Function has not been deployed.

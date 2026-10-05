@@ -29,7 +29,7 @@
   .hl-coach-notes { list-style:none; margin:var(--space-2) 0 0; padding:0; display:grid; gap:var(--space-3); }
   .hl-coach-notes p { margin:var(--space-1) 0 0; }
   .hl-consent-text { padding:var(--space-3); border-radius:var(--radius-card); background:var(--surface-2); line-height:1.5; }
-  .hl-check { display:flex; align-items:center; gap:var(--space-2); min-height:44px; margin:var(--space-3) 0; }
+  .hl-check { display:flex; align-items:center; gap:var(--space-2); min-height:48px; margin:var(--space-3) 0; }
   .hl-check input { width:22px; height:22px; }
   .hl-family .bt-sheet video { width:100%; border-radius:var(--radius-card); background:#000; }
   .hl-family-footer { display:grid; justify-items:center; gap:var(--space-2); }
@@ -49,7 +49,7 @@ import { button, emptyState, errorState, processingState, confirmDialog, openBot
 import { uploadRawClip } from "./components/videoUpload.js";
 import { captureGuideHtml } from "./components/captureGuide.js";
 import {
-  familyEmptyState, focusSection, swingsList, coachNotes, consentText, firstName,
+  familyEmptyState, focusSection, swingsList, coachNotes, consentText, CONSENT_TEXT_VERSION, firstName,
   inviteErrorMessage, localDateString, uploadErrorMessage, deleteErrorMessage, INVITE_UNAVAILABLE,
   ownUploadIds, unlinkSheet, unlinkConfirm, unlinkDoneMessage, unlinkDeleteFailedMessage,
 } from "./components/familyPage.js";
@@ -61,7 +61,10 @@ const PLAYER_KEY = "hitterloop.family.player";
 
 let playerIds = [];
 const reports = new Map(); // playerId -> report | null (failed to load)
+const staleNames = new Map(); // playerId -> first name from the linked-only consent preview
+const staleConsent = new Set();
 let current = null;
+let consentVersion = null;
 let kind = "game";
 // An entry created for an upload that then failed is reused on retry (same child/kind/day),
 // so a flaky connection doesn't leave a trail of empty at-bats for the coach.
@@ -114,6 +117,10 @@ async function showConsent(token) {
     document.getElementById("retryConsent").onclick = () => showConsent(token);
     return;
   }
+  if (version !== CONSENT_TEXT_VERSION) {
+    root.innerHTML = errorState("Consent update unavailable", "Please contact your coach before joining. The current consent text is not available in this app version.");
+    return;
+  }
   // Consent text v1 always names the child. guardian_invite_preview returns the first name only for a
   // usable invite and the same null otherwise - then there's no consent to show, just one message.
   const player = preview.data;
@@ -164,13 +171,21 @@ async function fetchReport(playerId) {
 async function loadFamily() {
   root.innerHTML = processingState("Loading…");
   // RLS also returns a coach's team guardian rows (coach_read_team_guardians): only this account's own links.
-  const { data: links, error } = await supabase.from("player_guardians").select("player_id, consented_at").eq("user_id", viewerId).order("consented_at");
-  if (error) {
+  const [{ data: links, error }, { data: version, error: versionError }] = await Promise.all([
+    supabase.from("player_guardians").select("player_id, consented_at, consent_version").eq("user_id", viewerId).order("consented_at"),
+    supabase.rpc("current_guardian_consent_version"),
+  ]);
+  if (error || versionError || !version) {
     root.innerHTML = errorState("Couldn't load", "Check your connection and try again.", button("Try again", { variant: "primary", attrs: 'id="retryFamily"' }));
     document.getElementById("retryFamily").onclick = loadFamily;
     return;
   }
+  consentVersion = version;
   playerIds = (links ?? []).map((link) => link.player_id);
+  staleConsent.clear();
+  staleNames.clear();
+  reports.clear();
+  for (const link of links ?? []) if (link.consent_version !== version) staleConsent.add(link.player_id);
   if (!playerIds.length) {
     root.innerHTML = `<section class="bt-report-state">${emptyState("No child linked yet", "Ask your child's coach for an invite link. Open it here and your child's page shows up.", "", "users")}</section><footer class="hl-family-footer">${signOutButton()}</footer>`;
     wireSignOut();
@@ -178,8 +193,13 @@ async function loadFamily() {
   }
   const preferred = store.get(PLAYER_KEY);
   current = playerIds.includes(preferred) ? preferred : playerIds[0];
-  const loaded = await Promise.all(playerIds.map(fetchReport));
-  playerIds.forEach((id, i) => reports.set(id, loaded[i]));
+  const loaded = await Promise.all(playerIds.map(async (id) => staleConsent.has(id)
+    ? supabase.rpc("guardian_consent_preview", { p_player_id: id })
+    : fetchReport(id)));
+  playerIds.forEach((id, i) => {
+    if (staleConsent.has(id)) staleNames.set(id, loaded[i]?.data ?? null);
+    else reports.set(id, loaded[i]);
+  });
   render();
 }
 
@@ -192,12 +212,13 @@ async function refreshCurrent() {
 function switcherHtml() {
   if (playerIds.length < 2) return "";
   return `<div class="hl-switcher" role="group" aria-label="Choose a child">${playerIds.map((id) => {
-    const name = reports.get(id)?.playerName;
+    const name = reports.get(id)?.playerName ?? staleNames.get(id);
     return filterChip(name ? firstName(name) : "Child", { selected: id === current, value: id });
   }).join("")}</div>`;
 }
 
 function render() {
+  if (staleConsent.has(current)) { renderRenewConsent(); return; }
   const report = reports.get(current);
   if (!report) {
     root.innerHTML = `${switcherHtml()}${errorState("Couldn't load", "Check your connection and try again.", button("Try again", { variant: "primary", attrs: 'id="retryFamily"' }))}<footer class="hl-family-footer">${signOutButton()}</footer>`;
@@ -232,6 +253,49 @@ function render() {
   document.getElementById("sendSwing").addEventListener("click", () => { if (!sending) fileInput.click(); });
   document.getElementById("unlinkMe").addEventListener("click", unlinkMe);
   renderSwings();
+}
+
+function renderRenewConsent() {
+  const player = staleNames.get(current);
+  const knownText = consentVersion === CONSENT_TEXT_VERSION;
+  if (!player || !knownText) {
+    root.innerHTML = `${switcherHtml()}${errorState("Consent update unavailable", "Please contact your coach. This app cannot show the current consent text for this child.")}
+      <footer class="hl-family-footer">${button("Unlink me", { variant: "tertiary", attrs: 'id="unlinkStale"' })}${signOutButton()}</footer>`;
+  } else {
+    root.innerHTML = `${switcherHtml()}<section class="hl-family-section">
+      <h1>Review consent for ${escapeHtml(player)}</h1>
+      <p>The consent version changed. Please read and agree again before viewing or sending ${escapeHtml(player)}'s swings.</p>
+      <p class="hl-consent-text">${escapeHtml(consentText(player))}</p>
+      <label class="hl-check"><input type="checkbox" id="renewConsentBox"> <span>I agree</span></label>
+      ${button("Continue", { variant: "primary", attrs: 'id="renewConsent" disabled' })}
+      <p class="error-text" id="renewConsentError" role="alert"></p>
+    </section><footer class="hl-family-footer">${button("Unlink me", { variant: "tertiary", attrs: 'id="unlinkStale"' })}${signOutButton()}</footer>`;
+    const box = document.getElementById("renewConsentBox");
+    const accept = document.getElementById("renewConsent");
+    box.addEventListener("change", () => { accept.disabled = !box.checked; });
+    accept.addEventListener("click", async () => {
+      accept.disabled = true;
+      const playerId = current;
+      const { error } = await supabase.rpc("renew_guardian_consent", { p_player_id: playerId, p_consent_version: consentVersion });
+      if (error) {
+        document.getElementById("renewConsentError").textContent = /consent version/.test(error.message)
+          ? "The consent text changed again. Reload this page before continuing."
+          : "Couldn't save consent. Check your connection and try again.";
+        accept.disabled = !box.checked;
+        return;
+      }
+      await loadFamily();
+    });
+  }
+  wireSwitcher();
+  wireSignOut();
+  document.getElementById("unlinkStale")?.addEventListener("click", async () => {
+    const playerId = current;
+    if (!await confirmDialog({ title: "Unlink from this child?", message: "You will lose access. Videos already sent will stay with the coach. This can't be undone.", confirmLabel: "Unlink me", destructive: true })) return;
+    const { error } = await supabase.rpc("revoke_guardian", { p_player_id: playerId, p_user_id: viewerId });
+    if (error) { showSnackbar("Couldn't unlink. Please try again."); return; }
+    await loadFamily();
+  });
 }
 
 function wireSwitcher() {

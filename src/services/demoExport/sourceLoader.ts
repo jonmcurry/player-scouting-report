@@ -38,6 +38,17 @@ export async function loadSourceSnapshot(client: SupabaseClient, teamSlug: strin
   if (!player) throw new Error(`no player "${playerSlug}" on team "${teamSlug}"`);
   const playerId = player.id as string;
 
+  // Read the current guardian links with the service-role client. A failed
+  // lookup must never be interpreted as "no linked guardians" for publication.
+  const linkedGuardianUserIds: string[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await client.from("player_guardians").select("user_id")
+      .eq("player_id", playerId).order("user_id").range(from, from + PAGE - 1);
+    if (error) throw new Error(`loading linked guardians: ${error.message}`);
+    linkedGuardianUserIds.push(...(data ?? []).map((row) => row.user_id));
+    if (!data || data.length < PAGE) break;
+  }
+
   const game_log_entries = await all(client, "game_log_entries", (q) => q.eq("player_id", playerId));
   const entryIds = game_log_entries.map((e) => e.id as string);
   const [at_bat_pitches, video_clips] = await Promise.all([
@@ -71,6 +82,7 @@ export async function loadSourceSnapshot(client: SupabaseClient, teamSlug: strin
   return {
     team: team as Row,
     player: player as Row,
+    linkedGuardianUserIds,
     rows: {
       game_log_entries, at_bat_pitches, video_clips, video_clip_metrics, video_clip_pose3d, swing_phases, analysis_runs,
       checklist_scores, checklist_score_history, issues, player_priorities, player_priority_status_history,

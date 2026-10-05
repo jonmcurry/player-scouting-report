@@ -416,6 +416,29 @@ test("current_guardian_consent_version returns the stored version to signed-in u
   assert.ok(error, "anon must not execute current_guardian_consent_version");
 });
 
+test("stale consent blocks family access until the linked guardian renews it", async () => {
+  const clipId = await mutationClip("reconsent gate");
+  const staleVersion = `${CONSENT}-previous`;
+  must(await admin.from("player_guardians").update({ consent_version: staleVersion })
+    .eq("user_id", guardianId).eq("player_id", emily), "make guardian consent stale");
+  try {
+    assert.equal(await rpc(guardian, "is_guardian_for_player", { target_player_id: emily }), false);
+    assert.equal(await rpc(guardian, "can_delete_clip", { p_clip_id: clipId }), false);
+    assert.equal((await callFn("get-family-report", guardian, { playerId: emily })).status, 404);
+    assert.equal(await rpc(guardian, "guardian_consent_preview", { p_player_id: emily }), "Test");
+    assert.equal(await rpc(parent2, "guardian_consent_preview", { p_player_id: emily }), null);
+    await assert.rejects(rpc(parent2, "renew_guardian_consent", { p_player_id: emily, p_consent_version: CONSENT }), /not allowed/);
+    await assert.rejects(rpc(guardian, "renew_guardian_consent", { p_player_id: emily, p_consent_version: staleVersion }), /consent version/);
+    assert.equal(await rpc(guardian, "is_guardian_for_player", { target_player_id: emily }), false);
+    await rpc(guardian, "renew_guardian_consent", { p_player_id: emily, p_consent_version: CONSENT });
+    assert.equal(await rpc(guardian, "is_guardian_for_player", { target_player_id: emily }), true);
+    assert.equal((await callFn("get-family-report", guardian, { playerId: emily })).status, 200);
+  } finally {
+    must(await admin.from("player_guardians").update({ consent_version: CONSENT })
+      .eq("user_id", guardianId).eq("player_id", emily), "restore guardian consent");
+  }
+});
+
 test("anon cannot execute any guardian upload function", async () => {
   const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
   const calls: Array<[string, Record<string, unknown>]> = [
@@ -556,7 +579,7 @@ test("guardians cannot write video_clips directly; coach writes cannot forge gua
   const forged = must(
     await coachA
       .from("video_clips")
-      .insert({ game_log_entry_id: entry, clip_slug: `forged-${run}`, raw_gcs_path: "gs://b/x", status: "pending", uploaded_by_role: "guardian", uploaded_by: guardianId })
+      .insert({ game_log_entry_id: entry, clip_slug: opaqueTestSlug(entry, `forged-${run}`), status: "pending", uploaded_by_role: "guardian", uploaded_by: guardianId })
       .select("id")
       .single(),
     "coach insert",
@@ -597,16 +620,19 @@ test("guardian_register_clip is rate limited per guardian (10 a day)", async () 
 
 test("get-upload-url: both roles require an opaque clip id and safe extension", async () => {
   const entry = await rpc(guardian, "guardian_create_entry", { p_player_id: emily, p_kind: "game", p_date: "2026-09-25" });
+  const validSlug = opaqueTestSlug(entry, "extension-check");
   for (const [slug, ext] of [
     ["bad slug", ".mp4"], ["../escape", ".mp4"], ["a/b", ".mp4"], ["x".repeat(201), ".mp4"], ["", ".mp4"],
-    ["ok-slug", "mp4"], ["ok-slug", ".mp4/x"], ["ok-slug", ".mp4.exe1234567"], ["ok-slug", ".m-p4"], ["ok-slug", "."],
+    [validSlug, "mp4"], [validSlug, ".mp4/x"], [validSlug, ".mp4.exe1234567"], [validSlug, ".m-p4"], [validSlug, "."],
   ]) {
     const res = await callUploadUrl(guardian, entry, slug, ext, true);
     assert.ok(res.status === 400, `${JSON.stringify(slug)}${ext} -> ${res.status}`);
   }
-  assert.equal((await callUploadUrl(guardian, entry, "ok_Slug-1", ".MOV")).status, 200);
+  const uppercaseExt = await callUploadUrl(guardian, entry, validSlug, ".MOV", true);
+  assert.equal(uppercaseExt.status, 200, JSON.stringify(uppercaseExt.body));
+  assert.equal(uppercaseExt.body.gcsPath, `gs://${BUCKET}/${entry}/raw/${validSlug}.mov`);
   assert.equal((await callUploadUrl(coachA, entry, "coach slug (1)", ".mp4", true)).status, 400);
-  assert.equal((await callUploadUrl(coachA, entry, "coach-opaque")).status, 200);
+  assert.equal((await callUploadUrl(coachA, entry, opaqueTestSlug(entry, "coach-opaque"), ".mp4", true)).status, 200);
 });
 
 test("get-upload-url (guardian): refuses to mint a URL for an object that already exists; the URL itself is create-only", async () => {
@@ -793,15 +819,16 @@ async function guardianUpload(slug: string): Promise<{ clipId: string; object: s
 }
 
 /** A coach upload on any player of team A (the coach app's own insert shape). */
-async function coachUpload(playerId: string, playerSlug: string, slug: string): Promise<{ clipId: string; object: string }> {
+async function coachUpload(playerId: string, slug: string): Promise<{ clipId: string; object: string }> {
   const e = must(
     await admin.from("game_log_entries").insert({ player_id: playerId, session_type: "game", date: "2026-09-19", opponent: `Opp ${slug}`, ab: 1 }).select("id").single(),
     "coach entry",
   );
-  const object = `${teamASlug}/${playerSlug}/raw/${slug}.mp4`;
+  const clipSlug = opaqueTestSlug(e.id, slug);
+  const object = `${e.id}/raw/${clipSlug}.mp4`;
   await putObject(object);
   const clip = must(
-    await coachA.from("video_clips").insert({ game_log_entry_id: e.id, clip_slug: slug, raw_gcs_path: `gs://${BUCKET}/${object}`, status: "ready", position: 0 }).select("id").single(),
+    await coachA.from("video_clips").insert({ game_log_entry_id: e.id, clip_slug: clipSlug, raw_gcs_path: `gs://${BUCKET}/${object}`, status: "ready", position: 0 }).select("id").single(),
     "coach clip",
   );
   deletionClipIds.push(clip.id);
@@ -849,7 +876,7 @@ async function analyzeClip(clipId: string) {
 
 test("can_delete_clip: coach or any linked guardian of the child, nobody else", async () => {
   const own = await guardianUpload(`cd-own-${run}`);
-  const coachClip = await coachUpload(emily, emilySlug, `cd-coach-${run}`);
+  const coachClip = await coachUpload(emily, `cd-coach-${run}`);
   assert.equal(await rpc(guardian, "can_delete_clip", { p_clip_id: own.clipId }), true);
   assert.equal(await rpc(coachA, "can_delete_clip", { p_clip_id: own.clipId }), true);
   assert.equal(await rpc(coachA, "can_delete_clip", { p_clip_id: coachClip.clipId }), true);
@@ -914,8 +941,8 @@ test("delete-clip: a guardian deletes their child's upload - video, drafts and r
 });
 
 test("delete-clip: guardian can delete a coach upload of their child, but not another child's clip", async () => {
-  const coachClip = await coachUpload(emily, emilySlug, `gd-403a-${run}`);
-  const sibClip = await coachUpload(sibling, `sib-${run}`, `gd-403b-${run}`);
+  const coachClip = await coachUpload(emily, `gd-403a-${run}`);
+  const sibClip = await coachUpload(sibling, `gd-403b-${run}`);
   const own = await guardianUpload(`gd-403c-${run}`);
   assert.equal((await callDeleteClip(guardian, coachClip.clipId)).status, 200);
   assert.equal(await objectExists(coachClip.object), false);
@@ -933,7 +960,7 @@ test("delete-clip: guardian can delete a coach upload of their child, but not an
 });
 
 test("delete-clip: a coach can delete any clip on their team (coach- or guardian-uploaded)", async () => {
-  const coachClip = await coachUpload(sibling, `sib-${run}`, `cd-any-a-${run}`);
+  const coachClip = await coachUpload(sibling, `cd-any-a-${run}`);
   const famClip = await guardianUpload(`cd-any-b-${run}`);
   for (const c of [coachClip, famClip]) {
     const res = await callDeleteClip(coachA, c.clipId);
@@ -963,21 +990,15 @@ test("delete-clip: a retry after a failure at the GCS step completes without a k
   assert.ok(audit.gcs_deleted_at);
 });
 
-test("delete-clip refuses a clip whose stored object is outside its own team/player raw folder", async () => {
-  // A coach-written raw_gcs_path pointing at another player's footage must never be deleted through this clip.
+test("video_clips rejects a new coach clip pointing at another player's footage", async () => {
+  // The opaque-path trigger rejects this before deletion is ever needed.
   const victim = `${teamASlug}/sib-${run}/raw/victim-${run}.mp4`;
-  await putObject(victim);
   const e = must(await admin.from("game_log_entries").insert({ player_id: emily, session_type: "game", date: "2026-09-18", opponent: "Z", ab: 1 }).select("id").single(), "entry");
-  const clip = must(
-    await coachA.from("video_clips").insert({ game_log_entry_id: e.id, clip_slug: `bad-path-${run}`, raw_gcs_path: `gs://${BUCKET}/${victim}`, status: "ready", position: 0 }).select("id").single(),
-    "clip",
-  );
-  deletionClipIds.push(clip.id);
-  const res = await callDeleteClip(coachA, clip.id);
-  assert.equal(res.status, 409, JSON.stringify(res.body));
-  assert.equal(await objectExists(victim), true, "the other player's object is untouched");
-  assert.equal((await admin.from("video_clips").select("id").eq("id", clip.id)).data!.length, 1);
-  assert.equal((await admin.from("clip_deletions").select("clip_id").eq("clip_id", clip.id)).data!.length, 0);
+  const clipId = randomUUID();
+  const { error } = await coachA.from("video_clips").insert({ id: clipId, game_log_entry_id: e.id, clip_slug: randomUUID(), raw_gcs_path: `gs://${BUCKET}/${victim}`, status: "ready", position: 0 });
+  assert.match(error?.message ?? "", /invalid raw video path/);
+  assert.equal((await admin.from("video_clips").select("id").eq("id", clipId)).data!.length, 0);
+  assert.equal((await admin.from("clip_deletions").select("clip_id").eq("clip_id", clipId)).data!.length, 0);
 });
 
 test("delete-clip refuses a clip that is in a stored demo fixture", async () => {
@@ -1145,9 +1166,11 @@ async function famIssue(clipId: string, status: string, text: string, playerId =
 }
 
 const fam: Record<string, string> = {};
+let famEntry: string;
 
 test("get-family-report: coach-confirmed content only; drafts never appear", async () => {
   const entry = await rpc(guardian, "guardian_create_entry", { p_player_id: emily, p_kind: "game", p_date: "2026-09-15" });
+  famEntry = entry;
   const rawFor = (slug: string) => `gs://${BUCKET}/${entry}/raw/${opaqueTestSlug(entry, slug)}.mp4`;
   fam.draft = await famClip(entry, `fam-draft-${run}`, "ready", rawFor(`fam-draft-${run}`));
   fam.analyzed = await famClip(entry, `fam-an-${run}`, "ready", rawFor(`fam-an-${run}`));
@@ -1231,7 +1254,7 @@ test("get-family-report: 404 for a player the caller is not linked to; 401 witho
 test("get-family-report: a reviewed finding whose video was removed carries videoRemovedBy", async () => {
   const { clipId } = await guardianUpload(`fam-rm-${run}`);
   await famIssue(clipId, "approved", `FAMREMOVED-${run}`);
-  const coachClip = await coachUpload(emily, emilySlug, `fam-rmc-${run}`);
+  const coachClip = await coachUpload(emily, `fam-rmc-${run}`);
   await famIssue(coachClip.clipId, "edited", `FAMREMOVEDC-${run}`);
   assert.equal((await callDeleteClip(guardian, clipId)).status, 200);
   assert.equal((await callDeleteClip(coachA, coachClip.clipId)).status, 200);
@@ -1251,7 +1274,7 @@ async function callVideoUrl(client: SupabaseClient | null, videoClipId: string) 
 test("get-video-url: guardian gets a URL for their own child's reviewed or analyzed clip only", async () => {
   const ok = await callVideoUrl(guardian, fam.reviewed!);
   assert.equal(ok.status, 200, ok.text);
-  assert.match(ok.body.url, new RegExp(`fam-rev-${run}\\.mp4`));
+  assert.match(ok.body.url, new RegExp(`${opaqueTestSlug(famEntry, `fam-rev-${run}`)}\\.mp4`));
   assert.equal((await callVideoUrl(guardian, fam.analyzed!)).status, 200);
   for (const id of [fam.draft!, fam.pending!, fam.failed!]) {
     assert.equal((await callVideoUrl(guardian, id)).status, 403, `status-gated: ${id}`);
@@ -1259,22 +1282,24 @@ test("get-video-url: guardian gets a URL for their own child's reviewed or analy
 });
 
 test("get-video-url: guardian gets 403 for another player's reviewed clip", async () => {
-  const sibClip = await famClip(siblingEntry, `fam-sib-${run}`, "ready", `gs://${BUCKET}/${teamASlug}/sib-${run}/raw/fam-sib-${run}.mp4`);
+  const sibSlug = opaqueTestSlug(siblingEntry, `fam-sib-${run}`);
+  const sibClip = await famClip(siblingEntry, `fam-sib-${run}`, "ready", `gs://${BUCKET}/${siblingEntry}/raw/${sibSlug}.mp4`);
   const r = await famRun(sibClip, sibling);
   await famIssue(sibClip, "approved", `FAMSIB-${run}`, sibling, r);
   assert.equal((await callVideoUrl(guardian, sibClip)).status, 403);
   assert.equal((await callVideoUrl(parent2, fam.reviewed!)).status, 403, "not a guardian of anyone");
   assert.equal((await callVideoUrl(guardian, randomUUID())).status, 403);
-  // Coach path unchanged: any clip on the team, any status.
-  assert.equal((await callVideoUrl(coachA, sibClip)).status, 404, "legacy name-bearing paths are not served");
+  // A coach can read any current-format clip on their team, regardless of review status.
+  assert.equal((await callVideoUrl(coachA, sibClip)).status, 200);
   assert.equal((await callVideoUrl(coachA, fam.draft!)).status, 200);
 });
 
-test("get-video-url: a guardian-visible clip whose stored path is outside the child's raw folder is refused", async () => {
+test("video_clips rejects a guardian-visible clip whose stored path is outside its own raw folder", async () => {
   const entry = await rpc(guardian, "guardian_create_entry", { p_player_id: emily, p_kind: "game", p_date: "2026-09-14" });
-  const bad = await famClip(entry, `fam-badpath-${run}`, "ready", `gs://${BUCKET}/${teamASlug}/sib-${run}/raw/x.mp4`);
-  await famRun(bad);
-  assert.equal((await callVideoUrl(guardian, bad)).status, 404);
+  const clipId = randomUUID();
+  const { error } = await admin.from("video_clips").insert({ id: clipId, game_log_entry_id: entry, clip_slug: randomUUID(), status: "ready", raw_gcs_path: `gs://${BUCKET}/${siblingEntry}/raw/${randomUUID()}.mp4`, position: 0 });
+  assert.match(error?.message ?? "", /invalid raw video path/);
+  assert.equal((await admin.from("video_clips").select("id").eq("id", clipId)).data!.length, 0);
 });
 
 test("get-video-url and get-family-report: 403/404 after revoke_guardian", async () => {
@@ -1309,6 +1334,7 @@ test("get-player-report redacts the seeded player's identity and team", async (t
   assert.equal(res.body.teamName, "");
   assert.equal(res.body.jerseyNumber, null);
   assert.ok(!res.text.includes("latham-lady-bison-white-10u"), "team slug must not be in the payload");
+  assert.doesNotMatch(res.text, /"(?:player_id|team_id|playerId|teamId)"\s*:/, "internal roster ids must not be shared");
   assert.ok(!("clips" in res.body) && !("findings" in res.body), "the share-link payload gains no family-only fields");
 });
 
@@ -1320,7 +1346,7 @@ test("get-family-report: uploadedByYou is true only for the caller's own uploads
   // This run's earlier tests used up the guardian's 10-a-day upload quota (test users only).
   sql(`delete from public.guardian_upload_events where user_id = '${guardianId}'`);
   const own = await guardianUpload(`fam-mine-${run}`);
-  const coachClip = await coachUpload(emily, emilySlug, `fam-coachup-${run}`);
+  const coachClip = await coachUpload(emily, `fam-coachup-${run}`);
   // A second guardian of the same child uploads through the real path.
   const other = await makeUser("guardian3");
   await rpc(other.client, "accept_guardian_invite", {
@@ -1370,6 +1396,7 @@ test("get-player-report (share link) does not gain uploadedByYou or clips", asyn
   const res = await callFn("get-player-report", null, { token });
   assert.equal(res.status, 200, res.text);
   assert.doesNotMatch(res.text, /uploadedByYou|"clips":\[\{"id"|"findings"/);
+  assert.ok(!res.text.includes(emily), "the linked player's internal id must not be shared");
   t.diagnostic("share link payload checked");
 });
 
@@ -1406,12 +1433,13 @@ test("someone else's clip mid-deletion is hidden from the family list and get-vi
 /** A guardian-uploaded clip (service-role insert with the provenance guardian_register_clip writes) + its emulator object. */
 async function ownStuckClip(slug: string, requestedAgo: string): Promise<{ clipId: string; object: string; gcsPath: string }> {
   const entry = await rpc(guardian, "guardian_create_entry", { p_player_id: emily, p_kind: "game", p_date: "2026-09-11" });
-  const object = `${teamASlug}/${emilySlug}/raw/${slug}.mp4`;
+  const clipSlug = opaqueTestSlug(entry, slug);
+  const object = `${entry}/raw/${clipSlug}.mp4`;
   const gcsPath = `gs://${BUCKET}/${object}`;
   await putObject(object);
   const clip = must(
     await admin.from("video_clips").insert({
-      game_log_entry_id: entry, clip_slug: slug, status: "ready", raw_gcs_path: gcsPath, position: 0,
+      game_log_entry_id: entry, clip_slug: clipSlug, status: "ready", raw_gcs_path: gcsPath, position: 0,
       uploaded_by: guardianId, uploaded_by_role: "guardian",
     }).select("id").single(),
     `own clip ${slug}`,
@@ -1420,7 +1448,7 @@ async function ownStuckClip(slug: string, requestedAgo: string): Promise<{ clipI
   // begin_clip_deletion committed (audit row), then the storage/finish step failed.
   sql(
     `insert into public.clip_deletions (clip_id, player_slug, clip_slug, raw_gcs_path, requested_by, requested_by_role, requested_at)
-     values ('${clip.id}', '${emilySlug}', '${slug}', '${gcsPath}', '${guardianId}', 'guardian', now() - interval '${requestedAgo}')`,
+     values ('${clip.id}', '${emilySlug}', '${clipSlug}', '${gcsPath}', '${guardianId}', 'guardian', now() - interval '${requestedAgo}')`,
   );
   return { clipId: clip.id, object, gcsPath };
 }

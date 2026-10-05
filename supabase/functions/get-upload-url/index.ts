@@ -148,7 +148,7 @@ Deno.serve(async (req) => {
     if (typeof clipSlug !== "string" || !UUID.test(clipSlug) || typeof ext !== "string" || !/^\.[A-Za-z0-9]{1,10}$/.test(ext)) {
         return jsonResponse({ error: "invalid clip slug or extension" }, 400);
     }
-    const destination = `${gameLogEntryId}/raw/${clipSlug}${ext}`;
+    const destination = `${gameLogEntryId}/raw/${clipSlug}${ext.toLowerCase()}`;
     const gcsPath = `gs://${bucketName}/${destination}`;
     const resolvedContentType = contentType || "video/mp4";
 

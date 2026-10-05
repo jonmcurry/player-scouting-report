@@ -95,7 +95,8 @@ function starterManifest(snapshot: SourceSnapshot): Record<string, unknown> {
     findings: { includeDrafts: false },
     report: { shareLink: true },
     expect: { requirePose3d: true, comparePairs: [] },
-    _instructions: "Move entries from _availableClips into clips (add trim + sourceVideo), fill every blank field, and delete this key. Nothing is pre-selected on purpose.",
+    _instructions: "Move entries from _availableClips into clips (add trim + sourceVideo), fill every blank field, and delete this key. If _linkedGuardianUserIds is nonempty, every selected clip also needs linkedGuardianPublicationPermissions for each listed guardian. These IDs stay local and must not enter public fixture data. Nothing is pre-selected on purpose.",
+    _linkedGuardianUserIds: snapshot.linkedGuardianUserIds,
     _availableClips: snapshot.rows.video_clips.map((c) => ({ sourceClipId: c.id, clipSlug: c.clip_slug, status: c.status })),
   };
 }

@@ -154,7 +154,7 @@ function snapshot(): SourceSnapshot & { ids: Record<string, string> } {
     obs("o3", { video_clip_id: ids.c5, context: "game", status: "improving", observed_at: "2026-07-19T18:00:00+00:00" }),
   ];
   return {
-    ids, team, player,
+    ids, team, player, linkedGuardianUserIds: [],
     rows: {
       game_log_entries: entries, at_bat_pitches: pitches, video_clips: clips, video_clip_metrics: metrics, video_clip_pose3d: pose,
       swing_phases: phases, analysis_runs: [run], checklist_scores: scores, checklist_score_history: history, issues,
@@ -795,4 +795,38 @@ test("Task 2b: a guardian-uploaded clip is refused unless the manifest records t
   const raw = JSON.parse(JSON.stringify(manifest({ clips: [{ ...clip, guardianPublicationPermission: { confirmedBy: "", confirmedAt: "Oct 1" } as never }] })));
   const parsed = parseCurationManifest(raw);
   assert.ok(parsed.problems.some((p) => p.path === "clips[0].guardianPublicationPermission"), JSON.stringify(parsed.problems));
+});
+
+test("coach uploads of a linked child require separate public-demo permission from every linked guardian", () => {
+  const first = "11111111-2222-4333-8444-555555555555";
+  const second = "22222222-3333-4444-8555-666666666666";
+  const clip = { clipSlug: "c2-slug", trim: { startS: 0, endS: 8 } as const, analysisWindowStartS: 0 };
+  const snap = snapshot();
+  snap.linkedGuardianUserIds = [first, second];
+  const base = manifest({ clips: [clip], priorities: "none", expect: {} });
+  assert.ok(codes(errors(build(snap, base).findings)).has("LINKED_GUARDIAN_PERMISSION_MISSING"));
+
+  const approval = (guardianUserId: string) => ({ guardianUserId, confirmedBy: `Guardian ${guardianUserId}`, confirmedAt: "2026-10-05" });
+  const one = manifest({ clips: [{ ...clip, linkedGuardianPublicationPermissions: [approval(first)] }], priorities: "none", expect: {} });
+  assert.ok(codes(errors(build(snap, one).findings)).has("LINKED_GUARDIAN_PERMISSION_MISSING"));
+  const wrong = manifest({ clips: [{ ...clip, linkedGuardianPublicationPermissions: [approval(first), approval("33333333-4444-4555-8666-777777777777")] }], priorities: "none", expect: {} });
+  assert.ok(codes(errors(build(snap, wrong).findings)).has("LINKED_GUARDIAN_PERMISSION_MISSING"));
+
+  const approved = manifest({ clips: [{ ...clip, linkedGuardianPublicationPermissions: [approval(first), approval(second)] }], priorities: "none", expect: {} });
+  const result = build(snap, approved);
+  assert.deepEqual(errors(result.findings), []);
+  for (const id of [first, second]) assert.ok(!JSON.stringify(result.fixture).includes(id), "guardian auth IDs stay local");
+  assert.ok(!JSON.stringify(result.fixture).includes("Guardian 111"), "confirmation names stay local");
+
+  const malformed = parseCurationManifest(manifest({ clips: [{ ...clip, linkedGuardianPublicationPermissions: [approval(first), approval(first)] }] }));
+  assert.ok(malformed.problems.some((p) => p.path === "clips[0].linkedGuardianPublicationPermissions"));
+});
+
+test("an unknown guardian-link lookup blocks public export", () => {
+  const snap = snapshot();
+  delete (snap as Partial<SourceSnapshot>).linkedGuardianUserIds;
+  assert.ok(codes(errors(build(snap).findings)).has("GUARDIAN_LINKS_UNKNOWN"));
+  const malformed = snapshot();
+  malformed.linkedGuardianUserIds = [null] as unknown as string[];
+  assert.ok(codes(errors(build(malformed).findings)).has("GUARDIAN_LINKS_UNKNOWN"));
 });

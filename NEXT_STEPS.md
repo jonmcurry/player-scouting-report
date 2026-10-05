@@ -1,4 +1,4 @@
-## Prioritized outstanding work from `docs/SIMPLIFIED_APP_SPEC.md` (2026-10-04)
+## Prioritized outstanding work from `docs/SIMPLIFIED_APP_SPEC.md` (updated 2026-10-05)
 
 This is the current work order. **Critical** items block inviting families or a hosted release;
 **High** items block a spec-complete simplified default route; **Medium** items close
@@ -15,6 +15,22 @@ browser command permission was denied.
   and publication of coach-uploaded footage of linked children. Before screenshot import, disclose
   that visible children's names go to Gemini and verify provider handling. Complete a release
   privacy review.
+  - [x] Locally implement the version-mismatch access gate, linked-guardian renewal RPC, and
+    named re-consent screen. Unknown consent text versions fail closed; the current text and
+    stored version were not changed.
+  - [x] Gate local public-demo export of every selected clip when the child has linked guardians,
+    including coach uploads: the curation manifest must record separate permission from each
+    currently linked guardian. A failed link lookup blocks export, and guardian IDs remain out
+    of the public fixture. Guardian-upload permission remains a separate requirement.
+  - [ ] Run stale, renewed, revoked, and multi-child consent paths against the Windows Supabase
+    stack and on the parent browser. Obtain approval of any new wording before bumping its
+    stored version. Verify the new publication gate against real linked-player data and review
+    the actual permission records before any public-demo export. The full read-only Gemini privacy
+    review found no blocking issue. A final narrow review of malformed-link handling also found
+    no blocking issue; its empty-list concern is covered by the service-role loader throwing on
+    query errors. Repeat the full review before release.
+    Decide whether an existing public share token remains valid after a guardian's consent becomes
+    stale or their link is revoked; the current token reader is independent of guardian access.
 - [ ] **Prove access and deletion end to end (§2, §8, §10).** Repair the remaining guardian suite
   failures, including legacy media/report assertions, and demo-schema/fixture parity. Then verify
   the coach's allowed access and each linked, unrelated, and revoked guardian's exact allow/deny
@@ -24,6 +40,16 @@ browser command permission was denied.
   Route every remaining legacy clip, at-bat, rep, and player-removal path through audited storage
   deletion so no raw video is orphaned. Four focused local integration cases pass, but the last
   full guardian run had 15 failures in older fixtures and assertions.
+  On macOS, the integration stack is unavailable: Supabase and the GCS emulator run only on
+  Jon's Windows machine. The old guardian test fixtures now use opaque video paths;
+  rerun `npm run test:guardians` on Windows with Supabase, Edge Functions, and GCS running before
+  treating this gate as passed. Keep any remaining failures, including demo fixture parity,
+  visible until verified there.
+  - [x] Update old integration fixtures to opaque raw paths, assert insert-time rejection of
+    invalid paths, and check shared reports for internal IDs. Normalize uppercase upload
+    extensions before storage reservation. Local unit and static checks pass.
+  - [ ] Run the full guardian and demo-fixture integration suites on Windows; investigate every
+    remaining failure and verify all cross-role access and audited deletion paths.
 - [ ] **Complete the report's evidence behavior and validate it on real footage (§1, §3.3, §5, §10).**
   Distinguish confirmed no-swing from inconclusive detection without treating the result chip as
   proof; keep confirmed no-swing in the feed. Verify the prompt's plain-language summary and
@@ -52,7 +78,7 @@ browser command permission was denied.
 - [ ] **Complete the launch infrastructure and migration gate (§3.5, §7, §9–11).** Verify real
   GCS upload, signed playback, deletion, CORS, and storage permissions; copy and verify old named
   objects to opaque paths before any parent-facing video or share link uses them. Validate and
-  apply hosted migrations 00041–00047, deploy the Edge bundle, host Supabase and a GPU worker,
+  apply hosted migrations 00041–00048, deploy the Edge bundle, host Supabase and a GPU worker,
   check the pre-deploy `unrecognized_demo_fixture_count()` predicate before the first hosted
   clip deletion, measure processing time and cost, and prepare rollback. Add native push, email
   fallback and player-scoped notification batching. Explicitly prove that single and bulk-upload

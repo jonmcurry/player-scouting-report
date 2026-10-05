@@ -159,6 +159,7 @@ export function firstName(name) {
 
 /** Consent text v1, verbatim; {player} is the child's first name (guardian_invite_preview).
  * There is no unnamed form: without a name the consent is not shown at all. */
+export const CONSENT_TEXT_VERSION = "guardian-consent-2026-10-01";
 export function consentText(player) {
   const p = String(player ?? "").trim();
   if (!p) throw new Error("consentText needs the child's first name");

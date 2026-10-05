@@ -390,7 +390,7 @@ test("family page: never imports checklistReview.js or reads AI drafts, scores o
     assert.doesNotMatch(src, /AI found/);
   }
   // Only this account's own link rows (a coach who is also a parent must not get team guardian rows).
-  assert.match(family, /from\("player_guardians"\)\.select\("player_id, consented_at"\)\.eq\("user_id", viewerId\)/);
+  assert.match(family, /from\("player_guardians"\)\.select\("player_id, consented_at, consent_version"\)\.eq\("user_id", viewerId\)/);
   assert.equal((family.match(/from\("player_guardians"\)/g) ?? []).length, 1);
   // Families read through get-family-report only; no direct table reads beyond their own link rows.
   const froms = [...family.matchAll(/\.from\("([a-z_]+)"\)/g)].map((m) => m[1]);
@@ -413,6 +413,18 @@ test("family page: invite acceptance uses the server's consent version and the e
   assert.match(index, /const familyInvite = Boolean\(familyNext && familyNext\.includes\("\?invite="\)\);\s*if \(familyInvite\) \{/, "invite copy only for invite links");
   assert.match(index, /const returnPath = familyNext \?\? simpleNext;/, "only validated in-app return paths are used");
   assert.match(index, /emailRedirectTo: new URL\(`\.\/index\.html\?next=\$\{encodeURIComponent\(returnPath\)\}`/, "email confirmation returns to the validated invite or simple home");
+});
+
+test("family and simplified routes gate stale consent before loading a child", () => {
+  const family = read("family.html");
+  const simple = read("components/simpleApp.js");
+  assert.match(family, /select\("player_id, consented_at, consent_version"\)/);
+  assert.match(family, /link\.consent_version !== version/);
+  assert.match(family, /rpc\("guardian_consent_preview", \{ p_player_id: id \}\)/);
+  assert.match(family, /consentVersion === CONSENT_TEXT_VERSION/);
+  assert.match(family, /rpc\("renew_guardian_consent", \{ p_player_id: playerId, p_consent_version: consentVersion \}\)/);
+  assert.match(simple, /link\.consent_version !== version/);
+  assert.match(simple, /location\.href = "\.\/family\.html"/);
 });
 
 test("family page: uploads go through the guardian path; Delete confirms and calls delete-clip", () => {
@@ -486,7 +498,7 @@ test("Family page: Unlink me asks about the guardian's own videos, deletes them 
   assert.match(family, /unlinkSheet\(/);
   assert.match(family, /await confirmDialog\(unlinkConfirm\(/);
   const del = family.indexOf('functions.invoke("delete-clip", { body: { clipId: id } })');
-  const revoke = family.indexOf('rpc("revoke_guardian", { p_player_id: playerId, p_user_id: viewerId })');
+  const revoke = family.indexOf('rpc("revoke_guardian", { p_player_id: playerId, p_user_id: viewerId })', family.indexOf("async function unlinkMe()"));
   assert.ok(del > 0 && revoke > 0 && del < revoke, "deletes own uploads before revoking (delete-clip needs the link)");
   assert.match(family, /if \(failed\) \{[\s\S]{0,200}unlinkDeleteFailedMessage\(failed\)[\s\S]{0,80}return;/, "a failed delete keeps the link");
 });

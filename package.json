@@ -1,6 +1,6 @@
 {
   "name": "hitterloop",
-  "version": "0.33.0",
+  "version": "0.34.0",
   "private": true,
   "description": "Node/TypeScript CLI layer for HitterLoop's swing-analysis pipeline: Supabase-backed coach editing, GCS media, Gemini-assisted drafts. Separate from and does not replace the existing Python pose3d pipeline (scripts/pose3d/).",
   "type": "module",

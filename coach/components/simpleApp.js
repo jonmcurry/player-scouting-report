@@ -464,8 +464,15 @@ async function start() {
       state.players = players ?? [];
     } else {
       state.role = "parent";
-      const { data: links, error } = await supabase.from("player_guardians").select("player_id").eq("user_id", state.userId);
-      if (error) throw error;
+      const [{ data: links, error }, { data: version, error: versionError }] = await Promise.all([
+        supabase.from("player_guardians").select("player_id, consent_version").eq("user_id", state.userId),
+        supabase.rpc("current_guardian_consent_version"),
+      ]);
+      if (error || versionError || !version) throw error ?? versionError ?? new Error("Couldn't check consent");
+      if ((links ?? []).some((link) => link.consent_version !== version)) {
+        location.href = "./family.html";
+        return;
+      }
       state.players = (links ?? []).map((link) => ({ id: link.player_id, name: "Child" }));
     }
     if (!state.players.length) {
