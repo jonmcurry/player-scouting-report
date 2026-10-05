@@ -1,6 +1,8 @@
 import { shownFix, type Finding } from "./focus.ts";
 import { selectDrills, type CuratedDrill, type DrillContext } from "./drillSelection.ts";
 
+type SwingDetectionState = "readable" | "confirmed_no_swing" | "inconclusive";
+
 export interface ReportIssue extends Finding {
   issue: string;
   evidence: string;
@@ -23,6 +25,21 @@ export interface ReportDrill extends CuratedDrill {
   sourceCredit: string | null;
 }
 
+export function feedAnalysisPresentation(
+  clipStatus: string,
+  swingDetectionState: SwingDetectionState | null,
+  summary: string | null,
+): { status: string; headline: string | null } {
+  if (clipStatus !== "ready") return { status: clipStatus, headline: null };
+  if (swingDetectionState === "confirmed_no_swing") {
+    return { status: "no_swing", headline: "No swing to analyze in this at-bat." };
+  }
+  if (swingDetectionState === "readable" && summary?.trim()) {
+    return { status: "ready", headline: summary.trim().split(/(?<=[.!?])\s/)[0]! };
+  }
+  return { status: "unreadable", headline: null };
+}
+
 /** Internal worker errors are never sent verbatim to a family. */
 export function plainFailureReason(internal: string | null | undefined): string {
   const value = internal?.toLowerCase() ?? "";
@@ -40,10 +57,17 @@ export function assembleReport(input: {
   issues: ReportIssue[];
   drills: ReportDrill[];
   qualityPassed: boolean;
+  swingDetectionState: SwingDetectionState | null;
   currentFocus: string | null;
   drillContext: Omit<DrillContext, "concept" | "phase">;
 }) {
   const { run } = input;
+  if (input.swingDetectionState === "confirmed_no_swing") {
+    return { state: "no_swing" as const, reason: "No swing to analyze in this at-bat." };
+  }
+  if (input.swingDetectionState !== "readable") {
+    return { state: "unreadable" as const, reason: "We couldn't analyze this video." };
+  }
   if (!input.qualityPassed || !run || !run.summary?.trim() || !Array.isArray(run.strengths)
     || run.strengths.some((s) => !s || typeof s.text !== "string" || !s.text.trim()
       || typeof s.evidence !== "string" || !s.evidence.trim() || typeof s.phase !== "string")) {

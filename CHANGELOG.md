@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.35.0] - 2026-10-05
+
+The simplified app remains a local preview. No hosted schema, media, or fixture was changed.
+
+### Changed
+
+- Completed pipeline runs now store whether swing evidence was readable, an explicit high-confidence detector confirmed no swing, or detection was inconclusive. Result chips never influence that state.
+- Confirmed no-swing at-bats remain in the recent feed and open a dedicated report state; inconclusive clips continue to fail closed as unreadable.
+- Stored demo fixtures created before the simplified report schema are upgraded in memory when cloned, while their saved payloads and content hashes remain unchanged.
+- Integration fixtures now use opaque video paths and isolate upload quotas and queue ordering from unrelated local rows.
+- Regression coverage now protects audited storage deletion across legacy coach clip, at-bat, practice-rep, and player removal paths.
+
+### Fixed
+
+- Shared reports preserve the intentionally redacted first-name/last-initial display instead of passing that identity field through generic prose redaction.
+- Resumable upload tests now match the owner-scoped reservation behavior, and deletion retry fixtures retain the entry ID needed to verify opaque storage paths.
+
 ## [0.34.0] - 2026-10-05
 
 The simplified app remains a local preview. Guardian re-consent and integration behavior still need the Windows Supabase stack before release.

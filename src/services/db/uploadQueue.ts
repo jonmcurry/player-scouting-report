@@ -6,6 +6,7 @@
  * processing -> ready/failed lifecycle around that).
  */
 import { getSupabaseClient } from "./supabaseClient.js";
+import type { SwingDetectionState } from "../development/swingDetection.js";
 
 // A clip stuck in 'processing' past this long is assumed to belong to a
 // crashed/killed worker, not a slow-but-alive one, and becomes reclaimable -
@@ -123,11 +124,11 @@ async function findClipContext(
   };
 }
 
-export async function markClipReady(videoClipId: string): Promise<void> {
+export async function markClipReady(videoClipId: string, swingDetectionState: SwingDetectionState): Promise<void> {
   const supabase = getSupabaseClient();
   const { error } = await supabase
     .from("video_clips")
-    .update({ status: "ready", error_message: null, retry_count: 0, next_retry_at: null })
+    .update({ status: "ready", swing_detection_state: swingDetectionState, error_message: null, retry_count: 0, next_retry_at: null })
     .eq("id", videoClipId);
   if (error) throw new Error(`Marking clip ${videoClipId} ready: ${error.message}`);
 }

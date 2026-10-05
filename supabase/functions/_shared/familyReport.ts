@@ -102,7 +102,15 @@ async function buildPlayerReport(supabase: Db, playerId: string, publicLink: boo
     observations: observations ?? [],
     loggedAtBats: loggedAtBats ?? 0,
   });
-  return publicLink ? redactSharedValue(shaped, player.name, (player.teams as { name: string }).name) as PlayerReport : shaped;
+  if (!publicLink) return shaped;
+  const redacted = redactSharedValue(shaped, player.name, (player.teams as { name: string }).name) as PlayerReport;
+  // The identity fields were intentionally reduced before generic prose
+  // redaction. Restore those allowlisted values so a surname or team token
+  // cannot cause the already-private display name itself to be withheld.
+  redacted.playerName = sharedPlayerName(player.name);
+  redacted.teamName = "";
+  redacted.jerseyNumber = null;
+  return redacted;
 }
 
 function must<T>(res: { data: T | null; error: { message: string } | null }, what: string): T {

@@ -6,6 +6,7 @@
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import "dotenv/config";
@@ -39,11 +40,13 @@ test("a clip uploaded through the old flow lands on a pitch; explicit links are 
     await svc.from("game_log_entries").insert({ player_id: playerId, date: "2026-09-20", opponent: "Legacy", ab: 1, session_type: "game" }).select("id").single(),
     "entry",
   ).id as string;
-  const mk = async (extra: Record<string, unknown> = {}) =>
-    must(
-      await svc.from("video_clips").insert({ game_log_entry_id: entry, clip_slug: `legacy-${Math.random().toString(36).slice(2)}`, raw_gcs_path: "gs://b/x.mp4", status: "ready", ...extra }).select("id, at_bat_pitch_id").single(),
+  const mk = async (extra: Record<string, unknown> = {}) => {
+    const slug = randomUUID();
+    return must(
+      await svc.from("video_clips").insert({ game_log_entry_id: entry, clip_slug: slug, raw_gcs_path: `gs://test-bucket/${entry}/raw/${slug}.mp4`, status: "ready", ...extra }).select("id, at_bat_pitch_id").single(),
       "clip",
     );
+  };
   const c1 = await mk();
   assert.ok(c1.at_bat_pitch_id, "first legacy clip gets a pitch");
   const c2 = await mk();
@@ -65,8 +68,9 @@ test("a practice entry created through the old flow gets its session and rep; it
   const rep = must(await svc.from("practice_repetitions").select("id, rep_number, practice_sessions(session_date)").eq("game_log_entry_id", entry).single(), "rep");
   assert.equal(rep.rep_number, 1);
   assert.equal(rep.practice_sessions.session_date, "2026-09-21");
+  const clipSlug = randomUUID();
   const clip = must(
-    await svc.from("video_clips").insert({ game_log_entry_id: entry, clip_slug: `pl-${suffix}`, raw_gcs_path: "gs://b/y.mp4", status: "ready" }).select("practice_repetition_id, at_bat_pitch_id").single(),
+    await svc.from("video_clips").insert({ game_log_entry_id: entry, clip_slug: clipSlug, raw_gcs_path: `gs://test-bucket/${entry}/raw/${clipSlug}.mp4`, status: "ready" }).select("practice_repetition_id, at_bat_pitch_id").single(),
     "clip",
   );
   assert.equal(clip.practice_repetition_id, rep.id);

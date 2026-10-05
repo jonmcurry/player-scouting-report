@@ -17,7 +17,7 @@ const eurl = (value) => {
   catch { return null; }
 };
 const statusText = (status) => ({ pending: "Uploading…", processing: "Analyzing…", ready: "Ready",
-  unreadable: "Couldn't read this one", failed: "Couldn't read this one", deletion_pending: "Retry delete" })[status] ?? "Analyzing…";
+  unreadable: "Couldn't read this one", failed: "Couldn't read this one", no_swing: "No swing", deletion_pending: "Retry delete" })[status] ?? "Analyzing…";
 const shortDate = (value) => value ? new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
 function say(text) { message.textContent = text; }
 function setTab(tab) {
@@ -130,6 +130,14 @@ async function showReport(clipId, token = null) {
   state.report = data;
   setTab("report");
   const report = data.report;
+  if (report.state === "no_swing") {
+    root.innerHTML = `<span class="simple-eyebrow">At-bat report</span><h1>No swing to analyze in this at-bat.</h1>
+      ${data.videoUrl ? `<video class="simple-video" src="${esc(data.videoUrl)}" controls playsinline></video>` : ""}
+      <div class="simple-card"><p>This at-bat stays in the feed. The result choice did not decide whether a swing happened.</p></div>
+      ${state.shared ? "" : `<div class="simple-actions"><button class="simple-action secondary" data-action="share-report" type="button">Share</button>
+      <button class="simple-action secondary" data-action="delete" type="button">Delete at-bat</button></div>`}`;
+    return;
+  }
   if (report.state !== "ready") {
     const pending = !["ready", "failed"].includes(data.status);
     root.innerHTML = `<span class="simple-eyebrow">At-bat report</span><h1>${pending ? "Analyzing…" : "We couldn't analyze this video"}</h1>

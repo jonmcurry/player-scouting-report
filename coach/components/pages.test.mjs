@@ -427,6 +427,15 @@ test("family and simplified routes gate stale consent before loading a child", (
   assert.match(simple, /location\.href = "\.\/family\.html"/);
 });
 
+test("simplified reports keep confirmed no-swing separate from detector uncertainty", () => {
+  const simple = read("components/simpleApp.js");
+  assert.match(simple, /no_swing: "No swing"/);
+  assert.match(simple, /report\.state === "no_swing"/);
+  assert.match(simple, /No swing to analyze in this at-bat\./);
+  assert.match(simple, /The result choice did not decide whether a swing happened\./);
+  assert.match(simple, /We couldn't analyze this video/);
+});
+
 test("family page: uploads go through the guardian path; Delete confirms and calls delete-clip", () => {
   const family = read("family.html");
   assert.match(family, /rpc\("guardian_create_entry"/);

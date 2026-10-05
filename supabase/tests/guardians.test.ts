@@ -635,7 +635,7 @@ test("get-upload-url: both roles require an opaque clip id and safe extension", 
   assert.equal((await callUploadUrl(coachA, entry, opaqueTestSlug(entry, "coach-opaque"), ".mp4", true)).status, 200);
 });
 
-test("get-upload-url (guardian): refuses to mint a URL for an object that already exists; the URL itself is create-only", async () => {
+test("get-upload-url resumes only the caller's reservation when an object already exists; the URL itself is create-only", async () => {
   const entry = await rpc(guardian, "guardian_create_entry", { p_player_id: emily, p_kind: "game", p_date: "2026-09-25" });
   const slug = `exists-${run}`;
   const first = await callUploadUrl(guardian, entry, slug);
@@ -650,11 +650,13 @@ test("get-upload-url (guardian): refuses to mint a URL for an object that alread
   const again = await fetch(first.body.uploadUrl, { method: first.body.method, headers: { ...(first.body.headers ?? {}), "Content-Type": "video/mp4" }, body: "overwrite" });
   await again.body?.cancel();
   assert.equal(again.status, 412, "create-only precondition refuses an overwrite");
-  // And no new URL is minted for that name.
+  // The original caller may resume registration without receiving another URL.
   const second = await callUploadUrl(guardian, entry, slug);
-  assert.equal(second.status, 409, JSON.stringify(second.body));
+  assert.equal(second.status, 200, JSON.stringify(second.body));
+  assert.equal(second.body.alreadyUploaded, true);
+  assert.equal(second.body.gcsPath, first.body.gcsPath);
   assert.ok(!second.body?.uploadUrl);
-  // Coaches receive the same create-only protection.
+  // Another caller has no reservation and cannot claim the existing object.
   assert.equal((await callUploadUrl(coachA, entry, slug)).status, 409);
 });
 
@@ -808,6 +810,10 @@ test("delete-clip denies another coach before audit and lets a linked guardian d
 
 /** A guardian upload through the real path: entry -> get-upload-url -> emulator object -> guardian_register_clip. */
 async function guardianUpload(slug: string): Promise<{ clipId: string; object: string; clipSlug: string }> {
+  // These tests exercise upload/deletion behavior, not the quota itself. Keep
+  // their shared fixture account isolated from the dedicated rate-limit case.
+  sql(`delete from public.upload_reservations where user_id = '${guardianId}'`);
+  sql(`delete from public.guardian_upload_events where user_id = '${guardianId}'`);
   const entry = await rpc(guardian, "guardian_create_entry", { p_player_id: emily, p_kind: "game", p_date: "2026-09-20" });
   const up = await callUploadUrl(guardian, entry, slug);
   assert.equal(up.status, 200, JSON.stringify(up.body));
@@ -1235,6 +1241,26 @@ test("get-family-report: clip statuses use the coach page's rule; clips expose n
   assert.ok(!again.body.clips.some((c: { id: string }) => c.id === sibClip));
 });
 
+test("get-simplified-report: confirmed no-swing stays in the feed while uncertainty is unreadable", async () => {
+  const entry = await rpc(guardian, "guardian_create_entry", { p_player_id: emily, p_kind: "game", p_date: "2026-09-16" });
+  const rawFor = (slug: string) => `gs://${BUCKET}/${entry}/raw/${opaqueTestSlug(entry, slug)}.mp4`;
+  const noSwing = await famClip(entry, `simple-no-swing-${run}`, "ready", rawFor(`simple-no-swing-${run}`));
+  const uncertain = await famClip(entry, `simple-uncertain-${run}`, "ready", rawFor(`simple-uncertain-${run}`));
+  must(await admin.from("video_clips").update({ swing_detection_state: "confirmed_no_swing" }).eq("id", noSwing), "confirm no swing");
+  must(await admin.from("video_clips").update({ swing_detection_state: "inconclusive" }).eq("id", uncertain), "mark inconclusive");
+
+  const report = await callFn("get-simplified-report", guardian, { playerId: emily, clipId: noSwing });
+  assert.equal(report.status, 200, report.text);
+  assert.deepEqual(report.body.report, { state: "no_swing", reason: "No swing to analyze in this at-bat." });
+
+  const home = await callFn("get-simplified-report", guardian, { playerId: emily });
+  assert.equal(home.status, 200, home.text);
+  const byId = new Map(home.body.feed.map((row: { id: string }) => [row.id, row]));
+  assert.equal((byId.get(noSwing) as { status: string; headline: string }).status, "no_swing");
+  assert.equal((byId.get(noSwing) as { status: string; headline: string }).headline, "No swing to analyze in this at-bat.");
+  assert.equal((byId.get(uncertain) as { status: string }).status, "unreadable");
+});
+
 test("get-family-report: 404 for a player the caller is not linked to; 401 without a session", async () => {
   assert.equal((await callFn("get-family-report", guardian, { playerId: sibling })).status, 404);
   assert.equal((await callFn("get-family-report", parent2, { playerId: emily })).status, 404);
@@ -1330,7 +1356,9 @@ test("get-player-report redacts the seeded player's identity and team", async (t
   }
   const res = await callFn("get-player-report", null, { token: links[0].token });
   assert.equal(res.status, 200, res.text);
-  assert.match(res.body.playerName, /^[^\s]+ [^\s]\.$/u);
+  // Some already-redacted seeded players carry only a first name. Never
+  // invent a last initial; full stored names reduce to first + last initial.
+  assert.match(res.body.playerName, /^[^\s]+(?: [^\s]\.)?$/u);
   assert.equal(res.body.teamName, "");
   assert.equal(res.body.jerseyNumber, null);
   assert.ok(!res.text.includes("latham-lady-bison-white-10u"), "team slug must not be in the payload");
@@ -1447,8 +1475,8 @@ async function ownStuckClip(slug: string, requestedAgo: string): Promise<{ clipI
   deletionClipIds.push(clip.id);
   // begin_clip_deletion committed (audit row), then the storage/finish step failed.
   sql(
-    `insert into public.clip_deletions (clip_id, player_slug, clip_slug, raw_gcs_path, requested_by, requested_by_role, requested_at)
-     values ('${clip.id}', '${emilySlug}', '${clipSlug}', '${gcsPath}', '${guardianId}', 'guardian', now() - interval '${requestedAgo}')`,
+    `insert into public.clip_deletions (clip_id, player_slug, clip_slug, game_log_entry_id, raw_gcs_path, requested_by, requested_by_role, requested_at)
+     values ('${clip.id}', '${emilySlug}', '${clipSlug}', '${entry}', '${gcsPath}', '${guardianId}', 'guardian', now() - interval '${requestedAgo}')`,
   );
   return { clipId: clip.id, object, gcsPath };
 }

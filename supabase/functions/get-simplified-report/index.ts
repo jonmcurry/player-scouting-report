@@ -3,7 +3,7 @@
 // player-specific authorization check.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Storage } from "npm:@google-cloud/storage@7";
-import { assembleReport, plainFailureReason, type ReportDrill, type ReportIssue } from "../../../src/services/development/reportAssembly.ts";
+import { assembleReport, feedAnalysisPresentation, plainFailureReason, type ReportDrill, type ReportIssue } from "../../../src/services/development/reportAssembly.ts";
 import { advanceFocus, type Finding, type FocusRecord, type ReadableSwing } from "../../../src/services/development/focus.ts";
 import { opaqueRawObject } from "../_shared/opaqueStoragePath.ts";
 import { privateName, redactSharedText } from "../_shared/sharedText.ts";
@@ -94,7 +94,7 @@ Deno.serve(async (request) => {
     });
     const storedCurrent = (focusRows ?? []).find((row) => row.ended_at === null) ?? null;
     const { data: allClips, error: clipsError } = await service.from("video_clips")
-      .select("id, status, error_message, created_at, readable_game_serial, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id, date, session_type, result_simple)")
+      .select("id, status, swing_detection_state, error_message, created_at, readable_game_serial, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id, date, session_type, result_simple)")
       .eq("game_log_entries.player_id", playerId).order("created_at", { ascending: false }).limit(100);
     if (clipsError) throw clipsError;
     const { data: allRecent, error: recentError } = await service.from("video_clips")
@@ -213,11 +213,12 @@ Deno.serve(async (request) => {
     const feed = feedClips.map((clip) => {
       const entry = clip.game_log_entries as unknown as { date: string; session_type: string; result_simple: string | null };
       const summary = newestSummary.get(clip.id);
+      const presentation = feedAnalysisPresentation(clip.status, clip.swing_detection_state, summary ?? null);
       return { id: clip.id, entryId: clip.game_log_entry_id, date: entry.date, kind: entry.session_type, result: entry.result_simple,
-        status: deletingIds.has(clip.id) ? "deletion_pending" : clip.status === "ready" ? summary ? "ready" : "unreadable" : clip.status,
+        status: deletingIds.has(clip.id) ? "deletion_pending" : presentation.status,
         headline: deletingIds.has(clip.id) ? "Video deletion needs another try."
           : disputedClipIds.has(clip.id) ? "An observation was hidden after feedback."
-          : summary ? sharedText(summary.split(/(?<=[.!?])\s/)[0]) : null };
+          : presentation.headline ? sharedText(presentation.headline) : null };
     });
     const identity = shared ? privateName(player.name) : player.name;
     if (!clipId) {
@@ -230,7 +231,7 @@ Deno.serve(async (request) => {
         feed: shareScope === "progress" ? [] : feed });
     }
     const { data: clip, error: clipError } = await service.from("video_clips")
-      .select("id, status, error_message, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)")
+      .select("id, status, swing_detection_state, error_message, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)")
       .eq("id", clipId).eq("game_log_entries.player_id", playerId).maybeSingle();
     if (clipError || !clip) return notFound();
     const { data: entryClips, error: entryClipsError } = shared
@@ -260,6 +261,7 @@ Deno.serve(async (request) => {
     const age = player.age_band ? Number(player.age_band.match(/\d+/)?.[0] ?? 12) : Number(team.age_group?.match(/\d+/)?.[0] ?? 12);
     const report = assembleReport({ run: run ? { id: run.id, summary: run.summary, strengths: run.strengths } : null,
       issues, drills, qualityPassed: clip.status === "ready",
+      swingDetectionState: clip.swing_detection_state,
       currentFocus: computed.current?.concept ?? null,
       drillContext: { sport: team.sport === "baseball" || team.sport === "softball" ? team.sport : null, age } });
     if (report.state === "unreadable" && clip.status === "failed") report.reason = plainFailureReason(clip.error_message);

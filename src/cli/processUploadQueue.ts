@@ -66,6 +66,7 @@ import { analysisWindowForClipDir } from "../services/pose3d/analysisWindow.js";
 import { analyzeAndSync } from "./analyze.js";
 import { purgeDeletedClips, supabasePurgeDb, retryUnfinishedDeletions, supabaseRetryDb } from "./purgeDeletedClips.js";
 import { getSupabaseClient } from "../services/db/supabaseClient.js";
+import { swingDetectionState } from "../services/development/swingDetection.js";
 
 const POLL_INTERVAL_MS = 10_000;
 const VENV_PYTHON = path.join(".venv_pose3d", "Scripts", "python.exe");
@@ -198,6 +199,7 @@ export async function processOnePendingClip(): Promise<boolean> {
     const metrics = JSON.parse(fs.readFileSync(path.join(outDir, "metrics.json"), "utf-8")) as {
       lead_side_guess?: "l" | "r" | null;
       phases?: Record<string, { frame: number | null; time_s: number | null }>;
+      swing_detection?: { status?: string | null; confidence?: string | null } | null;
       pipeline_version?: string;
     };
     const trackedFrames = extractLongestTrackedRun(pose3d.frames);
@@ -220,8 +222,9 @@ export async function processOnePendingClip(): Promise<boolean> {
       });
     }
 
-    await markClipReady(clip.videoClipId);
-    console.log(`[process-upload-queue] Clip "${clip.clipSlug}" ready.`);
+    const detectionState = swingDetectionState(metrics);
+    await markClipReady(clip.videoClipId, detectionState);
+    console.log(`[process-upload-queue] Clip "${clip.clipSlug}" ready (${detectionState}).`);
 
     // AI diagnosis (checklist draft + issues + comps + drills) - own try/
     // catch deliberately separate from the block above: this clip's pose3d/
@@ -240,8 +243,10 @@ export async function processOnePendingClip(): Promise<boolean> {
       // upload (Stage 0 trims long uploads) - unknown alignment means the
       // stills would show the wrong moment, so skip rather than guess.
       const analysisWindow = analysisWindowForClipDir(outDir, localRawPath);
-      if (phaseEntries.length === 0) {
-        console.log(`[process-upload-queue] Clip "${clip.clipSlug}": no located swing phases, skipping AI diagnosis.`);
+      if (detectionState === "confirmed_no_swing") {
+        console.log(`[process-upload-queue] Clip "${clip.clipSlug}": pipeline confirmed no swing; keeping the at-bat without generating a report.`);
+      } else if (phaseEntries.length === 0) {
+        console.log(`[process-upload-queue] Clip "${clip.clipSlug}": swing detection was inconclusive, skipping AI diagnosis.`);
       } else if (analysisWindow === null) {
         console.log(`[process-upload-queue] Clip "${clip.clipSlug}": couldn't match the analyzed window to the upload, skipping AI diagnosis.`);
       } else {

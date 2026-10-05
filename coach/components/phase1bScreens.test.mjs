@@ -2,11 +2,88 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 import { fileURLToPath } from "node:url";
 import { findingActionState, nextActionModel, removedVideoNote, reviewSummary, teamAttentionModel } from "./phase1bScreens.js";
 
 const coach = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (file) => fs.readFileSync(path.join(coach, file), "utf8");
+const coachSources = (directory = coach) => fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+  const absolute = path.join(directory, entry.name);
+  if (entry.isDirectory()) return coachSources(absolute);
+  if (!/\.(?:html|[cm]?js|tsx?)$/.test(entry.name) || /\.test\.(?:[cm]?js|tsx?)$/.test(entry.name)) return [];
+  return [{ relative: path.relative(coach, absolute).replaceAll("\\", "/"), source: fs.readFileSync(absolute, "utf8") }];
+});
+
+const protectedTables = new Set(["video_clips", "game_log_entries", "players"]);
+const calledMember = (expression) => {
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  if (ts.isElementAccessExpression(expression) && expression.argumentExpression && ts.isStringLiteralLike(expression.argumentExpression)) {
+    return expression.argumentExpression.text;
+  }
+  return null;
+};
+const receiverOf = (expression) => ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)
+  ? expression.expression
+  : null;
+function directTableDeletes({ relative, source }) {
+  const bodies = relative.endsWith(".html")
+    ? [...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map((match) => match[1])
+    : [source];
+  return bodies.flatMap((body, index) => {
+    const file = ts.createSourceFile(`${relative}#${index}`, body, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const tableFromExpression = (node, scopes) => {
+      if (ts.isIdentifier(node)) {
+        for (let i = scopes.length - 1; i >= 0; i -= 1) {
+          if (scopes[i].has(node.text)) return scopes[i].get(node.text);
+        }
+      }
+      if (!ts.isCallExpression(node)) return null;
+      if (calledMember(node.expression) === "from") {
+        const table = node.arguments[0];
+        return table && ts.isStringLiteralLike(table) && protectedTables.has(table.text) ? table.text : null;
+      }
+      const receiver = receiverOf(node.expression);
+      return receiver ? tableFromExpression(receiver, scopes) : null;
+    };
+    const found = [];
+    const visit = (node, scopes) => {
+      const createsScope = node !== file && (ts.isBlock(node) || ts.isFunctionLike(node));
+      const activeScopes = createsScope ? [...scopes, new Map()] : scopes;
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        const table = tableFromExpression(node.initializer, activeScopes);
+        if (table) activeScopes.at(-1).set(node.name.text, table);
+      }
+      if (ts.isCallExpression(node) && calledMember(node.expression) === "delete") {
+        const receiver = receiverOf(node.expression);
+        const table = receiver ? tableFromExpression(receiver, activeScopes) : null;
+        if (table) found.push(`${relative}:${table}`);
+      }
+      ts.forEachChild(node, (child) => visit(child, activeScopes));
+    };
+    visit(file, [new Map()]);
+    return found;
+  });
+}
+
+test("audited deletion inventory follows syntax and lexical query scope", () => {
+  const source = `
+    async function removePlayer() {
+      const query = supabase.from('players');
+      await query['delete']();
+    }
+    async function removeClip() {
+      const query = supabase.from(\`video_clips\`);
+      await query.eq('note', 'error; retry').delete();
+    }
+    await supabase.from("game_log_entries").eq("id", entryId).delete();
+  `;
+  assert.deepEqual(directTableDeletes({ relative: "synthetic.ts", source }).sort(), [
+    "synthetic.ts:game_log_entries",
+    "synthetic.ts:players",
+    "synthetic.ts:video_clips",
+  ]);
+});
 
 test("Team attention consolidates reviews and follow-ups without zero-value peer cards", () => {
   assert.deepEqual(teamAttentionModel({ needsReview: [{ n: 2 }, { n: 1 }], dueFollowUps: [{}] }), { reviewCount: 3, dueCount: 1, headline: "3 swings to review · 1 follow-up due" });
@@ -101,13 +178,28 @@ test("Task 2b: a reviewed finding whose clip was deleted says who removed the vi
     assert.match(html, /clip_removals_for_player/, file);
     assert.match(html, /removedVideoNote\(/, file);
   }
-  // The coach's Delete Pitch goes through the shared helper and audited function.
-  // A row-only delete remains only for a demo visitor's clone without GCS media.
+  // Every legacy coach removal path deletes clips through the shared audited
+  // function before removing its owning row. A row-only clip delete remains
+  // only for a demo visitor's clone without GCS media.
   const player = read("player.html");
+  const practice = read("components/practicePage.js");
   const deletion = read("components/clipDeletion.js");
   assert.match(player, /deleteClip\(clipId\)/);
+  assert.match(player, /deleteClipsForEntry\(gameLogEntryId\)[\s\S]{0,300}?from\("game_log_entries"\)\.delete\(\)/);
+  assert.match(player, /deleteClipsForPlayer\(playerId\)[\s\S]{0,300}?from\("players"\)\.delete\(\)/);
+  assert.match(practice, /deleteClipsForEntry\(rep\.game_log_entry_id\)[\s\S]{0,300}?from\("game_log_entries"\)\.delete\(\)/);
+  assert.match(deletion, /deleteClipsForEntry[\s\S]*?deleteClip\(clip\.id\)/);
+  assert.match(deletion, /deleteClipsForPlayer[\s\S]*?deleteClipsForEntry\(entry\.id\)/);
   assert.match(deletion, /functions\.invoke\("delete-clip"/);
   assert.match(player, /Delete this pitch clip and its 3D data\? This can't be undone\./);
   assert.equal(deletion.match(/from\("video_clips"\)\.delete\(\)/g)?.length, 1);
   assert.match(deletion, /if \(isDemoMode\(\)\) \{[\s\S]{0,300}?from\("video_clips"\)\.delete\(\)/);
+
+  const directDeletes = coachSources().flatMap(directTableDeletes).sort();
+  assert.deepEqual(directDeletes, [
+    "components/clipDeletion.js:video_clips",
+    "components/practicePage.js:game_log_entries",
+    "player.html:game_log_entries",
+    "player.html:players",
+  ], "new direct deletion sites must be routed through and covered by the audited helper");
 });

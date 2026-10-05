@@ -241,7 +241,11 @@ export async function analyzeAndSync(
     if (error) throw new Error(`Inserting drill recommendations: ${error.message}`);
   }
 
-  if (videoClipId && result.summary !== null) await refreshPlayerFocus(playerId, videoClipId);
+  if (videoClipId && result.summary !== null) {
+    const { error } = await supabase.from("video_clips").update({ swing_detection_state: "readable" }).eq("id", videoClipId);
+    if (error) throw new Error(`Marking validated swing readable: ${error.message}`);
+    await refreshPlayerFocus(playerId, videoClipId);
+  }
   console.log(`Analyzed ${playerSlug}: run ${analysisRunId}; ${updated} checkpoint(s) updated, ${skipped} coach-reviewed checkpoint(s) protected, ${freshIssues.length} new issue draft(s), noActionNeeded=${result.noActionNeeded}.`);
 }
 

@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assembleReport, plainFailureReason, type ReportIssue } from "./reportAssembly.js";
+import { assembleReport, feedAnalysisPresentation, plainFailureReason, type ReportIssue } from "./reportAssembly.js";
 
 const issue: ReportIssue = { id: "i1", concept: "load", phase: "load", basis: "video", confidence: "medium",
   contextExplainsIt: false, emergencySwingSuspected: false, hidden: false, issue: "Starts late", evidence: "Load begins after stride",
   coachingCue: "Start early", lookForNext: "Load before the step" };
 const base = { run: { id: "r1", summary: "She sets up well and starts the load late.", strengths: [{ text: "Balanced setup", evidence: "Stance frame", phase: "stance" }] },
-  issues: [issue], drills: [], qualityPassed: true, currentFocus: null, drillContext: { sport: "softball" as const, age: 12 } };
+  issues: [issue], drills: [], qualityPassed: true, swingDetectionState: "readable" as const,
+  currentFocus: null, drillContext: { sport: "softball" as const, age: 12 } };
 
 test("report uses stored run and shows at most one qualifying fix", () => {
   const report = assembleReport(base);
@@ -39,6 +40,24 @@ test("historical run without simplified output is not shown", () => {
 
 test("a failed quality gate never shows a partial summary or strength", () => {
   assert.equal(assembleReport({ ...base, qualityPassed: false }).state, "unreadable");
+});
+
+test("confirmed no-swing is a recorded at-bat state while uncertainty fails closed", () => {
+  assert.deepEqual(assembleReport({ ...base, run: null, swingDetectionState: "confirmed_no_swing" }), {
+    state: "no_swing", reason: "No swing to analyze in this at-bat.",
+  });
+  assert.equal(assembleReport({ ...base, swingDetectionState: "inconclusive" }).state, "unreadable");
+  assert.equal(assembleReport({ ...base, swingDetectionState: null }).state, "unreadable");
+});
+
+test("feed keeps confirmed no-swing as an at-bat and does not promote uncertain clips", () => {
+  assert.deepEqual(feedAnalysisPresentation("ready", "confirmed_no_swing", null), {
+    status: "no_swing", headline: "No swing to analyze in this at-bat.",
+  });
+  assert.deepEqual(feedAnalysisPresentation("ready", "inconclusive", null), { status: "unreadable", headline: null });
+  assert.deepEqual(feedAnalysisPresentation("ready", "readable", "Balanced start. Late load."), {
+    status: "ready", headline: "Balanced start.",
+  });
 });
 
 test("internal failure details never leak into parent copy", () => {

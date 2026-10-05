@@ -423,6 +423,7 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
     bats: manifest.player.bats ?? player.bats ?? null,
     throws: manifest.player.throws ?? player.throws ?? null,
     what_to_check_next: manifest.player.whatToCheckNext ?? player.what_to_check_next ?? null,
+    readable_game_swing_count: 0,
   }));
   if (manifest.player.whatToCheckNext !== undefined && manifest.player.whatToCheckNext !== player.what_to_check_next) {
     overrides.push({ table: "players", id: fxPlayer, column: "what_to_check_next", from: player.what_to_check_next ?? null, to: manifest.player.whatToCheckNext });
@@ -433,6 +434,7 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
     out.game_log_entries.push(buildTargetRow("game_log_entries", src, {
       id: ids.idFor("game_log_entries", s(e.id)), player_id: fxPlayer,
       date: src.date, opponent: src.opponent ?? null, ab: src.ab, result: src.result ?? null, pitch: src.pitch ?? null,
+      result_simple: null, simple_capture_id: null,
     }));
   }
   for (const p of includedPitches.sort(byCreated)) {
@@ -499,6 +501,7 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
       demo_media_path: publicFilename, demo_media_offset_s: offset,
       raw_gcs_path: null, error_message: null, claimed_at: null, retry_count: 0, next_retry_at: null,
       uploaded_by: null, uploaded_by_role: clip.uploaded_by_role === "guardian" ? "guardian" : "coach",
+      readable_game_serial: null, swing_detection_state: "readable",
     }));
     clipsOut.push({
       manifestIndex: index, sourceClipId, clipSlug: s(clip.clip_slug), fixtureClipId: fxClip, publicFilename,
@@ -553,6 +556,7 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
     const runRow = buildTargetRow("analysis_runs", r, {
       id: ids.idFor("analysis_runs", s(r.id)), player_id: fxPlayer,
       video_clip_id: ids.lookup("video_clips", r.video_clip_id as string | null),
+      summary: null, strengths: [],
     });
     if (manifest.analysis?.scrubInputManifest) runRow.input_manifest = {};
     out.analysis_runs.push(runRow);
@@ -589,6 +593,7 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
       id, player_id: fxPlayer, video_clip_id: ids.lookup("video_clips", i.video_clip_id as string | null),
       analysis_run_id: softRef("analysis_runs", i.analysis_run_id, { table: "issues", id, column: "analysis_run_id" }),
       reviewed_by: i.review_status === "draft" ? null : alias(i.reviewed_by),
+      hidden_reason: null, hidden_by: null,
     }));
   }
   for (const p of priorities.slice().sort(byCreated)) {
@@ -623,7 +628,12 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
   }
   // Team drills are discovered while translating sessions/priority drills above.
   for (const d of [...teamDrills.values()].sort((a, b) => s(a.slug).localeCompare(s(b.slug)))) {
-    out.drill_library.push(buildTargetRow("drill_library", d, { id: ids.idFor("drill_library", s(d.id)), team_id: team }));
+    out.drill_library.push(buildTargetRow("drill_library", d, {
+      id: ids.idFor("drill_library", s(d.id)), team_id: team, best_for: null, looks_right_when: null,
+      cue: null, common_mistakes: [], home_friendly: false, sport: "both", min_age: null,
+      phase: null, demo_url: null, demo_timestamp: null, source_credit: null,
+      requires_screen: false, weighted_or_overspeed: false,
+    }));
   }
   if (manifest.report?.shareLink !== false) {
     out.player_share_links.push(buildTargetRow("player_share_links", null, {

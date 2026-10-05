@@ -36,6 +36,7 @@ import { buildFixture, type BuildResult } from "../../src/services/demoExport/bu
 import type { CurationManifest } from "../../src/services/demoExport/curationManifest.js";
 import { probe, transcodeClip } from "../../src/services/demoExport/media.js";
 import { loadSourceSnapshot } from "../../src/services/demoExport/sourceLoader.js";
+import { fixtureUuid } from "../../src/services/demoExport/ids.js";
 import { FIXTURE_TABLE_ORDER } from "../../src/services/demoExport/translation.js";
 import { hasErrors } from "../../src/services/demoExport/validate.js";
 import { shapePlayerReport } from "../functions/get-player-report/shape.js";
@@ -129,8 +130,14 @@ before(async () => {
   const r2 = (must(await svc.from("practice_repetitions").update({ grouping: "post_drill", notes: "after" }).eq("game_log_entry_id", p2).select("id").single(), "rep2") as { id: string }).id;
   src.r1 = r1;
   src.r2 = r2;
-  const clip = (entry: string, slug: string, extra: Record<string, unknown>) =>
-    ins("video_clips", { game_log_entry_id: entry, clip_slug: slug, fps: 30, n_frames: 360, duration_s: 12, status: "ready", raw_gcs_path: `gs://softball-scouting-media/${TEAM_SLUG}/e2e-player/raw/${slug}.mp4`, ...extra }, slug);
+  const clip = (entry: string, label: string, extra: Record<string, unknown>) => {
+    const slug = fixtureUuid("e2e-source", "video_clips", `${entry}:${label}`);
+    src[`${label}Slug`] = slug;
+    return ins("video_clips", {
+      game_log_entry_id: entry, clip_slug: slug, fps: 30, n_frames: 360, duration_s: 12,
+      status: "ready", raw_gcs_path: `gs://softball-scouting-media/${entry}/raw/${slug}.mp4`, ...extra,
+    }, label);
+  };
   const c1 = await clip(g1, "c1", { at_bat_pitch_id: g1p2 });
   const c2 = await clip(g2, "c2", { at_bat_pitch_id: g2p1 });
   const c3 = await clip(p1, "c3", { practice_repetition_id: r1 });
@@ -186,7 +193,7 @@ before(async () => {
     team: { publicName: "E2E Approved Team", sport: "softball", levelLabel: "10U" },
     player: { publicName: "E2E Real Player", publicSlug: PUBLIC_SLUG },
     reviewerDisplayName: "Coach Demo",
-    clips: ["c1", "c2", "c3", "c4"].map((slug) => ({ clipSlug: slug, trim: { startS: 1, endS: 7 }, sourceVideo: video, analysisWindowStartS: 0 })),
+    clips: ["c1", "c2", "c3", "c4"].map((label) => ({ clipSlug: src[`${label}Slug`], trim: { startS: 1, endS: 7 }, sourceVideo: video, analysisWindowStartS: 0 })),
     priorities: "all",
     expect: { requirePose3d: true, comparePairs: ["baseline_post", "game_game", "priority_before_after"] },
   };

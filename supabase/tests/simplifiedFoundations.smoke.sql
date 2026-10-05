@@ -73,6 +73,11 @@ begin
       raise exception 'invalid path changed stored clip';
     end if;
   end;
+  update public.video_clips set swing_detection_state = 'confirmed_no_swing' where id = v_clip;
+  if public.register_readable_game_swing(v_clip) is not null then raise exception 'confirmed no-swing counted as readable'; end if;
+  update public.video_clips set swing_detection_state = 'inconclusive' where id = v_clip;
+  if public.register_readable_game_swing(v_clip) is not null then raise exception 'inconclusive clip counted as readable'; end if;
+  update public.video_clips set swing_detection_state = 'readable' where id = v_clip;
   v_serial := public.register_readable_game_swing(v_clip);
   if v_serial is null or public.register_readable_game_swing(v_clip) <> v_serial then raise exception 'serial idempotence'; end if;
   select count(*) into v_count from public.video_clips where id = v_clip and readable_game_serial = v_serial;

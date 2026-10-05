@@ -22,9 +22,9 @@ browser command permission was denied.
     including coach uploads: the curation manifest must record separate permission from each
     currently linked guardian. A failed link lookup blocks export, and guardian IDs remain out
     of the public fixture. Guardian-upload permission remains a separate requirement.
-  - [ ] Run stale, renewed, revoked, and multi-child consent paths against the Windows Supabase
-    stack and on the parent browser. Obtain approval of any new wording before bumping its
-    stored version. Verify the new publication gate against real linked-player data and review
+  - [ ] Run the multi-child consent path on the parent browser. The Windows integration suite now
+    passes stale, renewed, and revoked consent cases. Obtain approval of any new wording before
+    bumping its stored version. Verify the new publication gate against real linked-player data and review
     the actual permission records before any public-demo export. The full read-only Gemini privacy
     review found no blocking issue. A final narrow review of malformed-link handling also found
     no blocking issue; its empty-list concern is covered by the service-role loader throwing on
@@ -38,27 +38,39 @@ browser command permission was denied.
   read, or infer the team roster or other players. Verify coach removal of a parent link and parent
   self-unlink end access immediately; verify each shared token exposes only its intended report.
   Route every remaining legacy clip, at-bat, rep, and player-removal path through audited storage
-  deletion so no raw video is orphaned. Four focused local integration cases pass, but the last
-  full guardian run had 15 failures in older fixtures and assertions.
+  deletion so no raw video is orphaned. The full local guardian suite passes; hosted verification
+  remains open.
   On macOS, the integration stack is unavailable: Supabase and the GCS emulator run only on
-  Jon's Windows machine. The old guardian test fixtures now use opaque video paths;
-  rerun `npm run test:guardians` on Windows with Supabase, Edge Functions, and GCS running before
-  treating this gate as passed. Keep any remaining failures, including demo fixture parity,
-  visible until verified there.
+  Jon's Windows machine. Windows verification now passes the full guardian and real-fixture demo
+  suites. Keep hosted access and deletion verification visible until it is run against the release
+  environment.
   - [x] Update old integration fixtures to opaque raw paths, assert insert-time rejection of
     invalid paths, and check shared reports for internal IDs. Normalize uppercase upload
     extensions before storage reservation. Local unit and static checks pass.
-  - [ ] Run the full guardian and demo-fixture integration suites on Windows; investigate every
-    remaining failure and verify all cross-role access and audited deletion paths.
+  - [x] Run the full guardian and demo-fixture integration suites on Windows. The guardian suite
+    passes 58/58 and covers coach, linked/revoked/unrelated guardian, anonymous, and shared-link
+    boundaries plus audited deletion. The real-fixture demo suite passes 15/15. Migration 00049
+    upgrades pre-00047 stored fixtures in memory without changing their payloads or hashes.
+  - [x] Audit the legacy coach removal paths. Single-clip, whole-at-bat, practice-rep, and player
+    removal all call the shared `delete-clip` helper before deleting their owning database rows;
+    regression coverage now fails if one of those paths returns to a row-only media delete. The
+    direct clip-table delete is limited to the media-free local demo clone.
 - [ ] **Complete the report's evidence behavior and validate it on real footage (§1, §3.3, §5, §10).**
-  Distinguish confirmed no-swing from inconclusive detection without treating the result chip as
-  proof; keep confirmed no-swing in the feed. Verify the prompt's plain-language summary and
-  evidence-backed strengths. Then run at least 20 real phone and GameChanger at-bats through the
+  Verify the prompt's plain-language summary and evidence-backed strengths. Then run at least 20 real phone and GameChanger at-bats through the
   new report; record unreadable and fix rates, and get Jon's judgment on every shown fix. Reach
   the spec's ≥80% agreement target or tighten the threshold. Verify outcome-unknown and
   strength/phase semantic checks, exclude `swing_decision`, `pitch_location_adjustment`, and
   `game_approach` from both shown fixes and Progress, and enforce the rule that every displayed
   claim traces to its source video and stored run.
+  - [x] Store and render separate `readable`, `confirmed_no_swing`, and `inconclusive` detector
+    states. Only an explicit high-confidence pipeline signal can confirm no swing; missing phases,
+    detector errors, Walk/Strikeout, and every other result chip fail closed as inconclusive.
+    Confirmed no-swing stays in the feed and cannot increment readable-game Progress. Local API,
+    database, UI, guardian, and demo-fixture tests pass. The current pipeline does not yet emit a
+    high-confidence no-swing signal, so real-footage calibration remains part of the 20-clip gate.
+    **MANUAL VISUAL QA REQUIRED:** AGY reached the local app in a real browser, but demo mode routes
+    to the classic view and normal mode requires an authenticated fixture, so it could not render
+    the new no-swing report. No Android emulator was running for deployment.
 - [ ] **Complete the replacement family journey before inviting families (§3–4, §10–11).** Run the
   full authenticated coach → invite → guardian consent → upload → report → share loop on Android
   and a parent browser, including the parent switcher for two linked children, offline
@@ -78,7 +90,7 @@ browser command permission was denied.
 - [ ] **Complete the launch infrastructure and migration gate (§3.5, §7, §9–11).** Verify real
   GCS upload, signed playback, deletion, CORS, and storage permissions; copy and verify old named
   objects to opaque paths before any parent-facing video or share link uses them. Validate and
-  apply hosted migrations 00041–00048, deploy the Edge bundle, host Supabase and a GPU worker,
+  apply hosted migrations 00041–00050, deploy the Edge bundle, host Supabase and a GPU worker,
   check the pre-deploy `unrecognized_demo_fixture_count()` predicate before the first hosted
   clip deletion, measure processing time and cost, and prepare rollback. Add native push, email
   fallback and player-scoped notification batching. Explicitly prove that single and bulk-upload
@@ -114,6 +126,25 @@ browser command permission was denied.
 - [ ] **Revisit deferred product choices (§13).** Parents without a team, billing, analyzing every
   swing in a multi-swing clip, and native iOS can wait for usage evidence. Malformed delete IDs
   returning 403 is a small error-response follow-up recorded in the 0.33.0 entry below.
+
+## 2026-10-05: 0.35.0 Windows integration, demo parity, and no-swing state
+
+- The local Windows stack now has migrations 00048–00050 and passes all 58 guardian integration
+  cases, including re-consent, cross-role access, upload reservation, deletion retry, shared-link
+  privacy, and GCS emulator behavior. The real-fixture demo pipeline passes all 15 export, import,
+  clone, isolation, rollback, and frontend-query cases. The standard command passes 216 of 217
+  backend tests with one environment skip plus all 214 coach/browser checks. No hosted schema,
+  media, or canonical fixture changed.
+- Pre-00047 stored demo fixtures receive missing simplified-schema defaults only while cloning;
+  their stored payload and hash stay intact. New exports explicitly omit the frozen demo's new
+  runtime and simplified-report fields instead of leaking private feedback or unsupported state.
+- The legacy coach clip, whole-at-bat, practice-rep, and player-removal paths all call the audited
+  deletion helper before removing their owning rows. Static regression coverage protects those
+  call sites; the broader Critical access/deletion item remains open for hosted verification.
+- Pipeline completion now persists a separate swing-detection state. A readable phase can produce
+  a report; only a future explicit high-confidence detector result can produce the no-swing report;
+  every other no-phase result remains inconclusive. This prevents Walk or Strikeout labels from
+  manufacturing a take while preserving confirmed no-swing at-bats in the feed.
 
 ## 2026-10-04: 0.33.0 focus evidence follow-up — simplified app is not ready to release
 
@@ -178,8 +209,8 @@ browser command permission was denied.
   Gemini. Keep CSV/paste as the fallback, and verify import mapping with a real GameChanger export.
 - [ ] Curate and approve drill candidates, including age and screen/feeder safety fields, before
   activating them. Confirm selected cards match the fix and do not invent instructions.
-- [ ] Complete the confirmed-no-swing state, authenticated focus feedback/deletion verification, notification
-  delivery and settings, and the guardian re-consent gate. Get approval for the consent v2 draft;
+- [ ] Complete authenticated focus feedback/deletion verification, notification delivery and
+  settings, and the guardian re-consent gate. Get approval for the consent v2 draft;
   keep separate public-demo permission for coach and guardian uploads.
 - [ ] Validate the Edge Function bundle, real GCS upload/playback/delete, old-object copy-and-verify
   migration, 20 real at-bat reports, and end-to-end parent access. The local schema smoke test was

@@ -20,6 +20,7 @@
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { getSupabaseClient } from "./supabaseClient.js";
 import { claimNextPendingClip } from "./uploadQueue.js";
 
@@ -53,13 +54,15 @@ after(async () => {
 
 test("claimNextPendingClip: only one of two concurrent callers claims the same pending row", async () => {
   const supabase = getSupabaseClient();
+  const clipSlug = randomUUID();
   const { data: clip, error } = await supabase
     .from("video_clips")
     .insert({
       game_log_entry_id: gameLogEntryId,
-      clip_slug: `test-race-${Date.now()}`,
+      clip_slug: clipSlug,
       status: "pending",
-      raw_gcs_path: "gs://test-bucket/fake.mp4",
+      raw_gcs_path: `gs://test-bucket/${gameLogEntryId}/raw/${clipSlug}.mp4`,
+      created_at: "1900-01-01T00:00:00Z",
     })
     .select("id")
     .single();
@@ -73,15 +76,17 @@ test("claimNextPendingClip: only one of two concurrent callers claims the same p
 
 test("claimNextPendingClip: a stale 'processing' clip becomes reclaimable", async () => {
   const supabase = getSupabaseClient();
+  const clipSlug = randomUUID();
   const staleClaimedAt = new Date(Date.now() - 20 * 60_000).toISOString(); // older than the default 15min stale window
   const { data: clip, error } = await supabase
     .from("video_clips")
     .insert({
       game_log_entry_id: gameLogEntryId,
-      clip_slug: `test-stale-${Date.now()}`,
+      clip_slug: clipSlug,
       status: "processing",
       claimed_at: staleClaimedAt,
-      raw_gcs_path: "gs://test-bucket/fake.mp4",
+      raw_gcs_path: `gs://test-bucket/${gameLogEntryId}/raw/${clipSlug}.mp4`,
+      created_at: "1900-01-02T00:00:00Z",
     })
     .select("id")
     .single();
