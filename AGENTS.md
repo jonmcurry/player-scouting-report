@@ -322,7 +322,9 @@ Core loop:
 
 The original swing video is the source of truth.
 
-The coach is the final authority.
+The simplified app's approved direction is automatic reports for parents and coaches.
+
+The coach owns the team and can hide a finding that does not look right.
 
 Prioritize:
 
@@ -334,13 +336,13 @@ Prioritize:
 
 - next development step;
 
-- Priority;
+- one fix per readable at-bat;
 
-- Drill;
+- vetted drills;
 
-- Practice;
+- game and practice kept distinct;
 
-- Progress.
+- deterministic progress from repeated game swings.
 
 De-emphasize:
 
@@ -362,8 +364,6 @@ Truth rules:
 
 - never invent observations/findings;
 
-- never invent Priorities;
-
 - never invent Drills;
 
 - never invent progress;
@@ -372,7 +372,11 @@ Truth rules:
 
 - insufficient evidence fails closed;
 
-- AI drafts are not coach conclusions.
+- automatic reports show only video-supported findings that meet the display threshold;
+
+- at most one fix is shown for a readable at-bat;
+
+- a parent or coach can hide a finding that does not look right; nobody must approve one.
 
 ## Engineering Safety Rules
 

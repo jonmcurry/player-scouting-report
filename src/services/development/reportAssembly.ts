@@ -45,6 +45,7 @@ export function plainFailureReason(internal: string | null | undefined): string 
   const value = internal?.toLowerCase() ?? "";
   if (/batter|subject|player not found/.test(value)) return "We couldn't find the batter clearly.";
   if (/no swing|swing not|contact not|no contact/.test(value)) return "We couldn't find a swing in this clip. If it was a take or walk, there's no swing to analyze.";
+  if (/too long|longer than|3-minute upload limit/.test(value)) return "This video was longer than the 3-minute limit.";
   if (/too short|short clip|duration/.test(value)) return "This clip was too short to see the swing.";
   if (/blur|out of focus/.test(value)) return "The video was too blurry to see the swing clearly.";
   return "We couldn't analyze this video.";

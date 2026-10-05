@@ -361,13 +361,13 @@ function opaqueTestSlug(entryId: string, label: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
-async function callUploadUrl(client: SupabaseClient, gameLogEntryId: string, label = randomUUID(), ext = ".mp4", rawSlug = false) {
+async function callUploadUrl(client: SupabaseClient, gameLogEntryId: string, label = randomUUID(), ext = ".mp4", rawSlug = false, contentType = "video/mp4") {
   const clipSlug = rawSlug ? label : opaqueTestSlug(gameLogEntryId, label);
   const token = (await client.auth.getSession()).data.session!.access_token;
   const res = await fetch(`${SUPABASE_URL}/functions/v1/get-upload-url`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ gameLogEntryId, clipSlug, ext, contentType: "video/mp4" }),
+    body: JSON.stringify({ gameLogEntryId, clipSlug, ext, contentType }),
   });
   return { status: res.status, body: { ...(await res.json().catch(() => ({}))), clipSlug } };
 }
@@ -628,11 +628,25 @@ test("get-upload-url: both roles require an opaque clip id and safe extension", 
     const res = await callUploadUrl(guardian, entry, slug, ext, true);
     assert.ok(res.status === 400, `${JSON.stringify(slug)}${ext} -> ${res.status}`);
   }
-  const uppercaseExt = await callUploadUrl(guardian, entry, validSlug, ".MOV", true);
+  const uppercaseExt = await callUploadUrl(guardian, entry, validSlug, ".MOV", true, "video/quicktime");
   assert.equal(uppercaseExt.status, 200, JSON.stringify(uppercaseExt.body));
   assert.equal(uppercaseExt.body.gcsPath, `gs://${BUCKET}/${entry}/raw/${validSlug}.mov`);
   assert.equal((await callUploadUrl(coachA, entry, "coach slug (1)", ".mp4", true)).status, 400);
   assert.equal((await callUploadUrl(coachA, entry, opaqueTestSlug(entry, "coach-opaque"), ".mp4", true)).status, 200);
+});
+
+test("get-upload-url: only supported video extension and MIME pairs receive a destination", async () => {
+  const entry = await rpc(guardian, "guardian_create_entry", { p_player_id: emily, p_kind: "game", p_date: "2026-09-25" });
+  for (const [label, ext, contentType] of [
+    ["avi", ".avi", "video/avi"], ["fake-mp4", ".mp4", "text/plain"], ["mov-as-mp4", ".mov", "video/mp4"],
+  ]) {
+    const res = await callUploadUrl(coachA, entry, opaqueTestSlug(entry, label), ext, true, contentType);
+    assert.equal(res.status, 415, `${label}: ${JSON.stringify(res.body)}`);
+    assert.match(res.body.error, /MP4.*MOV.*WebM/);
+  }
+  const webm = await callUploadUrl(coachA, entry, opaqueTestSlug(entry, "webm"), ".webm", true, "video/webm");
+  assert.equal(webm.status, 200, JSON.stringify(webm.body));
+  assert.equal(webm.body.contentType, "video/webm");
 });
 
 test("get-upload-url resumes only the caller's reservation when an object already exists; the URL itself is create-only", async () => {
@@ -1183,6 +1197,10 @@ test("get-family-report: coach-confirmed content only; drafts never appear", asy
   fam.reviewed = await famClip(entry, `fam-rev-${run}`, "ready", rawFor(`fam-rev-${run}`));
   fam.pending = await famClip(entry, `fam-pend-${run}`, "pending", rawFor(`fam-pend-${run}`));
   fam.failed = await famClip(entry, `fam-fail-${run}`, "failed", rawFor(`fam-fail-${run}`));
+  must(
+    await admin.from("video_clips").update({ error_message: "This video is longer than the 3-minute upload limit." }).eq("id", fam.failed),
+    "duration failure",
+  );
   const draftRun = await famRun(fam.draft);
   await famRun(fam.analyzed);
   const revRun = await famRun(fam.reviewed);
@@ -1231,8 +1249,9 @@ test("get-family-report: clip statuses use the coach page's rule; clips expose n
   assert.equal(byId.get(fam.reviewed!)?.status, "reviewed");
   assert.equal(byId.get(fam.pending!)?.status, "processing");
   assert.equal(byId.get(fam.failed!)?.status, "failed");
+  assert.equal(byId.get(fam.failed!)?.failureReason, "duration_limit");
   for (const c of res.body.clips) {
-    assert.deepEqual(Object.keys(c).sort(), ["deleteUnfinished", "id", "recordedAt", "status", "uploadedByYou"]);
+    assert.deepEqual(Object.keys(c).sort(), ["deleteUnfinished", "failureReason", "id", "recordedAt", "status", "uploadedByYou"]);
   }
   assert.equal(byId.get(fam.reviewed!)?.recordedAt, "2026-09-15");
   // Another player's clips never appear.
@@ -1393,7 +1412,7 @@ test("get-family-report: uploadedByYou is true only for the caller's own uploads
   assert.equal(byId.get(own.clipId)?.uploadedByYou, true, "own upload");
   assert.equal(byId.get(coachClip.clipId)?.uploadedByYou, false, "coach upload");
   assert.equal(byId.get(otherClip)?.uploadedByYou, false, "another guardian's upload");
-  for (const c of res.body.clips) assert.deepEqual(Object.keys(c).sort(), ["deleteUnfinished", "id", "recordedAt", "status", "uploadedByYou"]);
+  for (const c of res.body.clips) assert.deepEqual(Object.keys(c).sort(), ["deleteUnfinished", "failureReason", "id", "recordedAt", "status", "uploadedByYou"]);
   for (const uid of [guardianId, other.id, (await coachA.auth.getUser()).data.user!.id]) {
     assert.ok(!res.text.includes(uid), "no uploader / user id in the payload");
   }

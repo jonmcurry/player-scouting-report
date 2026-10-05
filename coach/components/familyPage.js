@@ -31,14 +31,24 @@ const STATUS_COPY = Object.freeze({
   reviewed: { label: "Coach reviewed", detail: "Your coach looked at this swing.", tone: "success" },
 });
 
+const FAILURE_COPY = Object.freeze({
+  duration_limit: {
+    label: "Video was too long",
+    detail: "Choose a video that is 3 minutes or shorter.",
+    tone: "warning",
+  },
+});
+
 /** Family wording for a clip review state (clipReviewState.js). Unknown states fail closed to "Processing". */
-export function clipStatusCopy(status) {
-  const copy = STATUS_COPY[status] ?? STATUS_COPY.processing;
+export function clipStatusCopy(status, failureReason = null) {
+  const copy = status === "failed" && FAILURE_COPY[failureReason]
+    ? FAILURE_COPY[failureReason]
+    : STATUS_COPY[status] ?? STATUS_COPY.processing;
   return { label: copy.label, detail: copy.detail, tone: copy.tone };
 }
 
-function statusChipHtml(status) {
-  const { label, tone } = clipStatusCopy(status);
+function statusChipHtml(status, failureReason = null) {
+  const { label, tone } = clipStatusCopy(status, failureReason);
   return `<span class="bt-status-chip bt-status-${tone}" data-status="${esc(status)}"><span>${esc(label)}</span></span>`;
 }
 
@@ -122,12 +132,12 @@ function swingRow(clip) {
   // A delete of the parent's own upload that failed part-way: no Watch (the video is on its way
   // out and get-video-url refuses it), just the retry. Only ever the viewer's own upload.
   if (clip.deleteUnfinished === true && clip.uploadedByYou === true) return unfinishedDeleteRow(clip);
-  const { detail } = clipStatusCopy(clip.status);
+  const { detail } = clipStatusCopy(clip.status, clip.failureReason);
   const actions = [
     clip.status === "reviewed" ? button("Watch with coach’s notes", { variant: "secondary", iconName: "video", attrs: `data-open-clip="${esc(clip.id)}"` }) : "",
     button("Delete", { variant: "tertiary", iconName: "trash-2", attrs: `data-delete-clip="${esc(clip.id)}" aria-label="Delete this video from ${esc(formatSwingDay(clip.recordedAt))}"` }),
   ].filter(Boolean).join("");
-  return `<li class="hl-swing"><div class="hl-swing-top">${statusChipHtml(clip.status)}</div>${detail ? `<p class="hl-swing-detail">${esc(detail)}</p>` : ""}${actions ? `<div class="hl-swing-actions">${actions}</div>` : ""}</li>`;
+  return `<li class="hl-swing"><div class="hl-swing-top">${statusChipHtml(clip.status, clip.failureReason)}</div>${detail ? `<p class="hl-swing-detail">${esc(detail)}</p>` : ""}${actions ? `<div class="hl-swing-actions">${actions}</div>` : ""}</li>`;
 }
 
 /** "Your swings": one intro line, then clips grouped by day ("Sep 19 · 5 swings"), each with a status

@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.36.0] - 2026-10-05
+
+The simplified app remains a local preview. No hosted service was changed.
+
+### Added
+
+- A shared browser and Edge upload policy accepts MP4, M4V, MOV, and WebM video with matching MIME metadata and supplies a canonical type when a phone picker omits it.
+
+### Changed
+
+- Unsupported extensions and conflicting MIME claims are rejected before a signed upload destination is reserved.
+- The upload worker now rejects videos over three minutes before pose or AI processing, without retrying deterministic duration-limit failures; family reports show a safe duration-specific explanation.
+- Updated the README and repository agent contract to describe the approved automatic, fail-closed replacement flow instead of requiring coach approval; the legacy review UI remains available during migration.
+- Documented the current simplified routes, player-scoped family permissions, Edge Function roles, retained rollback paths, and deferred self-coached-parent scope.
+
 ## [0.35.0] - 2026-10-05
 
 The simplified app remains a local preview. No hosted schema, media, or fixture was changed.

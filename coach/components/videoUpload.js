@@ -8,10 +8,7 @@
 // arrived would just confuse the worker and the coach.
 import { supabase } from "../shared.js";
 import { getDemoConfig } from "../demoConfig.js";
-
-function sanitizeForSlug(name) {
-  return name.replace(/[^A-Za-z0-9_-]/g, "");
-}
+import { acceptedVideoUpload, VIDEO_UPLOAD_HELP } from "./uploadPolicy.js";
 
 /**
  * @param {string} gameLogEntryId
@@ -35,7 +32,8 @@ export async function uploadRawClip(gameLogEntryId, file, link = {}, { asGuardia
   }
   const dotIndex = file.name.lastIndexOf(".");
   const rawExt = dotIndex > 0 ? file.name.slice(dotIndex) : ".mp4";
-  const ext = `.${sanitizeForSlug(rawExt.slice(1)).replace(/[_-]/g, "").slice(0, 10) || "mp4"}`;
+  const accepted = acceptedVideoUpload(rawExt, file.type);
+  if (!accepted) throw new Error(VIDEO_UPLOAD_HELP);
   // Must stay byte-identical everywhere it's used downstream (GCS object
   // name -> inserted row -> the worker's local frames/<player>/<clipSlug>/
   // output dir -> ingestPhases's upsert key) - see the approved plan's
@@ -44,11 +42,11 @@ export async function uploadRawClip(gameLogEntryId, file, link = {}, { asGuardia
   // name, player name, or team name.
   const clipSlug = savedSlug ?? crypto.randomUUID();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clipSlug)) throw new Error("Invalid clip ID");
-  const contentType = file.type || "video/mp4";
+  const contentType = accepted.contentType;
   let gcsPath = uploadedGcsPath;
   if (!gcsPath) {
     const { data: fnResult, error: fnError } = await supabase.functions.invoke("get-upload-url", {
-      body: { gameLogEntryId, clipSlug, ext, contentType },
+      body: { gameLogEntryId, clipSlug, ext: accepted.extension, contentType },
     });
     if (fnError || (!fnResult?.uploadUrl && !fnResult?.alreadyUploaded)) {
       let detail = null;

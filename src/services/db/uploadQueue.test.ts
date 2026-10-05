@@ -22,7 +22,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { getSupabaseClient } from "./supabaseClient.js";
-import { claimNextPendingClip } from "./uploadQueue.js";
+import { claimNextPendingClip, markClipPermanentlyFailed } from "./uploadQueue.js";
 
 let gameLogEntryId: string;
 const insertedClipIds: string[] = [];
@@ -95,4 +95,39 @@ test("claimNextPendingClip: a stale 'processing' clip becomes reclaimable", asyn
 
   const claimed = await claimNextPendingClip();
   assert.equal(claimed?.videoClipId, clip!.id, "the stale processing clip should have been reclaimed");
+});
+
+test("markClipPermanentlyFailed: deterministic policy failures do not consume a retry", async () => {
+  const supabase = getSupabaseClient();
+  const clipSlug = randomUUID();
+  const { data: clip, error } = await supabase
+    .from("video_clips")
+    .insert({
+      game_log_entry_id: gameLogEntryId,
+      clip_slug: clipSlug,
+      status: "processing",
+      retry_count: 2,
+      next_retry_at: new Date(Date.now() + 60_000).toISOString(),
+      raw_gcs_path: `gs://test-bucket/${gameLogEntryId}/raw/${clipSlug}.mp4`,
+      created_at: "1900-01-03T00:00:00Z",
+    })
+    .select("id")
+    .single();
+  assert.equal(error, null, error?.message);
+  insertedClipIds.push(clip!.id as string);
+
+  await markClipPermanentlyFailed(clip!.id as string, "This video is longer than the 3-minute upload limit.");
+
+  const { data: failed, error: readError } = await supabase
+    .from("video_clips")
+    .select("status, error_message, retry_count, next_retry_at")
+    .eq("id", clip!.id)
+    .single();
+  assert.equal(readError, null, readError?.message);
+  assert.deepEqual(failed, {
+    status: "failed",
+    error_message: "This video is longer than the 3-minute upload limit.",
+    retry_count: 2,
+    next_retry_at: null,
+  });
 });

@@ -63,4 +63,8 @@ test("feed keeps confirmed no-swing as an at-bat and does not promote uncertain 
 test("internal failure details never leak into parent copy", () => {
   assert.equal(plainFailureReason("GCS token abc123 expired"), "We couldn't analyze this video.");
   assert.match(plainFailureReason("batter not found: /tmp/private.mp4"), /batter clearly/);
+  assert.equal(
+    plainFailureReason("This video is longer than the 3-minute upload limit."),
+    "This video was longer than the 3-minute limit.",
+  );
 });

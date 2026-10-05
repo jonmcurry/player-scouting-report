@@ -15,6 +15,11 @@ test("clip status copy uses the family wording", () => {
   assert.equal(clipStatusCopy("failed").label, "Couldn't analyze — try filming closer");
   assert.equal(clipStatusCopy("analyzed").label, "Sent to your coach");
   assert.equal(clipStatusCopy("reviewed").label, "Coach reviewed");
+  assert.deepEqual(clipStatusCopy("failed", "duration_limit"), {
+    label: "Video was too long",
+    detail: "Choose a video that is 3 minutes or shorter.",
+    tone: "warning",
+  });
 });
 
 test("no status copy mentions 'AI found', 'issue', or a score", () => {
@@ -42,6 +47,15 @@ test("scannable list: chip only for analyzed and processing; failed and awaiting
   assert.equal(clipStatusCopy("processing").detail, "");
   assert.match(clipStatusCopy("failed").detail, /Film from the side/);
   assert.ok(clipStatusCopy("awaiting_coach").detail.length > 0);
+});
+
+test("duration-limit failure uses the safe server classification instead of filming advice", () => {
+  const html = swingsList({ clips: [{
+    id: "long", recordedAt: "2026-10-01", status: "failed", failureReason: "duration_limit", uploadedByYou: true,
+  }], findings: [] });
+  assert.match(html, /Video was too long/);
+  assert.match(html, /3 minutes or shorter/);
+  assert.doesNotMatch(html, /filming closer|Film from the side/);
 });
 
 const base = { playerName: "Emily Carter", teamName: "Latham", priorities: [], clips: [], findings: [], strengths: [], checkpoints: [] };

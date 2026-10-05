@@ -48,7 +48,7 @@ browser command permission was denied.
     invalid paths, and check shared reports for internal IDs. Normalize uppercase upload
     extensions before storage reservation. Local unit and static checks pass.
   - [x] Run the full guardian and demo-fixture integration suites on Windows. The guardian suite
-    passes 58/58 and covers coach, linked/revoked/unrelated guardian, anonymous, and shared-link
+    passes 59/59 and covers coach, linked/revoked/unrelated guardian, anonymous, and shared-link
     boundaries plus audited deletion. The real-fixture demo suite passes 15/15. Migration 00049
     upgrades pre-00047 stored fixtures in memory without changing their payloads or hashes.
   - [x] Audit the legacy coach removal paths. Single-clip, whole-at-bat, practice-rep, and player
@@ -114,9 +114,20 @@ browser command permission was denied.
 - [ ] **Close remaining reliability checks (§9–10).** Measure ≤10-minute processing for a
   ≤60-second clip and daily upload and clip-length caps. Review allowed upload content types and
   signed URL rendering.
-- [ ] **Align project documentation with the new product contract (§12).** Update the README and
-  project instructions that still describe coach approval as required, while preserving the new
-  fail-closed rule for AI claims. Keep Phase B self-coached parents explicitly deferred.
+  - [x] Verify the shared 10-upload rolling daily reservation cap applies to coaches and guardians,
+    and retain the simplified UI's three-minute metadata check before a file enters the offline
+    queue. Browser and Edge code now share an MP4/M4V/MOV/WebM extension/MIME allowlist; unsupported
+    or conflicting types cannot reserve a signed destination. Local GCS upload and signed playback
+    paths remain covered by the guardian integration suite.
+  - [x] Enforce the three-minute cap in the upload worker before pose or AI processing so a non-app
+    client cannot bypass it. Over-limit clips fail terminally without consuming automatic retries,
+    and the parent report shows a plain duration-limit explanation.
+  - [ ] Measure a real ≤60-second phone clip and GameChanger clip on the target GPU, and verify
+    signed upload/playback plus CORS against real GCS rather than the emulator.
+- [x] **Align project documentation with the new product contract (§12).** The README and repository
+  agent contract now describe automatic, fail-closed reports, optional feedback, current simplified
+  routes, player-scoped family access, and the legacy workflow's temporary rollback role. Phase B
+  self-coached parents remain explicitly deferred.
 
 ### Low — after the first release or small follow-ups
 
@@ -126,6 +137,19 @@ browser command permission was denied.
 - [ ] **Revisit deferred product choices (§13).** Parents without a team, billing, analyzing every
   swing in a multi-swing clip, and native iOS can wait for usage evidence. Malformed delete IDs
   returning 403 is a small error-response follow-up recorded in the 0.33.0 entry below.
+
+## 2026-10-05: 0.36.0 documentation and upload reliability
+
+- Current product documentation now matches the approved simplified contract: direct fail-closed
+  reports, optional feedback instead of approval, player-scoped guardian access, retained legacy
+  rollback routes, and self-coached parents deferred. The repository test command passes 219 of
+  220 backend tests with one environment skip plus all 219 coach/browser checks.
+- The existing rolling daily reservation cap covers both coaches and guardians, and simplified
+  capture rejects clips over three minutes before queueing. Browser and Edge upload paths now share
+  one allowlist for MP4, M4V, MOV, and WebM, including extension/MIME consistency. The local Edge,
+  Supabase, and GCS integration suite passes 59/59. The worker also probes each downloaded video
+  before pose or AI work and terminally rejects clips over three minutes without retrying them.
+  Target-GPU timing and real GCS/CORS verification remain open.
 
 ## 2026-10-05: 0.35.0 Windows integration, demo parity, and no-swing state
 

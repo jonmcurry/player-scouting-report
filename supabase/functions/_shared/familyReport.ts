@@ -10,7 +10,7 @@
 //
 // Family-only sections (includeVideoIds: true):
 //   clips:    every clip of the player -> { id, recordedAt, status,
-//             uploadedByYou }. status is clipReviewState() - the coach page's
+//             failureReason, uploadedByYou }. status is clipReviewState() - the coach page's
 //             rule. uploadedByYou is true iff video_clips.uploaded_by is the
 //             viewer (viewerUserId, taken from the verified JWT by the caller);
 //             only the boolean leaves this module, never a user id. Clips with
@@ -18,7 +18,9 @@
 //             out - except the viewer's OWN uploads, which stay listed with
 //             deleteUnfinished: true so the parent can retry the delete (and
 //             "Unlink -> Delete my videos" still covers them). deleteUnfinished
-//             is false on every other clip. No AI fields.
+//             is false on every other clip. failureReason is a narrow public
+//             enum derived from known policy text; raw error_message never leaves.
+//             No AI fields.
 //   findings: coach-reviewed findings only (issues approved/edited; drafts and
 //             rejected AI drafts never) -> { clipId, title, likelyCause, effect,
 //             videoRemovedBy }. videoRemovedBy is 'family' | 'coach' when the
@@ -30,7 +32,14 @@ import { shapePlayerReport, sharedPlayerName } from "../get-player-report/shape.
 import { clipReviewState, type ClipReviewStatus } from "./clipReviewState.ts";
 import { redactSharedValue } from "./sharedText.ts";
 
-export type FamilyClip = { id: string; recordedAt: string; status: ClipReviewStatus; uploadedByYou: boolean; deleteUnfinished: boolean };
+export type FamilyClip = {
+  id: string;
+  recordedAt: string;
+  status: ClipReviewStatus;
+  failureReason: "duration_limit" | null;
+  uploadedByYou: boolean;
+  deleteUnfinished: boolean;
+};
 export type FamilyFinding = {
   clipId: string | null;
   title: string;
@@ -119,10 +128,10 @@ function must<T>(res: { data: T | null; error: { message: string } | null }, wha
 }
 
 async function familyClips(db: Db, playerId: string, viewerUserId: string): Promise<FamilyClip[]> {
-  const all = must<Array<{ id: string; status: string; created_at: string; uploaded_by: string | null; game_log_entries: { date: string } }>>(
+  const all = must<Array<{ id: string; status: string; error_message: string | null; created_at: string; uploaded_by: string | null; game_log_entries: { date: string } }>>(
     await db
       .from("video_clips")
-      .select("id, status, created_at, uploaded_by, game_log_entries!inner(date, player_id)")
+      .select("id, status, error_message, created_at, uploaded_by, game_log_entries!inner(date, player_id)")
       .eq("game_log_entries.player_id", playerId),
     "clips",
   );
@@ -155,6 +164,9 @@ async function familyClips(db: Db, playerId: string, viewerUserId: string): Prom
       id: r.id,
       recordedAt: r.game_log_entries.date,
       status: clipReviewState({ status: r.status, analyzed: analyzed.has(r.id) }, byClip.get(r.id)),
+      failureReason: r.status === "failed" && /longer than the 3-minute upload limit/i.test(r.error_message ?? "")
+        ? "duration_limit"
+        : null,
       uploadedByYou: isOwn(r),
       deleteUnfinished: deleting.has(r.id),
     }));

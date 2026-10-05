@@ -54,7 +54,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { claimNextPendingClip, markClipFailed, markClipReady } from "../services/db/uploadQueue.js";
+import { claimNextPendingClip, markClipFailed, markClipPermanentlyFailed, markClipReady } from "../services/db/uploadQueue.js";
 import { upsertPose3dFrames, deletePose3dFrames } from "../services/db/videoClipUpsert.js";
 import { downloadFile, deleteObjectIfExists } from "../services/storage/gcs.js";
 import { smoothJoints, SMOOTHING_METHOD_LABEL, type Pose3dFrame } from "../services/pose3d/smoothJoints.js";
@@ -67,6 +67,8 @@ import { analyzeAndSync } from "./analyze.js";
 import { purgeDeletedClips, supabasePurgeDb, retryUnfinishedDeletions, supabaseRetryDb } from "./purgeDeletedClips.js";
 import { getSupabaseClient } from "../services/db/supabaseClient.js";
 import { swingDetectionState } from "../services/development/swingDetection.js";
+import { uploadDurationRejection } from "../services/development/uploadLimits.js";
+import { probe } from "../services/demoExport/media.js";
 
 const POLL_INTERVAL_MS = 10_000;
 const VENV_PYTHON = path.join(".venv_pose3d", "Scripts", "python.exe");
@@ -177,6 +179,14 @@ export async function processOnePendingClip(): Promise<boolean> {
   try {
     console.log(`[process-upload-queue] Downloading ${clip.rawGcsPath} -> ${localRawPath}`);
     await downloadFile(clip.rawGcsPath, localRawPath);
+
+    const media = await probe(localRawPath);
+    const durationRejection = uploadDurationRejection(media.durationS);
+    if (durationRejection) {
+      console.error(`[process-upload-queue] Clip "${clip.clipSlug}" rejected: ${durationRejection}`);
+      await markClipPermanentlyFailed(clip.videoClipId, durationRejection);
+      return true;
+    }
 
     console.log(`[process-upload-queue] Running pose3d pipeline -> ${outDir}`);
     fs.mkdirSync(outDir, { recursive: true });

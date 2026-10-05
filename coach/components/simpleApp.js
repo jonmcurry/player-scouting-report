@@ -1,6 +1,7 @@
 import { supabase, escapeHtml, signOut } from "../shared.js";
 import { isDemoMode } from "../demoConfig.js";
 import { enqueueCapture, queuedCaptures, drainCaptureQueue } from "./captureQueue.js";
+import { acceptedVideoUpload, VIDEO_UPLOAD_HELP } from "./uploadPolicy.js";
 import { deleteClip } from "./clipDeletion.js";
 
 const root = document.getElementById("simpleRoot");
@@ -271,7 +272,8 @@ function confirmSheet(files) {
 }
 
 async function validVideo(file) {
-  if (!file.type.startsWith("video/")) throw new Error("Choose a video file.");
+  const dot = file.name.lastIndexOf(".");
+  if (!acceptedVideoUpload(dot > 0 ? file.name.slice(dot) : ".mp4", file.type)) throw new Error(VIDEO_UPLOAD_HELP);
   const src = URL.createObjectURL(file);
   try {
     const video = document.createElement("video");

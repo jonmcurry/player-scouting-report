@@ -133,6 +133,16 @@ export async function markClipReady(videoClipId: string, swingDetectionState: Sw
   if (error) throw new Error(`Marking clip ${videoClipId} ready: ${error.message}`);
 }
 
+/** A deterministic input-policy failure must not consume automatic retries. */
+export async function markClipPermanentlyFailed(videoClipId: string, message: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  const truncated = message.length > 2000 ? `${message.slice(0, 2000)}\n...(truncated)` : message;
+  const { error } = await supabase.from("video_clips").update({
+    status: "failed", error_message: truncated, next_retry_at: null,
+  }).eq("id", videoClipId);
+  if (error) throw new Error(`Permanently failing clip ${videoClipId}: ${error.message}`);
+}
+
 export async function markClipFailed(videoClipId: string, message: string): Promise<void> {
   const supabase = getSupabaseClient();
   // Cap length - stderr from a failed pose3d run can be a full Python

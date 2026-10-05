@@ -1,16 +1,17 @@
 # HitterLoop
 
-**Video-based swing analysis and player development for youth baseball and softball.**
+**Automatic, video-based at-bat reports for youth baseball and softball families and coaches.**
 
-HitterLoop helps coaches and hitters break down real swings, identify what to work on next, assign
-drills, and track whether improvements carry from practice into games. A coach films real at-bats and
-practice swings on a phone; HitterLoop locates the swing, reconstructs the batter in 3D, and drafts a
-review that the coach approves, edits or rejects.
-Approved observations become **priorities** with drills, follow-ups and evidence over time. The
-product is a coaching loop, not a one-off report: *see it, name it, assign a drill, check whether
-it transferred to games.*
+Film or upload an at-bat and HitterLoop finds the swing, explains what went well, shows at most one
+video-supported fix, offers vetted drills, and tracks whether that focus improves across later game
+swings. Reports go directly to the linked family and coach. Nobody must approve an AI draft first;
+uncertain evidence produces “couldn't tell” instead of a guess.
 
-- Current version: **0.18.0** (see [CHANGELOG.md](CHANGELOG.md))
+The product loop is **Watch → Understand → Focus → Train → Recheck**. The original video remains
+the source of truth. The simplified experience is still a local preview; the legacy coach workflow
+remains available while release, privacy, real-footage, and hosted-infrastructure gates are open.
+
+- Current version: **0.36.0** (see [CHANGELOG.md](CHANGELOG.md))
 - Coach app: installable PWA (`coach/`) plus a Capacitor Android shell (`mobile/`)
 - Backend: Supabase (Postgres + Auth + RLS + Edge Functions), Google Cloud Storage for video
 - Processing: a Node worker driving an isolated Python pose pipeline (YOLO11-pose, YOLOv8 bat
@@ -27,7 +28,7 @@ it transferred to games.*
 ## Table of contents
 
 1. [Product principles](#product-principles)
-2. [What a coach can do](#what-a-coach-can-do)
+2. [What coaches and parents can do](#what-coaches-and-parents-can-do)
 3. [Screens and UX](#screens-and-ux)
 4. [Architecture](#architecture)
 5. [The processing pipeline](#the-processing-pipeline)
@@ -69,46 +70,34 @@ These principles govern the replacement experience:
 
 ---
 
-## What a coach can do
+## What coaches and parents can do
 
-**Capture**
-- Sign up, create a team (with an access code), and add players. No admin step is needed.
-- Log a game **at-bat** with opponent, pitch-by-pitch detail (9-zone location picker, outcome,
-  count) and attach one or more video clips **per pitch**.
-- Log a **practice session** (goal, focus priority, drill, reps grouped as baseline / drill /
-  post-drill / free swing) and attach a clip per rep.
-- Upload from the phone. Pitch recording and player-page capture open the rear camera directly
-  (`capture="environment"`); practice supports the existing multi-file picker. The upload goes
-  directly to cloud storage, and processing starts automatically.
+**Set up and access**
+- A coach creates the team, adds or imports players, and sends a player-specific parent invite.
+- A parent accepts consent and sees only their linked child or children. Parents never receive the
+  team roster or another child's report, video, progress, or notification.
+- A coach sees the full roster. Either role may record and upload for a player they can access.
+- Parents without a coach-created team are deferred from v1.
 
-**Review**
-- Work through a team-wide queue of distinct swings with pending findings; only the next finding is
-  actionable and the queue advances only after an explicit coach decision.
-- Open a swing on the simplified review page and read four things: *what I see*, *what to work on*,
-  *what to look for next time*, *track progress*. **Approve**, **Edit** or **Reject** each AI issue.
-- Watch the original video with phase markers (stance, load, stride, contact, extension,
-  follow-through) that seek the video, and open the 3D reconstruction on demand.
-- Read collapsed technical detail if wanted: analysis quality, swing metrics, the 11-checkpoint
-  checklist.
+**Capture and analyze**
+- Tap **Record at-bat**, choose Game or Practice, optionally choose a simple result, and send.
+- Multiple saved videos can enter an offline queue and resume when the app reconnects.
+- Processing is automatic. The optional result never becomes evidence that a swing occurred or
+  proof of what the video shows.
 
-**Develop**
-- **Promote** an issue to a **priority** (for example "Front-side stability", "Hand path", "Head
-  movement"). Assign drills from a curated library, set a follow-up (by date or by swing count),
-  and log coach observations with an outcome: improving, unchanged, worse, resolved or unclear.
-- See per-player development: active priorities with evidence, game-transfer check, coaching-loop
-  step, next focus, chronological timeline, and measured metric trends.
-- **Compare any two swings** from suggested before/after pairs or a manual picker in synchronized
-  Video, same-phase Frames, coach-authored Progress, robust Metrics, or optional explanatory 3D.
+**Read and respond**
+- The at-bat report shows the original video, a plain-language summary, evidence-backed strengths,
+  at most one fix, and up to three matches from the vetted drill library.
+- If evidence is insufficient, the report fails closed. A confirmed no-swing remains in the feed
+  without a fabricated mechanical report.
+- A coach or parent may tap **Doesn't look right** to hide a fix. Approval is never required.
 
-**Share**
-- Generate a revocable, 90-day **read-only report link** for a parent or recruiter. No account is
-  needed. It shows coach-confirmed content only.
-
-**Manage a team**
-- A team dashboard shows what needs review, follow-ups due, active priorities, and recent progress,
-  practice and game swings.
-- The roster filters by *Needs Review*, *Priority Flaws* and *Early Read*.
-- Team-wide focus areas are flagged when a checkpoint's team average falls below 2.0.
+**Track and share**
+- Progress uses repeated readable game swings. Practice is shown separately and cannot silently
+  manufacture game improvement.
+- Coaches and linked parents can delete the child's at-bats through the audited storage deletion
+  path and create a revocable read-only report or progress link.
+- Shared pages expose only the player's first name plus last initial and omit the team name.
 
 ---
 
@@ -118,33 +107,27 @@ The coach app is plain static HTML plus ES modules with no build step. Pages are
 
 | Page | Purpose |
 |---|---|
-| `index.html` | Login, account creation, "My Teams" picker, create-team form (access-code gated) |
-| `team.html` | Roster with confirmation progress, filter chips, team dashboard, add player |
-| `player.html` | The player hub: priorities up top, diagnosis and comps, drill recommendations, follow-up, **Game Log**, **Practice Log**, collapsed advanced checklist, and a "Manage Player" drawer (share links, delete) |
-| `queue.html` | Team review queue: pending swings grouped by player plus recent reviewed swings |
-| `atbat.html` | Quick pitch logging/recording, derived count and swing/take, evidence status, facts-only summary |
-| `session.html` | One practice session: goal, focus priority, drill, rep grouping, usable/rejected reps, baseline vs post-drill comparison, coach outcome |
-| `review.html?clip=&phase=&queue=1` | Video-first swing review; queue mode exposes one finding decision at a time and an explicit Next swing action |
-| `development.html` | Longitudinal development view for one player |
-| `compare.html` | Suggested/manual two-swing comparison: Video, Frames, coach Progress, Metrics, optional 3D |
-| `report.html?token=` | Public read-only player/parent report containing coach-confirmed content only |
+| `simple.html` | Replacement Home, Record/Upload, At-bat report, Progress, roster/switcher, settings, and share views; still a preview |
+| `index.html` | Sign-in and account entry; returns authenticated users to the requested simplified route |
+| `family.html` | Parent invite acceptance, consent renewal, linked-child access, and self-unlink support |
+| `team.html`, `player.html` | Existing coach setup, roster, player management, and parent invitation paths retained until replacement routing passes end to end |
+| `report.html?token=` | Legacy read-only report route retained during migration; simplified report and progress links render through `simple.html` |
+| `queue.html`, `review.html`, `atbat.html`, `session.html`, `development.html`, `compare.html` | Legacy Group B workflow retained for rollback and the frozen demo until the replacement journey is verified |
 
 ### Design system
 
 - **Palette:** dark slate background `#121418`, clay/terracotta accent `#C2593F`, sand text
   `#F4EFEA`. Chosen for legibility in direct sunlight. Dark only: there is no light-mode toggle.
 - **Touch targets:** a 48 px minimum on interactive elements, for one-handed use behind a backstop.
-- **Navigation:** a 56dp app bar, compact player tabs, and Team / Add / Review bottom navigation.
-- **One-tap scoring:** a 1-2-3 stepper (1 = Needs work, 2 = Developing, 3 = Solid) that upserts
-  immediately. No dropdowns or sub-menus.
-- **Explicit provenance badges:** *🤖 AI Draft* vs *✓ Coach Reviewed*, with score history (for
-  example "2 → 3") and per-checkpoint progress sparklines once a checkpoint has two or more real
-  changes.
+- **Navigation:** Home / Record / Progress for the replacement journey, with a roster for coaches
+  and a linked-child switcher only when a parent has more than one child.
+- **Direct, fail-closed reports:** no approval queue or scoring step. At most one supported fix is
+  shown, and either an unreadable or confirmed-no-swing state replaces unsupported analysis.
 - **Honest empty and error states:** a failed checklist load disables scoring instead of showing a
   blank row a coach could accidentally overwrite. Low-reliability 3D frames show an explicit
   "less reliable" caveat.
-- **Progressive disclosure:** the review page keeps the four coaching questions on top. Metrics,
-  3D, quality and the detailed checklist sit in collapsed drawers.
+- **Progressive disclosure:** the report leads with the video, what went well, one focus, and vetted
+  drills. Metrics, 3D, and implementation diagnostics stay out of the family experience.
 - **Filming coaching in-app:** upload entry points remind the coach to film from directly behind
   home plate.
 - **PWA:** installable, portrait, with an offline shell (`coach/sw.js`). Cached data shows offline,
@@ -162,8 +145,8 @@ flowchart LR
   end
   subgraph Supabase
     AUTH["Auth"]
-    DB[("Postgres + RLS<br/>27 migrations")]
-    EF["Edge Functions<br/>get-upload-url<br/>get-video-url<br/>get-player-report"]
+    DB[("Postgres + RLS<br/>50 migrations")]
+    EF["Edge Functions<br/>upload + playback<br/>reports + feedback<br/>audited deletion"]
   end
   GCS[("Google Cloud Storage<br/>raw private video")]
   subgraph Worker["Processing worker (GPU/CPU host)"]
@@ -197,14 +180,17 @@ gitignored `coach/config.local.js` LAN host for the native shell.
 `../coach`, so there is no duplicated code. It is installed as a debug APK. The iOS project is
 scaffolded but has not been built.
 
-**Supabase.** Postgres 17 with team-scoped RLS on everything, Supabase Auth for coaches, and three
-Deno Edge Functions:
+**Supabase.** Postgres 17 with team-scoped RLS, Supabase Auth for coaches and linked guardians,
+and Deno Edge Functions for narrow server-side operations:
 
 | Function | Caller | Job |
 |---|---|---|
-| `get-upload-url` | authenticated coach | Authorizes an upload (RLS decides access, never a client-supplied slug) and returns a v4 signed PUT URL (or the emulator URL locally) |
-| `get-video-url` | authenticated coach | Returns a 15-minute signed read URL for a private raw clip |
-| `get-player-report` | anonymous, share token | The only public read path. Validates the token (not revoked, not expired), then reads with `service_role` and returns a whitelisted, coach-confirmed report shape. Serves video only for clips a coach linked as evidence |
+| `get-upload-url` | authenticated coach or linked guardian | Authorizes a player-scoped upload and returns a create-only signed PUT URL or the emulator equivalent |
+| `get-video-url` | authenticated coach or linked guardian | Returns a short-lived signed read URL for one permitted private clip; simplified share links receive their scoped URL from `get-simplified-report` |
+| `get-simplified-report` | authorized coach, linked guardian, or scoped share token | Returns the fail-closed report, recent feed, or Progress payload without roster or internal diagnostic fields |
+| `hide-simple-issue` | authorized coach or linked guardian | Hides a disputed fix and refreshes persisted focus from the remaining evidence |
+| `delete-clip` | authorized coach or linked guardian | Removes the private object through the audited deletion lifecycle before the owning row is removed |
+| `get-player-report` / `get-family-report` | legacy and transition routes | Preserve scoped legacy report behavior while the simplified journey remains in preview |
 
 **Storage.** Raw video lives in a private GCS bucket. Locally, `fake-gcs-server` plus an nginx CORS
 proxy (`docker/gcs-cors-proxy.conf`) stand in for it. The emulator alone omits the
@@ -229,7 +215,7 @@ browser, an Edge Function or any lightweight serverless runtime.
 
 ## The processing pipeline
 
-Everything below happens automatically after a coach uploads a clip.
+Everything below happens automatically after an authorized coach or linked guardian uploads a clip.
 
 ```
 Phone ──PUT──▶ GCS (private raw video)
@@ -392,7 +378,8 @@ It is not a canned animation or a stick figure.
 
 ## Data model
 
-Postgres, in `supabase/migrations/` (27 migrations, applied in order). Every table has RLS.
+Postgres, in `supabase/migrations/` (50 migrations, applied in order). Every client-facing table
+has RLS or a deliberately narrow server-side boundary.
 
 | Area | Tables |
 |---|---|
@@ -422,12 +409,14 @@ Notable behaviors:
 - **RLS is the security boundary, not key secrecy.** The Supabase URL and anon key ship in the app
   by design. A coach can read and write a team's data only through a `coach_team_access` row.
   `anon` gets nothing, anywhere.
-- **The one public read path** is the `get-player-report` Edge Function. The share token is the
-  whole authorization boundary. Revoked, expired and nonexistent tokens return the same error. The
-  response comes from a whitelist (`shape.ts`) of coach-confirmed content only: no AI drafts, no
-  internal diagnostics.
-- **Private video.** Raw clips are never public. Coaches get 15-minute signed URLs, and share-link
-  viewers get video only for clips a coach linked as evidence.
+- **Family access is player scoped.** Security-definer RPCs and report functions verify that a
+  guardian is currently linked to the requested player. Guardians receive no roster-wide table or
+  view grant.
+- **Public reads require a scoped share token.** Revoked, expired, and nonexistent tokens fail the
+  same way. Simplified responses are assembled from validated stored runs and return no internal
+  diagnostics, team identity, or another player's data.
+- **Private video.** Raw clips are never public. Authorized users and scoped share-link viewers get
+  short-lived signed URLs only for the requested player's permitted clip.
 - **Reference tables** (`checkpoints`, `swing_phase_types`) are read-only to clients. An earlier
   version had RLS disabled on them, which let any signed-up coach rewrite shared checklist data. That
   hole was found, proven and fixed in 0.8.0.
@@ -584,8 +573,8 @@ scripts/
   pose_*.py            Legacy MediaPipe prototype (comparison only)
   process-validation-batch.ts, bump-coach-cache.mjs, run_pose3d.ps1
 supabase/
-  migrations/          00001 … 00027
-  functions/           get-upload-url, get-video-url, get-player-report
+  migrations/          00001 … 00050
+  functions/           upload/playback, simplified and legacy reports, feedback, audited deletion
   seed.sql
 docs/PIPELINE_AUDIT.md Reconstruction audit
 docker/, docker-compose.yml, Dockerfile   GCS emulator + CORS proxy; Node CLI image
@@ -658,19 +647,22 @@ behavior, schema, RLS, pipeline or AI change. One-time actions on an existing ma
 | Area | State |
 |---|---|
 | Coach PWA + Android APK | Working against local dev stack, verified on an emulator |
-| Upload → automatic processing → AI draft | Working locally end to end |
-| Development system, review, compare, share links | Shipped in 0.14.0 |
+| Simplified Home / Record / Report / Progress | Local preview; replacement route is not yet the default |
+| Guardian access, consent renewal, upload, report, share, and deletion rules | Implemented locally; 58 integration cases pass |
+| Upload → automatic processing → fail-closed report | Working locally; 20 real-at-bat calibration remains open |
+| Legacy development, review, compare, and share workflow | Retained for rollback and the frozen demo during replacement QA |
 | Hosted Supabase project | **Not created.** `PROD_SUPABASE_URL/KEY` in `coach/config.js` are blank |
 | Cloud processing (Cloud Run / GPU) | **Not deployed.** The worker needs a GPU-capable host with the Python venv. The Dockerfile only covers the Node CLIs, not the pipeline |
 | Gemini backend | Wired as the production default, but not confirmed against a live key in the docs. The Claude CLI backend is the one verified end to end |
 | Email confirmation for signup | Off locally. Needs real SMTP before public exposure |
 | Coach invites to an existing team | Not built |
 | iOS | Scaffolded only (needs Xcode) |
-| Play Store / billing / benchmarking / parent accounts | Not built. The parent view is a share link only |
+| Play Store / billing | Not built |
+| Parent accounts | Implemented for coach-invited, linked guardians; self-coached parents remain deferred |
 | Stored tilt metrics | Unreliable (fixed `WORLD_ROTATION`). Only the viewer is corrected |
 | `src/services/reconstruction/*` | Implemented and unit-tested (coordinates, interpolation, foot-plant, handedness, serialization), but **not imported by the live pipeline**. The worker uses `smoothJoints` + `rigidifySkeleton`. Foot-plant correction and the canonical animation format described in `docs/PIPELINE_AUDIT.md` are not active in production processing |
 | Cross-platform worker | Windows venv path is hardcoded (see Getting started) |
-| Stale docs and config | `Dockerfile` and `docker-compose.yml` still mention/mount the removed `reports/` directory. `NEXT_STEPS.md` is tracked in git but deleted in the working tree |
+| Stale config | `Dockerfile` and `docker-compose.yml` still mention or mount the removed `reports/` directory |
 | Sample size | One real team, so every threshold is tuned on very little data |
 
 This repository is public. Do not commit real keys, the team-creation code, video or frames

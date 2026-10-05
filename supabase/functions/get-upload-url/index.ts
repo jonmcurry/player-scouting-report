@@ -44,6 +44,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Storage } from "npm:@google-cloud/storage@7";
+import { acceptedVideoUpload, VIDEO_UPLOAD_HELP } from "../_shared/uploadPolicy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -148,9 +149,11 @@ Deno.serve(async (req) => {
     if (typeof clipSlug !== "string" || !UUID.test(clipSlug) || typeof ext !== "string" || !/^\.[A-Za-z0-9]{1,10}$/.test(ext)) {
         return jsonResponse({ error: "invalid clip slug or extension" }, 400);
     }
-    const destination = `${gameLogEntryId}/raw/${clipSlug}${ext.toLowerCase()}`;
+    const accepted = acceptedVideoUpload(ext, typeof contentType === "string" ? contentType : "");
+    if (!accepted) return jsonResponse({ error: VIDEO_UPLOAD_HELP }, 415);
+    const destination = `${gameLogEntryId}/raw/${clipSlug}${accepted.extension}`;
     const gcsPath = `gs://${bucketName}/${destination}`;
-    const resolvedContentType = contentType || "video/mp4";
+    const resolvedContentType = accepted.contentType;
 
     const exists = await objectExists(bucketName, destination, emulatorHost);
     if (exists) {
