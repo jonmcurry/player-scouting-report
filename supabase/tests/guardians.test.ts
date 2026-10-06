@@ -1280,6 +1280,60 @@ test("get-simplified-report: confirmed no-swing stays in the feed while uncertai
   assert.equal((byId.get(uncertain) as { status: string }).status, "unreadable");
 });
 
+test("get-simplified-report: incomplete re-analysis blocks stale claims; older feedback cannot hide a newer run", async () => {
+  const entry = await rpc(guardian, "guardian_create_entry", { p_player_id: emily, p_kind: "game", p_date: "2026-09-17" });
+  const slug = `simple-rerun-${run}`;
+  const clipId = await famClip(entry, slug, "ready", `gs://${BUCKET}/${entry}/raw/${opaqueTestSlug(entry, slug)}.mp4`);
+  must(await admin.from("video_clips").update({ swing_detection_state: "readable" }).eq("id", clipId), "readable rerun clip");
+  const analysisRun = async (summary: string | null, strengths: unknown, createdAt: string) => must(
+    await admin.from("analysis_runs").insert({ video_clip_id: clipId, player_id: emily, backend: "gemini",
+      ai_model: "test", prompt_version: "t", analysis_policy_version: "t", knowledge_version: knowledgeVersion(),
+      input_manifest: {}, summary, strengths, created_at: createdAt }).select("id").single(), "rerun analysis",
+  ).id as string;
+  const oldId = await analysisRun("Old observation about the swing.", [], "2026-09-17T10:00:00Z");
+  must(await admin.from("issues").insert({ player_id: emily, video_clip_id: clipId, analysis_run_id: oldId,
+    issue: "Old hidden finding", concept: "posture", basis: "video", confidence: "medium",
+    source: "gemini", review_status: "hidden" }), "old hidden issue");
+  await analysisRun(null, [], "2026-09-17T10:01:00Z");
+
+  const incompleteReport = await callFn("get-simplified-report", guardian, { playerId: emily, clipId });
+  assert.equal(incompleteReport.status, 200, incompleteReport.text);
+  assert.equal(incompleteReport.body.report.state, "unreadable");
+  const incompleteHome = await callFn("get-simplified-report", guardian, { playerId: emily });
+  assert.equal(incompleteHome.status, 200, incompleteHome.text);
+  const incompleteRow = incompleteHome.body.feed.find((row: { id: string }) => row.id === clipId);
+  assert.equal(incompleteRow?.status, "unreadable");
+  assert.equal(incompleteRow?.headline, null);
+
+  await analysisRun("Unverified newer observation.", [{ text: "Claim", evidence: "Frame", phase: "invented_phase" }],
+    "2026-09-17T10:01:30Z");
+  const malformedReport = await callFn("get-simplified-report", guardian, { playerId: emily, clipId });
+  assert.equal(malformedReport.status, 200, malformedReport.text);
+  assert.equal(malformedReport.body.report.state, "unreadable");
+  const malformedHome = await callFn("get-simplified-report", guardian, { playerId: emily });
+  assert.equal(malformedHome.status, 200, malformedHome.text);
+  assert.equal(malformedHome.body.feed.find((row: { id: string }) => row.id === clipId)?.status, "unreadable");
+
+  const currentId = await analysisRun("New observation about the swing.", [], "2026-09-17T10:02:00Z");
+  const currentReport = await callFn("get-simplified-report", guardian, { playerId: emily, clipId });
+  assert.equal(currentReport.status, 200, currentReport.text);
+  assert.equal(currentReport.body.report.state, "ready");
+  assert.equal(currentReport.body.report.summary, "New observation about the swing.");
+  const currentHome = await callFn("get-simplified-report", guardian, { playerId: emily });
+  assert.equal(currentHome.status, 200, currentHome.text);
+  const currentRow = currentHome.body.feed.find((row: { id: string }) => row.id === clipId);
+  assert.equal(currentRow?.status, "ready");
+  assert.equal(currentRow?.headline, "New observation about the swing.");
+  must(await admin.from("issues").insert({ player_id: emily, video_clip_id: clipId, analysis_run_id: currentId,
+    issue: "Incomplete stored finding", evidence: " ", coaching_cue: "Keep steady", look_for_next: "Steady setup",
+    concept: "posture", basis: "video", confidence: "medium", source: "gemini", review_status: "draft" }),
+  "malformed current issue");
+  const incompleteCopy = await callFn("get-simplified-report", guardian, { playerId: emily, clipId });
+  assert.equal(incompleteCopy.body.report.state, "unreadable");
+  const incompleteCopyHome = await callFn("get-simplified-report", guardian, { playerId: emily });
+  assert.equal(incompleteCopyHome.body.feed.find((row: { id: string }) => row.id === clipId)?.status, "unreadable");
+});
+
 test("get-family-report: 404 for a player the caller is not linked to; 401 without a session", async () => {
   assert.equal((await callFn("get-family-report", guardian, { playerId: sibling })).status, 404);
   assert.equal((await callFn("get-family-report", parent2, { playerId: emily })).status, 404);
@@ -1383,6 +1437,96 @@ test("get-player-report redacts the seeded player's identity and team", async (t
   assert.ok(!res.text.includes("latham-lady-bison-white-10u"), "team slug must not be in the payload");
   assert.doesNotMatch(res.text, /"(?:player_id|team_id|playerId|teamId)"\s*:/, "internal roster ids must not be shared");
   assert.ok(!("clips" in res.body) && !("findings" in res.body), "the share-link payload gains no family-only fields");
+});
+
+test("simplified share payload keeps only the private player name and display fields", async () => {
+  const progressToken = await rpc(guardian, "create_simple_share_link", {
+    p_player_id: emily, p_scope: "progress", p_clip_id: null,
+  });
+  const tokenOnlyProgress = await callFn("get-simplified-report", null, { token: progressToken });
+  assert.equal(tokenOnlyProgress.status, 200, tokenOnlyProgress.text);
+  assert.ok(!("playerId" in tokenOnlyProgress.body));
+  assert.ok("progress" in tokenOnlyProgress.body);
+  const progress = await callFn("get-simplified-report", null, { playerId: emily, token: progressToken });
+  assert.equal(progress.status, 200, progress.text);
+  assert.match(progress.body.playerName, /^[^\s]+(?: [^\s]\.)?$/u);
+  assert.ok(!("playerId" in progress.body));
+  assert.ok(!("thenClipId" in progress.body.progress) && !("nowClipId" in progress.body.progress));
+  assert.ok(!("clipId" in (progress.body.progress.thenVideo ?? {})));
+  assert.ok(!("id" in (progress.body.progress.focusDrill ?? {})));
+  assert.ok(!progress.text.includes("Guardians a"), "team name must not appear in shared text");
+
+  const reportToken = await rpc(guardian, "create_simple_share_link", {
+    p_player_id: emily, p_scope: "report", p_clip_id: fam.reviewed!,
+  });
+  const tokenOnlyReport = await callFn("get-simplified-report", null, { token: reportToken });
+  assert.equal(tokenOnlyReport.status, 200, tokenOnlyReport.text);
+  assert.ok("report" in tokenOnlyReport.body);
+  assert.ok(!("clipId" in tokenOnlyReport.body));
+  const report = await callFn("get-simplified-report", null, {
+    playerId: emily, clipId: fam.reviewed, token: reportToken,
+  });
+  assert.equal(report.status, 200, report.text);
+  assert.match(report.body.playerName, /^[^\s]+(?: [^\s]\.)?$/u);
+  for (const key of ["playerId", "clipId", "entryId", "entryClipIds"]) assert.ok(!(key in report.body));
+  assert.ok(!("id" in (report.body.report?.fix ?? {})));
+  assert.ok((report.body.report?.drills ?? []).every((drill: Record<string, unknown>) => !("id" in drill)));
+  assert.ok(!report.text.includes("Guardians a"), "team name must not appear in shared report");
+  assert.equal((await callFn("get-simplified-report", null, { token: reportToken, playerId: crypto.randomUUID() })).status, 404);
+  assert.equal((await callFn("get-simplified-report", null, { token: reportToken, clipId: crypto.randomUUID() })).status, 404);
+  assert.equal((await callFn("get-simplified-report", null, { token: progressToken, clipId: fam.reviewed })).status, 404);
+});
+
+test("simplified share token follows its creator's current consent and player access", async () => {
+  const player = must(await admin.from("players").insert({ team_id: teamIds[0],
+    slug: `share-access-${run}`, name: "Share Access Child" }).select("id").single(), "share access player");
+  const family = await makeUser("share-access");
+  const temporaryCoach = await makeUser("share-coach");
+  must(await admin.from("coach_team_access").insert({ coach_id: temporaryCoach.id,
+    team_id: teamIds[0], role: "head_coach" }), "temporary share coach access");
+  const invite = await rpc(coachA, "create_guardian_invite", { p_player_id: player.id, p_relationship: "parent" });
+  await rpc(family.client, "accept_guardian_invite", { p_token: invite, p_consent_version: CONSENT });
+  const familyToken = await rpc(family.client, "create_simple_share_link", {
+    p_player_id: player.id, p_scope: "progress", p_clip_id: null,
+  });
+  const coachToken = await rpc(coachA, "create_simple_share_link", {
+    p_player_id: player.id, p_scope: "progress", p_clip_id: null,
+  });
+  const temporaryCoachToken = await rpc(temporaryCoach.client, "create_simple_share_link", {
+    p_player_id: player.id, p_scope: "progress", p_clip_id: null,
+  });
+  const legacyToken = randomUUID();
+  must(await admin.from("player_share_links").insert({ player_id: player.id, token: legacyToken,
+    created_by: temporaryCoach.id }), "temporary coach legacy share link");
+  const open = (token: string) => callFn("get-simplified-report", null, { playerId: player.id, token });
+  assert.equal((await open(familyToken)).status, 200);
+  assert.equal((await open(coachToken)).status, 200);
+  assert.equal((await open(temporaryCoachToken)).status, 200);
+  assert.equal((await callFn("get-player-report", null, { token: legacyToken })).status, 200);
+
+  must(await admin.from("coach_team_access").delete().eq("coach_id", temporaryCoach.id)
+    .eq("team_id", teamIds[0]), "remove temporary share coach access");
+  assert.equal((await open(temporaryCoachToken)).status, 404, "removed coach access closes that coach's token");
+  assert.equal((await callFn("get-player-report", null, { token: legacyToken })).status, 404,
+    "removed coach access closes the legacy report token too");
+
+  must(await admin.from("player_guardians").update({ consent_version: "stale-consent-test" })
+    .eq("player_id", player.id).eq("user_id", family.id), "stale share consent");
+  assert.equal((await open(familyToken)).status, 404, "stale consent closes a family-created link");
+  assert.equal((await open(coachToken)).status, 200, "a coach-created link follows coach access");
+  await rpc(family.client, "renew_guardian_consent", { p_player_id: player.id, p_consent_version: CONSENT });
+  assert.equal((await open(familyToken)).status, 404, "renewal cannot revive a token issued under older consent");
+  const renewedToken = await rpc(family.client, "create_simple_share_link", {
+    p_player_id: player.id, p_scope: "progress", p_clip_id: null,
+  });
+  assert.equal((await open(renewedToken)).status, 200);
+  await rpc(coachA, "revoke_guardian", { p_player_id: player.id, p_user_id: family.id });
+  assert.equal((await open(familyToken)).status, 404, "removing the creator's link closes their share token");
+  assert.equal((await open(renewedToken)).status, 404);
+  assert.equal((await open(coachToken)).status, 200);
+  const reinvite = await rpc(coachA, "create_guardian_invite", { p_player_id: player.id, p_relationship: "parent" });
+  await rpc(family.client, "accept_guardian_invite", { p_token: reinvite, p_consent_version: CONSENT });
+  assert.equal((await open(renewedToken)).status, 404, "rejoining cannot revive an old token");
 });
 
 // ---------------------------------------------------------------------------

@@ -29,7 +29,7 @@ function setTab(tab) {
 
 async function reportApi(playerId, clipId = null, token = null) {
   const { data, error } = await supabase.functions.invoke("get-simplified-report", {
-    body: { playerId, ...(clipId ? { clipId } : {}), ...(token ? { token } : {}) },
+    body: { ...(playerId ? { playerId } : {}), ...(clipId ? { clipId } : {}), ...(token ? { token } : {}) },
   });
   if (error || !data || data.error) throw new Error(data?.error ?? error?.message ?? "Couldn't load report");
   return data;
@@ -125,10 +125,10 @@ function seekTo(video, time) {
   });
 }
 
-async function showReport(clipId, token = null) {
+async function showReport(clipId, token = null, preloaded = null) {
   say("");
-  const data = await reportApi(state.selected, clipId, token);
-  state.report = data;
+  const data = preloaded ?? await reportApi(state.selected, clipId, token);
+  state.report = { ...data, clipId };
   setTab("report");
   const report = data.report;
   if (report.state === "no_swing") {
@@ -161,7 +161,6 @@ async function showReport(clipId, token = null) {
         <p class="simple-cue">“${esc(report.fix.coachingCue)}”</p><p><strong>Next time, watch for:</strong> ${esc(report.fix.lookForNext)}</p>`
       : `<p>Nothing clear to fix from this at-bat. Keep filming. Patterns show up over 3+ at-bats.</p>`}</section>
     ${report.fix ? `<section><h2>Drills that can help</h2>${report.drills.length ? report.drills.map(drillCard).join("") : `<p>No drill for this yet.</p>`}</section>` : ""}
-    ${state.shared && !params.get("clip") ? `<button class="simple-action secondary" data-action="progress" type="button">Back to Progress</button>` : ""}
     ${state.shared ? "" : `<div class="simple-actions"><button class="simple-action secondary" data-action="share-report" type="button">Share</button>
       ${report.fix ? `<button class="simple-action secondary" data-action="hide-fix" type="button">Doesn't look right</button>` : ""}
       <button class="simple-action secondary" data-action="delete" type="button">Delete at-bat</button></div>`}`;
@@ -174,10 +173,12 @@ async function showReport(clipId, token = null) {
 
 function progressSentence(progress) {
   const current = progress.current;
+  if (progress.status === "checking") return "Checking the latest game swings. Try again shortly.";
   if (!current && progress.status === "early_read") return "Keep filming to see a pattern.";
   if (!current && progress.status === "looks_fixed") return "That focus hasn't shown up in the last 4 at-bats. Nice work.";
   if (!current) return "No clear pattern yet. Keep filming game at-bats.";
-  if (current.status === "early_read") return "Keep filming to see a pattern.";
+  if (current.status === "early_read") return current.windowSize < 3
+    ? "Keep filming to see a pattern." : "More game swings are needed for a reliable comparison.";
   if (current.status === "improving") return `Showing up less: ${current.seen} of the last ${current.windowSize} at-bats.`;
   return `Still showing up in ${current.seen} of the last ${current.windowSize} at-bats.`;
 }
@@ -191,10 +192,10 @@ async function showProgress() {
     <section class="simple-card"><h2>Current focus</h2>${progress.current
       ? `<p class="simple-cue">${esc(progress.current.concept.replaceAll("_", " "))}</p>
         <p class="simple-muted">Since ${esc(shortDate(progress.current.startedAt?.slice(0, 10)))}</p>
-        <p class="simple-status">${esc(progress.current.status === "improving" ? "Improving" : progress.current.status === "early_read" ? "Early read" : "Still showing up")}</p>
+        <p class="simple-status">${esc(progress.current.status === "improving" ? "Improving" : progress.current.status === "early_read" ? "Early read" : progress.current.status === "checking" ? "Checking" : "Still showing up")}</p>
         <p>${esc(progressSentence(progress))}</p>
         ${progress.practice?.total ? `<p class="simple-muted">In practice: seen in ${esc(progress.practice.seen)} of the last ${esc(progress.practice.total)} readable swings.</p>` : ""}
-        ${progress.focusDrill ? `<h2>Drill for this focus</h2>${drillCard(progress.focusDrill)}` : ""}
+        <h2>Drill for this focus</h2>${progress.focusDrill ? drillCard(progress.focusDrill) : `<p>No drill for this yet.</p>`}
         ${state.shared ? "" : `<button class="simple-action link" data-action="dismiss-focus" type="button">Doesn't look right</button>`}`
       : `<p>${esc(progressSentence(progress))}</p>`}</section>
     ${progress.thenVideo && progress.nowVideo ? `<section class="simple-card"><h2>Then vs. now</h2><p>Watch the two videos around contact. Camera views can differ.</p>
@@ -310,8 +311,7 @@ async function share(scope) {
   });
   if (error || !token) throw new Error(error?.message ?? "Couldn't create link");
   const url = new URL("./simple.html", location.href);
-  url.searchParams.set("share", token); url.searchParams.set("player", state.selected);
-  if (scope === "report") url.searchParams.set("clip", state.report.clipId);
+  url.searchParams.set("share", token);
   if (navigator.share) await navigator.share({ url: url.href });
   else { await navigator.clipboard.writeText(url.href); say("Link copied. It expires in 90 days."); }
 }
@@ -455,10 +455,13 @@ async function start() {
     if (token) {
       state.shared = true;
       state.selected = params.get("player");
+      document.querySelector(".simple-brand").removeAttribute("href");
       document.querySelector(".simple-nav").hidden = true;
       document.getElementById("accountBtn").hidden = true;
-      if (params.get("clip")) await showReport(params.get("clip"), token);
-      else { state.home = await reportApi(state.selected, null, token); await showProgress(); }
+      const clipId = params.get("clip");
+      const data = await reportApi(state.selected, clipId, token);
+      if (data.report) await showReport(clipId, token, data);
+      else { state.home = data; await showProgress(); }
       return;
     }
     const { data: { session } } = await supabase.auth.getSession();

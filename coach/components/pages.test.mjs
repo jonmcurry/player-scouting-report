@@ -436,6 +436,22 @@ test("simplified reports keep confirmed no-swing separate from detector uncertai
   assert.match(simple, /We couldn't analyze this video/);
 });
 
+test("new simplified share URLs contain only the token while old links still open", () => {
+  const simple = read("components/simpleApp.js");
+  assert.match(simple, /url\.searchParams\.set\("share", token\)/);
+  assert.doesNotMatch(simple, /url\.searchParams\.set\("(?:player|clip)"/);
+  assert.match(simple, /state\.selected = params\.get\("player"\)/);
+  assert.match(simple, /document\.querySelector\("\.simple-brand"\)\.removeAttribute\("href"\)/);
+  assert.match(simple, /const clipId = params\.get\("clip"\)/);
+  assert.match(simple, /if \(data\.report\) await showReport\(clipId, token, data\)/);
+});
+
+test("GameChanger CSV selection is cleared after local parsing", () => {
+  const importer = read("components/rosterImportSheet.js");
+  assert.match(importer, /csv = parseCsv\(await file\.text\(\)\)/);
+  assert.match(importer, /finally \{ input\.value = ""; \}/);
+});
+
 test("family page: uploads go through the guardian path; Delete confirms and calls delete-clip", () => {
   const family = read("family.html");
   assert.match(family, /rpc\("guardian_create_entry"/);

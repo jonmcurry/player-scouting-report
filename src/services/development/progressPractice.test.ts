@@ -6,7 +6,8 @@ const valid = (id: string, clip: string) => ({ id, video_clip_id: clip, summary:
   strengths: [{ text: "Balanced", evidence: "Visible at contact", phase: "contact" }] });
 const issue = (clip: string, run: string, overrides = {}) => ({ video_clip_id: clip, analysis_run_id: run,
   concept: "balance", basis: "video", review_status: "draft", context_explains_it: false,
-  emergency_swing_suspected: false, ...overrides });
+  emergency_swing_suspected: false, issue: "Balance changes", evidence: "Visible at load",
+  coaching_cue: "Stay centered", look_for_next: "Balanced finish", ...overrides });
 
 test("practice counts the latest four readable clips and only current, visible evidence", () => {
   const clips = ["c6", "c5", "c4", "c3", "c2", "c1"];
@@ -23,4 +24,12 @@ test("invalid latest run cannot fall back to an older run or stale issue", () =>
     { seen: 0, total: 0 });
   assert.deepEqual(practiceEvidence(["clip"], [valid("new", "clip"), valid("old", "clip")], [issue("clip", "old")], "balance"),
     { seen: 0, total: 1 });
+  assert.deepEqual(practiceEvidence(["clip"], [{ ...valid("new", "clip"), summary: null }, valid("old", "clip")],
+    [issue("clip", "old")], "balance"), { seen: 0, total: 0 });
+});
+
+test("practice does not count a current run with missing finding evidence", () => {
+  const runs = [valid("new", "clip")];
+  assert.deepEqual(practiceEvidence(["clip"], runs, [issue("clip", "new", { evidence: " " })], "balance"),
+    { seen: 0, total: 0 });
 });

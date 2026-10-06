@@ -1,5 +1,6 @@
 import { shownFix, type Finding } from "./focus.ts";
 import { selectDrills, type CuratedDrill, type DrillContext } from "./drillSelection.ts";
+import { hasIssueEvidence, hasReportEvidence } from "./latestRuns.ts";
 
 type SwingDetectionState = "readable" | "confirmed_no_swing" | "inconclusive";
 
@@ -69,9 +70,13 @@ export function assembleReport(input: {
   if (input.swingDetectionState !== "readable") {
     return { state: "unreadable" as const, reason: "We couldn't analyze this video." };
   }
-  if (!input.qualityPassed || !run || !run.summary?.trim() || !Array.isArray(run.strengths)
-    || run.strengths.some((s) => !s || typeof s.text !== "string" || !s.text.trim()
-      || typeof s.evidence !== "string" || !s.evidence.trim() || typeof s.phase !== "string")) {
+  const summary = run?.summary?.trim();
+  if (!input.qualityPassed || !run || !summary || !hasReportEvidence(run)) {
+    return { state: "unreadable" as const, reason: "We couldn't analyze this video." };
+  }
+  // Historical or manually edited rows may not have passed the current draft
+  // validator. Never show a run whose stored coaching claim has lost its copy.
+  if (input.issues.some((issue) => !hasIssueEvidence(issue))) {
     return { state: "unreadable" as const, reason: "We couldn't analyze this video." };
   }
   // A flagged issue may also have been described in the run-level summary.
@@ -82,7 +87,7 @@ export function assembleReport(input: {
   const drills = fix ? selectDrills(input.drills, { ...input.drillContext, concept: fix.concept, phase: fix.phase }) : [];
   return {
     state: "ready" as const,
-    summary: disputed ? "An observation from this at-bat was hidden after feedback. Watch the video for what happened." : run.summary.trim(),
+    summary: disputed ? "An observation from this at-bat was hidden after feedback. Watch the video for what happened." : summary,
     strengths: run.strengths.slice(0, 2).map(({ text }) => text),
     fix: fix ? { id: fix.id, concept: fix.concept, issue: fix.issue, evidence: fix.evidence,
       coachingCue: fix.coachingCue, lookForNext: fix.lookForNext } : null,

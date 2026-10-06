@@ -1,7 +1,8 @@
 import { advanceFocus, type Finding, type FocusRecord, type ReadableSwing } from "./focus.ts";
+import { hasIssueEvidence, hasReportEvidence, latestRunsByClip } from "./latestRuns.ts";
 
 type Clip = { id: string; readable_game_serial: number; game_log_entries: { date: string; session_type: string } };
-type Issue = { id: string; video_clip_id: string; analysis_run_id: string | null; concept: string | null; phase: string | null; basis: string | null; confidence: string | null; context_explains_it: boolean; emergency_swing_suspected: boolean; review_status: string };
+type Issue = { id: string; video_clip_id: string; analysis_run_id: string | null; concept: string | null; phase: string | null; basis: string | null; confidence: string | null; context_explains_it: boolean; emergency_swing_suspected: boolean; review_status: string; issue: string | null; evidence: string | null; coaching_cue: string | null; look_for_next: string | null };
 type StoredFocus = { id: string; concept: string; status: FocusRecord["status"]; started_at: string; ended_at: string | null; qualified_at_serial: number; dismissed_at_serial: number | null; dismissed_by: string | null };
 
 const model = (row: StoredFocus): FocusRecord => ({
@@ -33,19 +34,24 @@ export async function persistPlayerFocus(db: any, playerId: string): Promise<voi
   const recent = visibleFocusClips(candidateClips, (deletions ?? []).map((row: { clip_id: string }) => row.clip_id));
   const ids = recent.map((c) => c.id);
   const { data: runs, error: runError } = ids.length
-    ? await db.from("analysis_runs").select("id, video_clip_id, created_at").in("video_clip_id", ids)
-      .not("summary", "is", null).order("created_at", { ascending: false })
+    ? await db.from("analysis_runs").select("id, video_clip_id, summary, strengths, created_at").in("video_clip_id", ids)
+      .order("created_at", { ascending: false })
     : { data: [], error: null };
   if (runError) throw new Error(`Loading focus runs: ${runError.message}`);
-  const latestRun = new Map<string, string>();
-  for (const run of runs ?? []) if (run.video_clip_id && !latestRun.has(run.video_clip_id)) latestRun.set(run.video_clip_id, run.id);
+  const latestRun = latestRunsByClip((runs ?? []) as { id: string; video_clip_id: string | null; summary: string | null; strengths: unknown }[]);
   const { data: issues, error: issueError } = ids.length
-    ? await db.from("issues").select("id, video_clip_id, analysis_run_id, concept, phase, basis, confidence, context_explains_it, emergency_swing_suspected, review_status").in("video_clip_id", ids)
+    ? await db.from("issues").select("id, video_clip_id, analysis_run_id, concept, phase, basis, confidence, context_explains_it, emergency_swing_suspected, review_status, issue, evidence, coaching_cue, look_for_next").in("video_clip_id", ids)
     : { data: [], error: null };
   if (issueError) throw new Error(`Loading focus findings: ${issueError.message}`);
   const byClip = new Map<string, Finding[]>();
+  const invalidClipIds = new Set<string>();
   for (const issue of (issues ?? []) as Issue[]) {
-    if (issue.analysis_run_id !== latestRun.get(issue.video_clip_id)) continue;
+    const run = latestRun.get(issue.video_clip_id);
+    if (!hasReportEvidence(run) || issue.analysis_run_id !== run?.id) continue;
+    if (!hasIssueEvidence({ ...issue, coachingCue: issue.coaching_cue, lookForNext: issue.look_for_next })) {
+      invalidClipIds.add(issue.video_clip_id);
+      continue;
+    }
     const items = byClip.get(issue.video_clip_id) ?? [];
     items.push({ id: issue.id, concept: issue.concept ?? "", phase: issue.phase, basis: issue.basis ?? "", confidence: issue.confidence,
       contextExplainsIt: issue.context_explains_it, emergencySwingSuspected: issue.emergency_swing_suspected,
@@ -53,7 +59,7 @@ export async function persistPlayerFocus(db: any, playerId: string): Promise<voi
     byClip.set(issue.video_clip_id, items);
   }
   const swings: ReadableSwing[] = recent.map((c) => ({ id: c.id, serial: c.readable_game_serial, date: c.game_log_entries.date,
-    sessionType: "game", readable: true, findings: byClip.get(c.id) ?? [] }));
+    sessionType: "game", readable: hasReportEvidence(latestRun.get(c.id)) && !invalidClipIds.has(c.id), findings: byClip.get(c.id) ?? [] }));
   // The counter survives deleted clips, so their missing serials remain visible
   // to advanceFocus without asserting that a deleted swing had any finding.
   const total = player.readable_game_swing_count as number;

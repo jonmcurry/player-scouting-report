@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.38.0] - 2026-10-06
+
+The simplified app remains a local preview. No hosted service was changed.
+
+### Changed
+
+- New simplified report and Progress share URLs contain only the bearer token. The report reader derives the player and report clip from that token, while existing links with explicit IDs remain valid only when those IDs match its scope.
+- The shared-link brand label no longer sends viewers to the coach sign-in page.
+- GameChanger CSV import clears the selected source file from its input immediately after local parsing, including failed or oversized selections.
+- Automatic reports reject blank fix observations, evidence, cues, or next-check text at analysis time. Stored runs with incomplete finding copy are withheld from report, feed, game Progress, and practice evidence reads.
+
+## [0.37.0] - 2026-10-05
+
+The simplified app remains a local preview. No hosted service was changed.
+
+### Changed
+
+- Progress now reads the stored current focus, status, start date, and history. When recent game evidence disagrees with a pending stored transition, it pauses the status claim until the writer catches up; deleted or incomplete evidence continues to fail closed.
+- A stored Looks fixed result remains visible only while four intact recent game swings still support it.
+- Simplified shared reports and Progress responses omit explicit player, clip, issue, and drill ID fields, and redact identity text in focus concepts while retaining signed media URLs.
+- Reports, feed headlines, practice evidence, and Progress use the latest analysis run for each clip; incomplete newer evidence cannot expose an older claim or count as a clean swing. Feedback on an older run no longer suppresses a newer report.
+- A stored strength with an unrecognized swing phase now makes its report evidence unreadable across report, feed, practice, and Progress reads.
+- Simplified share links now require their creator to retain player access. Guardian-created links expire on consent renewal or link removal and cannot revive after re-invitation; coach-created links follow team access.
+- Legacy public report links now stop serving reports and signed videos when the creating coach loses team access.
+
+### Fixed
+
+- Progress says "No drill for this yet" when no eligible drill exists for the current focus.
+
 ## [0.36.0] - 2026-10-05
 
 The simplified app remains a local preview. No hosted service was changed.

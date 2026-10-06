@@ -36,6 +36,15 @@ test("historical run without simplified output is not shown", () => {
   const report = assembleReport({ ...base, run: { ...base.run, strengths: [] } });
   assert.equal(report.state, "ready");
   if (report.state === "ready") assert.deepEqual(report.strengths, []);
+  assert.equal(assembleReport({ ...base, run: { ...base.run,
+    strengths: [{ text: "Unverified", evidence: "Frame", phase: "invented_phase" }] } }).state, "unreadable");
+});
+
+test("stored runs with incomplete coaching copy fail closed at read time", () => {
+  for (const field of ["issue", "evidence", "coachingCue", "lookForNext"] as const) {
+    const report = assembleReport({ ...base, issues: [{ ...issue, [field]: " " }] });
+    assert.equal(report.state, "unreadable", field);
+  }
 });
 
 test("a failed quality gate never shows a partial summary or strength", () => {

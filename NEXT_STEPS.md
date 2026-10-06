@@ -1,4 +1,4 @@
-## Prioritized outstanding work from `docs/SIMPLIFIED_APP_SPEC.md` (updated 2026-10-05)
+## Prioritized outstanding work from `docs/SIMPLIFIED_APP_SPEC.md` (updated 2026-10-06)
 
 This is the current work order. **Critical** items block inviting families or a hosted release;
 **High** items block a spec-complete simplified default route; **Medium** items close
@@ -29,8 +29,18 @@ browser command permission was denied.
     review found no blocking issue. A final narrow review of malformed-link handling also found
     no blocking issue; its empty-list concern is covered by the service-role loader throwing on
     query errors. Repeat the full review before release.
-    Decide whether an existing public share token remains valid after a guardian's consent becomes
-    stale or their link is revoked; the current token reader is independent of guardian access.
+    Decide release policy for coach-created links when a child's guardian consent becomes stale;
+    the local creator-access gates below do not require every linked guardian's current consent.
+  - [x] Gate simplified share reads on the creator's current player access. A guardian-created
+    token now fails while consent is stale or the link is removed, and cannot revive after renewal
+    or re-invitation because its issue time predates the new consent time. Coach-created tokens
+    follow current team access. All failures return the same 404 as an invalid token.
+  - [x] Gate legacy public report and signed-video reads on the creating coach's current team
+    access. Removing the coach's access now closes that coach's outstanding legacy links; the
+    frozen demo's separate report function remains unchanged.
+  - [ ] Run the new stale-consent, renewal, revoke, re-invite, and coach-access-removal share-token
+    integration case for simplified and legacy links on the Windows Supabase stack. Review whether
+    coach-created links should depend on every guardian's current consent before release.
 - [ ] **Prove access and deletion end to end (§2, §8, §10).** Repair the remaining guardian suite
   failures, including legacy media/report assertions, and demo-schema/fixture parity. Then verify
   the coach's allowed access and each linked, unrelated, and revoked guardian's exact allow/deny
@@ -71,6 +81,22 @@ browser command permission was denied.
     **MANUAL VISUAL QA REQUIRED:** AGY reached the local app in a real browser, but demo mode routes
     to the classic view and normal mode requires an authenticated fixture, so it could not render
     the new no-swing report. No Android emulator was running for deployment.
+  - [x] Use only the newest analysis run for each clip in report, feed, practice, and Progress.
+    A newer run with incomplete report evidence now withholds the older claim; it also cannot count
+    as a clean game swing or become the Progress comparison video. Feedback on an older run no
+    longer hides a newer run's report or feed headline. The shared read guard also rejects a
+    strength with an unrecognized phase. A new real-token integration case covers missing summaries,
+    malformed phases, and old feedback; run it on the Windows stack and verify re-analysis during
+    the 20-clip footage review.
+  - [x] Recheck local prompt and semantic guards: the prompt asks for plain parent language and
+    video-grounded strengths, unknown outcomes cannot be asserted as facts, and strengths require
+    text, visible evidence, and a supplied swing phase. The focused semantic suite passes 42/42. The existing
+    focus selector excludes the three unsupported pitch-context concepts from One fix and Progress.
+    This is code/test verification, not the required judgment on 20 real at-bats.
+  - [x] Reject blank One fix observation, evidence, cue, or next-check text during AI output
+    validation. At read time, a current-run finding with incomplete copy now makes the report and
+    feed unreadable and cannot count toward persisted game Progress or practice evidence. Focused
+    local validation passes; the expanded malformed-issue integration case needs the Windows stack.
 - [ ] **Complete the replacement family journey before inviting families (§3–4, §10–11).** Run the
   full authenticated coach → invite → guardian consent → upload → report → share loop on Android
   and a parent browser, including the parent switcher for two linked children, offline
@@ -81,12 +107,41 @@ browser command permission was denied.
   real feedback and deletion evidence, make the app read persisted focus status, and verify the
   Progress state and current drill shown to families. Notification triggering depends on these
   transitions, so this must pass before the first family invite.
+  - [x] Make the simplified report use `player_focus` for the current concept, status, start date,
+    and history. Recent game swings now check the stored status before the API makes a progress
+    claim; mismatches show a temporary checking state, and incomplete or deleted evidence shows
+    Early read. A stored fixed focus shows Looks fixed only while four intact clean game swings
+    still support it. Focused local tests cover pending writes, stale status, deletion gaps, and
+    fixed history.
+  - [ ] Run the feedback and deletion transitions against the Windows Supabase stack with real
+    readable game clips. Verify the parent Progress screen, drill, and notification trigger from
+    those persisted rows; the Mac does not have the local Supabase/GCS stack.
 - [ ] **Gate drill safety and shared-link payloads before exposure (§3.3, §3.5, §5.4).** Audit every
   currently emittable drill for age, sport, equipment, and screen/adult-feeder safety. Keep
   unapproved or safety-flagged candidates out of the app; a fix with no suitable drill must show
   "No drill for this yet." Verify that missing player and team ages use the under-13 safety tier.
   Verify the share-link API payload and rendered page expose only the player's first name plus last
   initial and no team name.
+  - [x] Show "No drill for this yet" on Progress when a stored focus has no eligible drill; the
+    report already used that fallback. The existing selector excludes missing `best_for`, wrong
+    sport or age, weighted/overspeed drills for under-13s, and every screen-required drill. Unknown
+    age defaults to 12 in both report and Progress reads. These rules do not replace human curation.
+  - [x] Audit the migration-seeded library: all seven production seeds predate `best_for`, and
+    migration 00047 leaves that field null. The selector therefore emits none of those seeds on
+    a freshly migrated database. Actual live rows, manual edits, and the 90 research candidates
+    still require the human safety and content review below.
+  - [x] Project simplified shared report and Progress payloads to display fields, removing explicit
+    player, clip, issue, and drill ID fields. Apply the same identity scrub to free-text focus
+    concepts and keep the first-name/last-initial redaction. Local projection tests pass; the
+    real shared-token integration case needs the Windows stack. Signed media URLs still use opaque
+    object paths.
+  - [x] New simplified share URLs contain only the bearer token. The report API resolves its
+    player and report clip from that token; older links with player/clip query parameters continue
+    to work only when those values match the token. Focused local page checks and Edge Function
+    type checking pass. The expanded real-token integration case still needs the Windows stack.
+  - [ ] Review every currently active, human-approved drill and the actual parent screen on the
+    Windows stack. Run the new shared-token integration case, inspect the rendered page and signed
+    media URLs.
 - [ ] **Complete the launch infrastructure and migration gate (§3.5, §7, §9–11).** Verify real
   GCS upload, signed playback, deletion, CORS, and storage permissions; copy and verify old named
   objects to opaque paths before any parent-facing video or share link uses them. Validate and
@@ -108,6 +163,10 @@ browser command permission was denied.
   Check duplicate prevention, re-import, coach-only access, and confirm with a real export that
   stats remain browser-only and source files are discarded. Keep CSV and paste available when
   screenshot extraction fails.
+  - [x] Clear the chosen CSV from the browser file input immediately after local parsing, even
+    when parsing fails or the file is too large. The parsed rows remain in memory only until the
+    coach maps identity columns; no stats are sent to Supabase. A real GameChanger export is still
+    required to verify its actual headers and end-to-end import behavior.
 
 ### Medium — validation and operating readiness
 
@@ -137,6 +196,61 @@ browser command permission was denied.
 - [ ] **Revisit deferred product choices (§13).** Parents without a team, billing, analyzing every
   swing in a multi-swing clip, and native iOS can wait for usage evidence. Malformed delete IDs
   returning 403 is a small error-response follow-up recorded in the 0.33.0 entry below.
+
+## 2026-10-06: 0.38.0 token-only simplified share links
+
+- New share URLs omit player and clip IDs. The existing bearer token now supplies those IDs at the
+  report read boundary, while old links remain readable only when their explicit IDs match the
+  token's player and scope. Shared response payloads remain display-only. The local page wiring
+  checks and Edge Function type check pass. Shared viewers also stay on their report if they tap
+  the brand label instead of being sent to coach sign-in. The expanded real-token integration case
+  cannot run on this Mac; use the Windows Supabase/GCS stack before inviting families or releasing
+  this path. The final read-only Gemini review found no blocking defect.
+- Critical release gates above remain open: consent wording and policy, hosted access/deletion,
+  real-footage evidence review, authenticated parent/Android flow, live drill audit, migration and
+  storage verification, and notification delivery. CSV selection now clears after local parsing;
+  missing stored finding copy fails closed across simplified reads. The full local suite passes
+  221/221; the report Edge Function type-checks. The final read-only Gemini review found no
+  blocking, non-blocking, or judgment findings. Windows integration and authenticated rendered
+  QA remain open. No hosted services or fixtures were changed.
+
+## 2026-10-05: 0.37.0 persisted Progress read path
+
+- The simplified API now presents stored focus transitions and checks each status against recent
+  readable game evidence. Pending writes show Checking; deletion gaps withhold improvement; a
+  stored fixed focus needs four intact clean swings before its Looks fixed sentence appears.
+  Focused tests pass 4/4, the project test command and Edge Function type check pass, and the
+  completed read-only Gemini review found no blocking or non-blocking defects. Parent/browser
+  visual QA and Windows integration with real persisted focus rows remain open. No Android emulator
+  was available on this Mac.
+- Progress now names the missing-drill state. Simplified share responses are projected to
+  display-only fields; a shared report refresh still uses the clip ID from its URL locally.
+  The new real-token integration case is pending on Windows. Standalone Deno checking of the
+  guardian suite remains blocked by pre-existing `.js` import and fixture slug type errors;
+  the report Edge Function itself type-checks. The completed Gemini review found no confirmed
+  blocking defect. Its hypothetical feed scope and shared delete button are absent from the
+  current code. A later privacy challenge led to explicit focus field projection and an injected
+  private-note test; the final review accepted that fix. The report fix also uses explicit fields
+  and a null guard, and an exception in text redaction returns the endpoint's generic 500 response.
+  Authenticated rendered QA is still required.
+- The report, home feed, practice evidence, and both Progress read/write paths no longer skip a
+  newer run with incomplete report evidence. Such a run blocks stale text and focus evidence from
+  an older run for the same clip. Older feedback no longer suppresses a newer run's report or feed.
+  The read paths now share the report evidence check. Gemini's adversarial review identified the
+  old-feedback and malformed-strengths cases; those were corrected locally. Windows re-analysis
+  integration and real-footage review remain open.
+- Read-time evidence validation now rejects an unrecognized strength phase. A Windows integration
+  case has been added for incomplete re-analysis, malformed phase evidence, and superseded hidden
+  feedback; it cannot run on this Mac. The seven production seed drills remain ineligible until
+  a human supplies approved `best_for` text; live library contents still need auditing.
+- Simplified share tokens now check their creator's current access before serving child data.
+  Guardian-created tokens stop at stale consent or unlink and do not revive after renewal or
+  re-invitation; coach-created tokens follow team access. The Windows integration case is pending.
+  Whether a coach-created or legacy link should also depend on every guardian's current consent
+  remains a release policy decision.
+- Legacy public report links and their signed-video reads now require the creating coach's current
+  team access. The isolated Windows integration case covers access removal; the frozen demo uses
+  a separate function and is unaffected.
 
 ## 2026-10-05: 0.36.0 documentation and upload reliability
 

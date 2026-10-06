@@ -72,6 +72,13 @@ test("simplified report strengths need a supplied phase and visible evidence", (
   assert.doesNotThrow(() => validate(response({ summary: "She starts with a balanced stance.", strengths: [{ text: "Balanced stance", evidence: "Feet set under shoulders in the stance still", phase: "stance" }] })));
 });
 
+test("a displayed fix needs nonblank observation, evidence, cue, and next check", () => {
+  for (const field of ["issue", "evidence", "coachingCue", "lookForNext"]) {
+    assert.throws(() => validate(response({ issues: [issue({ [field]: "  " })] })),
+      new RegExp(`issues\\[0\\]\\.${field} must not be blank`));
+  }
+});
+
 test("A: a single-swing observation marked high confidence is rejected", () => {
   rejects(response({ issues: [issue({ confidence: "high" })] }), /confidence is "high"/);
 });

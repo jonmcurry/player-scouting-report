@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
 
     const { data: link, error: linkError } = await supabase
       .from("player_share_links")
-      .select("player_id, revoked_at, expires_at, share_scope")
+      .select("player_id, created_by, revoked_at, expires_at, share_scope")
       .eq("token", token)
       .maybeSingle();
 
@@ -56,8 +56,15 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "This link is invalid or has been revoked." }, 404);
     }
 
-    // The share link's player always exists here (player_share_links.player_id
-    // cascades on player delete), so the clip check needs no player read.
+    // Legacy links were coach-created. Removing that coach's team access must
+    // also close their outstanding bearer links, including signed video reads.
+    const { data: player, error: playerError } = await supabase.from("players")
+      .select("team_id").eq("id", link.player_id).maybeSingle();
+    if (playerError || !player) return jsonResponse({ error: "This link is invalid or has been revoked." }, 404);
+    const { data: access, error: accessError } = await supabase.from("coach_team_access")
+      .select("coach_id").eq("coach_id", link.created_by).eq("team_id", player.team_id).limit(1);
+    if (accessError || !access?.length) return jsonResponse({ error: "This link is invalid or has been revoked." }, 404);
+
     // Signed video URL for a clip - only when a coach linked it as evidence on one of this
     // player's visible priorities. The token alone is not enough to fetch arbitrary clips.
     if (videoClipId) {

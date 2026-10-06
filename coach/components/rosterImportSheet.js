@@ -39,11 +39,14 @@ export function openRosterImportSheet({ supabase, teamId, existing, onDone }) {
   };
   sheet.querySelector("#rosterCsv").onchange = async (event) => {
     setError(""); review.replaceChildren();
-    const file = event.target.files?.[0];
+    const input = event.target;
+    const file = input.files?.[0];
     if (!file) return;
-    if (file.size > 2_000_000) return setError("Choose a CSV smaller than 2 MB.");
-    try { csv = parseCsv(await file.text()); showMapping(); }
-    catch (cause) { csv = null; setError(cause.message); }
+    try {
+      if (file.size > 2_000_000) throw new Error("Choose a CSV smaller than 2 MB.");
+      csv = parseCsv(await file.text()); showMapping();
+    } catch (cause) { csv = null; setError(cause.message); }
+    finally { input.value = ""; }
   };
   sheet.querySelector("#reviewPaste").onclick = () => {
     setError(""); csv = null; mapping.replaceChildren();

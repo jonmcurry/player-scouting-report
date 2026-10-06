@@ -192,6 +192,9 @@ export function validateSwingAnalysisResult(raw: unknown, options: { source: Dra
     const concept = stringField(entry, "concept", where);
     const basis = stringField(entry, "basis", where);
     const confidence = stringField(entry, "confidence", where);
+    for (const key of ["issue", "evidence", "coachingCue", "lookForNext"] as const) {
+      if (!stringField(entry, key, where).trim()) throw new Error(`${where}.${key} must not be blank`);
+    }
     if (!CONCEPTS.includes(concept as Concept)) throw new Error(`${where}.concept is not in the approved taxonomy`);
     if (!ISSUE_BASES.includes(basis as IssueDraft["basis"])) throw new Error(`${where}.basis is invalid`);
     if (!availableBases.has(basis as IssueDraft["basis"])) throw new Error(`${where}.basis relies on evidence that was not supplied`);
