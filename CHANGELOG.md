@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.39.0] - 2026-10-06
+
+The simplified app remains a local preview. No hosted service, cloud data, or public fixture was changed.
+
+### Added
+
+- Coaches can submit a GameChanger roster screenshot for Gemini extraction after acknowledging an explicit third-party processing notice. The coach-only Edge Function accepts bounded JPG, PNG, and WebP input, does not store or log the image, and returns only player identity candidates for mandatory review.
+- Screenshot roster rows are editable before import, visually flag incomplete or uncertain extraction, and retain CSV and pasted-roster fallbacks.
+- Guardian integration coverage now proves that a parent linked to two children can read exactly those children while remaining unable to list the team roster.
+- A service-only notification outbox now records report-ready, uploader-only analysis-failure, and Improving/Looks fixed events without storing names or contact details. Current recipients, consent, access, and opt-out state are resolved at delivery time.
+- Provider-independent delivery assembly batches report notifications per recipient and player, with a rolling seven-day focus-notification limit.
+
+### Changed
+
+- The Windows guardian/privacy suite now covers current-consent renewal, revocation, re-invitation, creator-scoped simplified and legacy links, and multi-child isolation in one passing run.
+- Persisted Progress integration coverage now drives the real feedback and deletion Edge Functions: later clean game evidence stores an Improving state, while a deleted sequence gap makes the visible report fail closed to Early read instead of inventing a fixed result.
+- GameChanger roster parsing and screenshot privacy checks are now part of the standard test command.
+- Signed-in coaches and guardians now enter the simplified app by default; the classic coach workflow remains available through an explicit `?legacy=1` rollback route, while the family page retains invite, consent, unlink, and rollback responsibilities.
+- Analysis and persisted Progress transitions now enqueue notification events without allowing an outbox failure to change a successful report or focus update into a failed operation.
+- GameChanger import verification now records real provider exports/screenshots as unavailable. Automated coverage protects the review, mapping, duplicate, stat-exclusion, source-clearing, and fallback behavior without claiming real-provider validation.
+
+### Fixed
+
+- Share-link integration fixtures now satisfy the required player schema and create a deterministic coach-owned legacy link instead of reusing an arbitrary token whose creator may have lost access.
+
 ## [0.38.0] - 2026-10-06
 
 The simplified app remains a local preview. No hosted service was changed.

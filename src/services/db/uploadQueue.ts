@@ -28,6 +28,7 @@ const RETRY_BACKOFF_MINUTES = [2, 10, 30];
 
 export interface ClipContext {
   videoClipId: string;
+  playerId: string;
   clipSlug: string;
   rawGcsPath: string;
   teamSlug: string;
@@ -95,7 +96,7 @@ async function findClipContext(
   const { data, error } = await supabase
     .from("video_clips")
     .select(
-      "game_log_entries!inner(date, opponent, ab, pitch, result, players!inner(slug, teams!inner(slug)))",
+      "game_log_entries!inner(date, opponent, ab, pitch, result, players!inner(id, slug, teams!inner(slug)))",
     )
     .eq("id", videoClipId)
     .single();
@@ -108,10 +109,11 @@ async function findClipContext(
     ab: number;
     pitch: string | null;
     result: string | null;
-    players: { slug: string; teams: { slug: string } };
+    players: { id: string; slug: string; teams: { slug: string } };
   };
   return {
     videoClipId,
+    playerId: entry.players.id,
     clipSlug,
     rawGcsPath,
     teamSlug: entry.players.teams.slug,
@@ -143,7 +145,8 @@ export async function markClipPermanentlyFailed(videoClipId: string, message: st
   if (error) throw new Error(`Permanently failing clip ${videoClipId}: ${error.message}`);
 }
 
-export async function markClipFailed(videoClipId: string, message: string): Promise<void> {
+/** Returns true only when automatic retries are exhausted. */
+export async function markClipFailed(videoClipId: string, message: string): Promise<boolean> {
   const supabase = getSupabaseClient();
   // Cap length - stderr from a failed pose3d run can be a full Python
   // traceback; the UI only needs enough to be useful, not the whole dump.
@@ -176,4 +179,5 @@ export async function markClipFailed(videoClipId: string, message: string): Prom
 
   const { error } = await supabase.from("video_clips").update(update).eq("id", videoClipId);
   if (error) throw new Error(`Marking clip ${videoClipId} failed: ${error.message}`);
+  return retryCount >= MAX_AUTO_RETRIES;
 }

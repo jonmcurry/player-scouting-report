@@ -69,6 +69,7 @@ import { getSupabaseClient } from "../services/db/supabaseClient.js";
 import { swingDetectionState } from "../services/development/swingDetection.js";
 import { uploadDurationRejection } from "../services/development/uploadLimits.js";
 import { probe } from "../services/demoExport/media.js";
+import { enqueueAnalysisFailed } from "../services/notifications/outbox.js";
 
 const POLL_INTERVAL_MS = 10_000;
 const VENV_PYTHON = path.join(".venv_pose3d", "Scripts", "python.exe");
@@ -175,6 +176,13 @@ export async function processOnePendingClip(): Promise<boolean> {
   const ext = path.extname(clip.rawGcsPath) || ".mp4";
   const localRawPath = path.join("videos", "_uploads", `${clip.clipSlug}${ext}`);
   const outDir = path.join("frames", clip.playerSlug, clip.clipSlug);
+  const queueFailureNotification = async () => {
+    try {
+      await enqueueAnalysisFailed(getSupabaseClient(), clip.playerId, clip.videoClipId);
+    } catch (notificationError) {
+      console.error(`[process-upload-queue] Clip "${clip.clipSlug}": failure notification could not be queued: ${notificationError instanceof Error ? notificationError.message : notificationError}`);
+    }
+  };
 
   try {
     console.log(`[process-upload-queue] Downloading ${clip.rawGcsPath} -> ${localRawPath}`);
@@ -185,6 +193,7 @@ export async function processOnePendingClip(): Promise<boolean> {
     if (durationRejection) {
       console.error(`[process-upload-queue] Clip "${clip.clipSlug}" rejected: ${durationRejection}`);
       await markClipPermanentlyFailed(clip.videoClipId, durationRejection);
+      await queueFailureNotification();
       return true;
     }
 
@@ -292,11 +301,12 @@ export async function processOnePendingClip(): Promise<boolean> {
     } catch (diagErr) {
       const message = diagErr instanceof Error ? diagErr.message : String(diagErr);
       console.error(`[process-upload-queue] AI diagnosis for "${clip.clipSlug}" failed (clip itself is still ready): ${message}`);
+      await queueFailureNotification();
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[process-upload-queue] Clip "${clip.clipSlug}" failed: ${message}`);
-    await markClipFailed(clip.videoClipId, message);
+    if (await markClipFailed(clip.videoClipId, message)) await queueFailureNotification();
   } finally {
     // Only the raw downloaded copy, not outDir - GCS still has the
     // authoritative raw video (safe to re-download if ever needed), so this

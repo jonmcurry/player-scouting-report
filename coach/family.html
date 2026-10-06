@@ -1,6 +1,6 @@
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>HitterLoop — Family</title>
-<link rel="stylesheet" href="./coach.css?v=6aabdd5021"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
+<link rel="stylesheet" href="./coach.css?v=76ecdf3275"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
 <style>
   .hl-family-section { margin-top:var(--space-6); }
   .hl-family-section > .bt-card + .bt-card { margin-top:var(--space-3); }
@@ -200,6 +200,13 @@ async function loadFamily() {
     if (staleConsent.has(id)) staleNames.set(id, loaded[i]?.data ?? null);
     else reports.set(id, loaded[i]);
   });
+  // family.html remains the consent/invite and rollback surface. Once every
+  // linked child has current consent, the replacement Home owns the normal
+  // parent journey and its linked-child switcher.
+  if (staleConsent.size === 0) {
+    window.location.href = `./simple.html${current ? `?player=${encodeURIComponent(current)}` : ""}`;
+    return;
+  }
   render();
 }
 

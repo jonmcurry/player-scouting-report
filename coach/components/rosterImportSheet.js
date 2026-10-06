@@ -1,5 +1,5 @@
 import { openBottomSheet, button } from "./ui.js";
-import { parseCsv, suggestColumns, identityRows, pasteRows, matchExisting } from "./rosterImport.js";
+import { parseCsv, suggestColumns, identityRows, pasteRows, screenshotRows, matchExisting } from "./rosterImport.js";
 
 const esc = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 const slug = (value) => String(value).normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -12,6 +12,13 @@ export function openRosterImportSheet({ supabase, teamId, existing, onDone }) {
     <p>GameChanger staff: export season stats as CSV, then choose that file. If the columns differ, you'll map them before import. Statistics are never saved.</p>
     <label class="hl-import-field">GameChanger CSV <input id="rosterCsv" type="file" accept=".csv,text/csv,text/plain"></label>
     <div id="rosterMapping"></div>
+    <fieldset class="hl-import-privacy">
+      <legend>GameChanger screenshot</legend>
+      <p>A screenshot can show children's names. If you use this option, the image is sent to Google's Gemini service to read the roster. HitterLoop does not save the image. Google handles it under the terms that apply to HitterLoop's Gemini account.</p>
+      <label><input id="screenshotDisclosure" type="checkbox"> I understand and am allowed to send this roster screenshot for extraction.</label>
+      <label class="hl-import-field">Choose screenshot <input id="rosterScreenshot" type="file" accept="image/jpeg,image/png,image/webp" disabled></label>
+      <small>Every extracted row must be reviewed before anything is saved.</small>
+    </fieldset>
     <label class="hl-import-field">Or paste a roster, one player per line (12 Maya Davis)<textarea id="rosterPaste" rows="5"></textarea></label>
     ${button("Review pasted players", { attrs: 'id="reviewPaste"' })}
     <div id="rosterReview"></div><p id="rosterImportError" class="error-text" role="alert"></p>
@@ -48,6 +55,33 @@ export function openRosterImportSheet({ supabase, teamId, existing, onDone }) {
     } catch (cause) { csv = null; setError(cause.message); }
     finally { input.value = ""; }
   };
+  const disclosure = sheet.querySelector("#screenshotDisclosure");
+  const screenshotInput = sheet.querySelector("#rosterScreenshot");
+  disclosure.onchange = () => { screenshotInput.disabled = !disclosure.checked; };
+  screenshotInput.onchange = async (event) => {
+    setError(""); review.replaceChildren(); csv = null; mapping.replaceChildren();
+    const input = event.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      if (!disclosure.checked) throw new Error("Confirm the screenshot privacy notice first.");
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error("Choose a JPG, PNG, or WebP screenshot.");
+      if (file.size > 8_000_000) throw new Error("Choose a screenshot smaller than 8 MB.");
+      const imageBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("Couldn't read that screenshot."));
+        reader.onload = () => resolve(String(reader.result).split(",", 2)[1] ?? "");
+        reader.readAsDataURL(file);
+      });
+      const { data, error: extractionError } = await supabase.functions.invoke("extract-roster-screenshot", {
+        body: { teamId, mimeType: file.type, imageBase64 },
+      });
+      if (extractionError || data?.error) throw new Error(data?.error ?? extractionError?.message ?? "Couldn't read that screenshot.");
+      rows = screenshotRows(data?.players);
+      renderReview();
+    } catch (cause) { rows = []; setError(cause.message); }
+    finally { input.value = ""; }
+  };
   sheet.querySelector("#reviewPaste").onclick = () => {
     setError(""); csv = null; mapping.replaceChildren();
     rows = pasteRows(sheet.querySelector("#rosterPaste").value);
@@ -59,12 +93,12 @@ export function openRosterImportSheet({ supabase, teamId, existing, onDone }) {
     review.innerHTML = `<h3>Review players</h3><p>Edit names and numbers. Existing names are skipped unless you choose to update the jersey number.</p>
       <div class="hl-import-rows">${rows.map((row, i) => {
         const found = matchExisting(row, existing);
-        return `<div class="hl-import-row" data-row="${i}">
+        return `<div class="hl-import-row${row.needsReview ? " needs-review" : ""}" data-row="${i}">
           <label><input type="checkbox" data-include ${found ? "" : "checked"}> Include</label>
           <label>Number <input data-number value="${esc(row.jerseyNumber)}" maxlength="12"></label>
           <label>First <input data-first value="${esc(row.firstName)}" required></label>
           <label>Last <input data-last value="${esc(row.lastName)}" required></label>
-          <small data-match>${found ? `Existing player: ${esc(found.name)}. Check Include to update their jersey number.` : row.needsReview ? "Check this name before importing." : ""}</small>
+          <small data-match>${found ? `Possible duplicate: ${esc(found.name)}. Check Include to update their jersey number.` : row.needsReview ? "Uncertain row: check every field before importing." : ""}</small>
         </div>`;
       }).join("")}</div>${button("Import selected players", { variant: "primary", attrs: 'id="confirmRosterImport"' })}`;
     review.querySelector("#confirmRosterImport").onclick = importSelected;

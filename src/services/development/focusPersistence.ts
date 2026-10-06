@@ -1,5 +1,6 @@
 import { advanceFocus, type Finding, type FocusRecord, type ReadableSwing } from "./focus.ts";
 import { hasIssueEvidence, hasReportEvidence, latestRunsByClip } from "./latestRuns.ts";
+import { enqueueFocusStatus } from "../notifications/outbox.ts";
 
 type Clip = { id: string; readable_game_serial: number; game_log_entries: { date: string; session_type: string } };
 type Issue = { id: string; video_clip_id: string; analysis_run_id: string | null; concept: string | null; phase: string | null; basis: string | null; confidence: string | null; context_explains_it: boolean; emergency_swing_suspected: boolean; review_status: string; issue: string | null; evidence: string | null; coaching_cue: string | null; look_for_next: string | null };
@@ -13,6 +14,22 @@ const model = (row: StoredFocus): FocusRecord => ({
 export function visibleFocusClips<T extends { id: string }>(clips: T[], deletionIds: string[]): T[] {
   const deleting = new Set(deletionIds);
   return clips.filter((clip) => !deleting.has(clip.id));
+}
+
+async function enqueueFocusStatusSafely(
+  db: any,
+  playerId: string,
+  focusId: string,
+  status: "improving" | "fixed",
+  concept: string,
+  seen: number,
+  windowSize: number,
+): Promise<void> {
+  try {
+    await enqueueFocusStatus(db, playerId, focusId, status, concept, seen, windowSize);
+  } catch (error) {
+    console.error("Focus changed, but its notification could not be queued:", error instanceof Error ? error.message : String(error));
+  }
 }
 
 /** Shared by the analysis worker and authenticated mutation Edge Functions. */
@@ -72,9 +89,12 @@ export async function persistPlayerFocus(db: any, playerId: string): Promise<voi
     if (!retired) throw new Error("Focus transition lacked its retired record");
     const { error } = await db.from("player_focus").update({ status: retired.status, ended_at: retired.endedAt }).eq("id", old.id).is("ended_at", null);
     if (error) throw new Error(`Retiring focus: ${error.message}`);
+    if (retired.status === "fixed") await enqueueFocusStatusSafely(db, playerId, old.id, "fixed", retired.concept, 0, result.windowSize);
   } else if (old && result.current && result.current.status !== old.status) {
     const { error } = await db.from("player_focus").update({ status: result.current.status }).eq("id", old.id).is("ended_at", null);
     if (error) throw new Error(`Updating focus: ${error.message}`);
+    if (result.current.status === "improving") await enqueueFocusStatusSafely(db, playerId, old.id, "improving",
+      result.current.concept, result.seen, result.windowSize);
   }
   if (result.current && (!old || result.current.concept !== old.concept)) {
     const { error } = await db.from("player_focus").insert({ player_id: playerId, concept: result.current.concept, status: "active",

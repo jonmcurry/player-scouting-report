@@ -427,6 +427,20 @@ test("family and simplified routes gate stale consent before loading a child", (
   assert.match(simple, /location\.href = "\.\/family\.html"/);
 });
 
+test("the replacement simplified app is the default after sign-in while legacy tools remain explicit", () => {
+  const index = read("index.html");
+  const family = read("family.html");
+  assert.match(index, /const legacyMode = qs\("legacy"\) === "1"/);
+  assert.match(index, /window\.location\.href = first \? `\.\/simple\.html\?team=/,
+    "a signed-in coach enters the replacement app for their selected team");
+  assert.match(index, /legacyMode \? "\.\/family\.html" : "\.\/simple\.html"/,
+    "a guardian enters the replacement app unless explicitly using rollback");
+  assert.match(index, /legacyMode[\s\S]{0,120}`\.\/team\.html\?team=/,
+    "legacy=1 preserves the old coach surface");
+  assert.match(family, /if \(staleConsent\.size === 0\)[\s\S]{0,180}\.\/simple\.html/,
+    "invite/re-consent hands current guardians to the replacement Home");
+});
+
 test("simplified reports keep confirmed no-swing separate from detector uncertainty", () => {
   const simple = read("components/simpleApp.js");
   assert.match(simple, /no_swing: "No swing"/);
@@ -465,16 +479,17 @@ test("family page: uploads go through the guardian path; Delete confirms and cal
   assert.match(family, /async function deleteSwing\(clipId, el\) \{[\s\S]{0,400}await confirmDialog\([\s\S]{0,300}await sendDelete\(clipId, el\);/);
 });
 
-test("sign-in routing: guardian-only accounts land on the family page; coaches keep the team picker", () => {
+test("sign-in routing: linked guardians and coaches default to the replacement app", () => {
   const index = read("index.html");
   assert.match(index, /from\("player_guardians"\)/);
   // RLS also returns a coach's team guardian rows: only the signed-in user's own links count.
   assert.match(index, /from\("player_guardians"\)\.select\("player_id"\)\.eq\("user_id", userId\)/);
   assert.match(index, /hasFamilyLinks\(session\.user\?\.id\)/);
   assert.doesNotMatch(index, /their own rows only/);
-  assert.match(index, /family\.html/);
-  // The coach branch is decided first: any coach_team_access row keeps the coach home.
-  assert.match(index, /if \(!access \|\| access\.length === 0\) \{\s*if \(isFamily\) \{\s*window\.location\.href = "\.\/family\.html";/);
+  assert.match(index, /legacyMode \? "\.\/family\.html" : "\.\/simple\.html"/);
+  // The coach branch is still decided first, but now hands normal sessions to
+  // the selected team's replacement Home instead of the legacy picker.
+  assert.match(index, /if \(!legacyMode\) \{[\s\S]{0,180}\.\/simple\.html\?team=/);
 });
 
 test("family page is precached, cache-stamped and mobile-ready", () => {

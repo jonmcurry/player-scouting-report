@@ -18,6 +18,7 @@ import { execFileSync } from "node:child_process";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import "dotenv/config";
 import { fixtureUuid } from "../../src/services/demoExport/ids.js";
+import { persistPlayerFocus } from "../../src/services/development/focusPersistence.js";
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY!;
@@ -253,6 +254,32 @@ test("guardian has no direct table access to development data", async () => {
     const { data } = await parent.from(t).select("*").limit(1);
     assert.deepEqual(data, [], t);
   }
+});
+
+test("a guardian linked to two children can read exactly those two without gaining roster access", async () => {
+  const hadPrimaryLink = await rpc(parent, "is_guardian_for_player", { target_player_id: emily });
+  if (!hadPrimaryLink) {
+    const primaryToken = await rpc(coachA, "create_guardian_invite", { p_player_id: emily, p_relationship: "parent" });
+    await rpc(parent, "accept_guardian_invite", { p_token: primaryToken, p_consent_version: CONSENT });
+  }
+  const second = must(await admin.from("players").insert({ team_id: teamIds[0],
+    slug: `second-child-${run}`, name: "Second Child", jersey_number: "92" }).select("id").single(), "second child");
+  const token = await rpc(coachA, "create_guardian_invite", { p_player_id: second.id, p_relationship: "parent" });
+  await rpc(parent, "accept_guardian_invite", { p_token: token, p_consent_version: CONSENT });
+  try {
+    const links = must(await parent.from("player_guardians").select("player_id").eq("user_id", parentUserId), "own child links");
+    assert.deepEqual(links.map((row: { player_id: string }) => row.player_id).sort(), [emily, second.id].sort());
+    assert.equal((await callFn("get-family-report", parent, { playerId: emily })).status, 200);
+    assert.equal((await callFn("get-family-report", parent, { playerId: second.id })).status, 200);
+    assert.deepEqual((await parent.from("players").select("id,name")).data ?? [], [], "no team roster rows");
+  } finally {
+    await rpc(coachA, "revoke_guardian", { p_player_id: second.id, p_user_id: parentUserId });
+  }
+  assert.equal((await callFn("get-family-report", parent, { playerId: second.id })).status, 404,
+    "removing one child link ends only that child's access");
+  assert.equal((await callFn("get-family-report", parent, { playerId: emily })).status, 200,
+    "the guardian keeps access to the other linked child");
+  if (!hadPrimaryLink) await rpc(coachA, "revoke_guardian", { p_player_id: emily, p_user_id: parentUserId });
 });
 
 test("guardian cannot write the link or invite tables directly", async () => {
@@ -690,6 +717,45 @@ test("guardian_can_view_clip: own child's clip only", async () => {
   assert.equal(await rpc(guardian, "guardian_can_view_clip", { p_clip_id: randomUUID() }), false);
 });
 
+test("notification outbox is service-only and resolves current, opted-in, player-scoped recipients", async () => {
+  const entry = await rpc(guardian, "guardian_create_entry", { p_player_id: emily, p_kind: "game", p_date: "2026-10-05" });
+  const clip = must(await admin.from("video_clips").insert({
+    game_log_entry_id: entry, clip_slug: randomUUID(), status: "ready",
+    uploaded_by: guardianId, uploaded_by_role: "guardian",
+  }).select("id").single(), "notification clip");
+  const args = { p_event_kind: "report_ready", p_player_id: emily, p_source_id: clip.id, p_report_has_fix: true };
+  const eventId = await rpc(admin, "enqueue_notification_event", args);
+  assert.equal(await rpc(admin, "enqueue_notification_event", args), eventId, "same report is idempotent");
+  assert.ok((await coachA.rpc("enqueue_notification_event", args)).error, "clients cannot manufacture events");
+  assert.deepEqual((await guardian.from("notification_events").select("*")).data ?? [], [], "guardians cannot list the outbox");
+
+  const coachBId = (await coachB.auth.getUser()).data.user!.id;
+  const limitedId = (await limited.auth.getUser()).data.user!.id;
+  let recipients = must(await admin.rpc("notification_event_recipients", { p_event_id: eventId }), "report recipients")
+    .map((row: { user_id: string }) => row.user_id);
+  assert.ok(recipients.includes(coachAUserId), "current team coach included");
+  assert.ok(recipients.includes(guardianId), "current linked guardian included");
+  assert.ok(recipients.includes(limitedId), "another current linked guardian included");
+  assert.ok(!recipients.includes(coachBId), "other team coach excluded");
+
+  must(await admin.from("user_settings").upsert({ user_id: limitedId, notify_reports: false }), "notification opt-out");
+  recipients = must(await admin.rpc("notification_event_recipients", { p_event_id: eventId }), "opted-in recipients")
+    .map((row: { user_id: string }) => row.user_id);
+  assert.ok(!recipients.includes(limitedId), "preference applies at delivery time");
+
+  const failedId = await rpc(admin, "enqueue_notification_event", {
+    p_event_kind: "analysis_failed", p_player_id: emily, p_source_id: clip.id,
+  });
+  assert.deepEqual(must(await admin.rpc("notification_event_recipients", { p_event_id: failedId }), "failure recipients"),
+    [{ user_id: guardianId }], "analysis failure goes only to its still-authorized uploader");
+  must(await admin.from("player_guardians").update({ consent_version: `${CONSENT}-stale` })
+    .eq("user_id", guardianId).eq("player_id", emily), "stale notification consent");
+  assert.deepEqual(must(await admin.rpc("notification_event_recipients", { p_event_id: failedId }), "stale failure recipients"), [],
+    "stale consent removes the uploader before delivery");
+  must(await admin.from("player_guardians").update({ consent_version: CONSENT })
+    .eq("user_id", guardianId).eq("player_id", emily), "restore notification consent");
+});
+
 // ---------------------------------------------------------------------------
 // Task 2b: real clip deletion (supabase/migrations/00043_clip_deletion.sql,
 // supabase/functions/delete-clip). Needs the Edge Functions served locally
@@ -820,6 +886,93 @@ test("delete-clip denies another coach before audit and lets a linked guardian d
   mutationDeletionIds.push(coachClipId);
   assert.equal((await callDeleteClip(coachA, coachClipId)).status, 200);
   assert.equal((await admin.from("video_clips").select("id").eq("id", coachClipId)).data?.length, 0);
+});
+
+test("persisted Progress follows later game evidence and deletion gaps without inventing a fix", async () => {
+  const player = must(await admin.from("players").insert({
+    team_id: teamIds[0], slug: `progress-${run}`, name: "Progress Test Player", jersey_number: "9",
+  }).select("id").single(), "progress player");
+  const issueIds: string[] = [];
+
+  const addReadableSwing = async (serialLabel: number, concept: "posture" | "load" | null) => {
+    const entry = must(await admin.from("game_log_entries").insert({
+      player_id: player.id, session_type: "game", date: `2026-10-${String(serialLabel).padStart(2, "0")}`,
+      opponent: `Progress ${serialLabel}`, ab: 1,
+    }).select("id").single(), `progress entry ${serialLabel}`);
+    const clip = must(await admin.from("video_clips").insert({
+      game_log_entry_id: entry.id, clip_slug: randomUUID(), status: "ready", position: 0,
+      swing_detection_state: "readable",
+    }).select("id").single(), `progress clip ${serialLabel}`);
+    const analysis = must(await admin.from("analysis_runs").insert({
+      video_clip_id: clip.id, player_id: player.id, backend: "gemini", ai_model: "test",
+      prompt_version: "t", analysis_policy_version: "t", knowledge_version: knowledgeVersion(),
+      input_manifest: {}, summary: `Readable game swing ${serialLabel}`,
+      strengths: [{ text: "Stayed balanced", evidence: "Balance remained visible through contact.", phase: "contact" }],
+    }).select("id").single(), `progress run ${serialLabel}`);
+    if (concept) {
+      const issue = must(await admin.from("issues").insert({
+        player_id: player.id, video_clip_id: clip.id, analysis_run_id: analysis.id,
+        issue: concept === "posture" ? "Posture changed before contact" : "Load timing changed",
+        evidence: "The visible movement repeats before contact.", coaching_cue: "Stay centered and move smoothly.",
+        look_for_next: "Look for the same movement through contact.", concept, phase: "stride", basis: "video",
+        confidence: "medium", source: "gemini", review_status: "draft",
+      }).select("id").single(), `progress issue ${serialLabel}`);
+      issueIds.push(issue.id);
+    }
+    const registered = must(await admin.rpc("register_readable_game_swing", { p_clip_id: clip.id }), `register swing ${serialLabel}`);
+    assert.equal(registered, serialLabel);
+    return clip.id;
+  };
+
+  // The worker persists a focus once the same video-supported concept appears
+  // in three readable game swings.
+  for (let serial = 1; serial <= 3; serial++) {
+    await addReadableSwing(serial, "posture");
+    await persistPlayerFocus(admin, player.id);
+  }
+  assert.deepEqual(must(await admin.from("player_focus").select("concept, status, qualified_at_serial")
+    .eq("player_id", player.id).is("ended_at", null).single(), "qualified focus"),
+  { concept: "posture", status: "active", qualified_at_serial: 3 });
+
+  // Three later readable swings leave posture in only two of the latest five.
+  // Hiding an unrelated finding runs the real Edge refresh and catches the
+  // persisted state up to that evidence without treating the hidden finding
+  // itself as proof of improvement.
+  await addReadableSwing(4, null);
+  await addReadableSwing(5, null);
+  const deletedClipId = await addReadableSwing(6, "load");
+  const hidden = await callHideSimpleIssue(coachA, issueIds.at(-1)!);
+  assert.equal(hidden.status, 200, JSON.stringify(hidden.body));
+  assert.equal((await admin.from("player_focus").select("status").eq("player_id", player.id)
+    .is("ended_at", null).single()).data?.status, "improving");
+  const focusEvent = must(await admin.from("notification_events")
+    .select("id, event_kind, player_id, focus_status, focus_seen, focus_window_size")
+    .eq("player_id", player.id).eq("event_kind", "focus_status").single(), "focus notification");
+  assert.deepEqual({ ...focusEvent, id: undefined }, { id: undefined, event_kind: "focus_status", player_id: player.id,
+    focus_status: "improving", focus_seen: 2, focus_window_size: 5 });
+  const currentFocusId = (await admin.from("player_focus").select("id").eq("player_id", player.id)
+    .is("ended_at", null).single()).data!.id;
+  assert.equal(await rpc(admin, "enqueue_notification_event", { p_event_kind: "focus_status", p_player_id: player.id,
+    p_source_id: currentFocusId, p_focus_status: "fixed", p_focus_concept: "posture",
+    p_focus_seen: 0, p_focus_window_size: 5 }), null, "focus delivery is throttled for a rolling week");
+  const improvedReport = await callFn("get-simplified-report", coachA, { playerId: player.id });
+  assert.equal(improvedReport.status, 200, improvedReport.text);
+  assert.equal(improvedReport.body.progress.status, "improving");
+  assert.equal(improvedReport.body.progress.current.status, "improving");
+
+  // Deleting serial 6 creates a stable sequence gap. The deletion Edge
+  // function refreshes Progress before removing the clip; the parent/coach
+  // surface must return to an early read, never claim "looks fixed."
+  mutationDeletionIds.push(deletedClipId);
+  const deleted = await callDeleteClip(coachA, deletedClipId);
+  assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
+  const afterDeletion = await callFn("get-simplified-report", coachA, { playerId: player.id });
+  assert.equal(afterDeletion.status, 200, afterDeletion.text);
+  assert.equal(afterDeletion.body.progress.status, "early_read");
+  assert.equal(afterDeletion.body.progress.current.status, "early_read");
+  assert.notEqual(afterDeletion.body.progress.status, "looks_fixed");
+  assert.equal((await admin.from("player_focus").select("status").eq("player_id", player.id)
+    .is("ended_at", null).single()).data?.status, "improving", "stored evidence is retained while the visible state fails closed");
 });
 
 /** A guardian upload through the real path: entry -> get-upload-url -> emulator object -> guardian_register_clip. */
@@ -1479,7 +1632,7 @@ test("simplified share payload keeps only the private player name and display fi
 
 test("simplified share token follows its creator's current consent and player access", async () => {
   const player = must(await admin.from("players").insert({ team_id: teamIds[0],
-    slug: `share-access-${run}`, name: "Share Access Child" }).select("id").single(), "share access player");
+    slug: `share-access-${run}`, name: "Share Access Child", jersey_number: "91" }).select("id").single(), "share access player");
   const family = await makeUser("share-access");
   const temporaryCoach = await makeUser("share-coach");
   must(await admin.from("coach_team_access").insert({ coach_id: temporaryCoach.id,
@@ -1574,16 +1727,12 @@ test("get-family-report: uploadedByYou is true only for the caller's own uploads
 });
 
 test("get-player-report (share link) does not gain uploadedByYou or clips", async (t) => {
-  const links = must(
-    await admin.from("player_share_links").select("token").eq("player_id", emily).is("revoked_at", null).limit(1),
-    "test share link",
-  );
-  let token = links[0]?.token as string | undefined;
-  if (!token) {
-    token = randomUUID();
-    const creator = (await coachA.auth.getUser()).data.user!.id;
-    must(await admin.from("player_share_links").insert({ player_id: emily, token, created_by: creator }), "share link");
-  }
+  // Always create a link with a coach who currently owns the team. Reusing an
+  // arbitrary earlier token can legitimately select one whose creator was
+  // revoked by the creator-access tests above.
+  const token = randomUUID();
+  const creator = (await coachA.auth.getUser()).data.user!.id;
+  must(await admin.from("player_share_links").insert({ player_id: emily, token, created_by: creator }), "share link");
   const res = await callFn("get-player-report", null, { token });
   assert.equal(res.status, 200, res.text);
   assert.doesNotMatch(res.text, /uploadedByYou|"clips":\[\{"id"|"findings"/);

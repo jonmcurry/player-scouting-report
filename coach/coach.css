@@ -990,8 +990,12 @@ body.bt-overlay-open .bottom-nav { visibility:hidden; }
 .p1b-section-head { display:flex; align-items:center; justify-content:space-between; min-height:40px; margin-top:var(--space-3); }
 .p1b-section-head h2, .p1b-card-head h2, .p1b-today h2, .p1b-next-action h2, .p1b-assigned-drill h2, .p1b-next-step h2 { margin:0; color:var(--text-1); font:700 1.125rem/1.5rem var(--font-body); text-transform:none; letter-spacing:0; }
 .hl-roster-import .hl-import-field { display:grid; gap:var(--space-1); margin:var(--space-3) 0; }
+.hl-roster-import .hl-import-privacy { margin:var(--space-4) 0; padding:var(--space-4); border:1px solid var(--border-strong); border-radius:var(--radius-card); }
+.hl-roster-import .hl-import-privacy > label:not(.hl-import-field) { display:flex; align-items:flex-start; gap:var(--space-2); min-height:48px; }
+.hl-roster-import .hl-import-privacy input[type="checkbox"] { flex:0 0 24px; width:24px; min-height:24px; margin-top:2px; }
 .hl-roster-import .hl-import-rows { display:grid; gap:var(--space-3); margin:var(--space-3) 0; }
 .hl-roster-import .hl-import-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--space-2); padding:var(--space-3); border:1px solid var(--border); border-radius:var(--radius-card); }
+.hl-roster-import .hl-import-row.needs-review { border-color:var(--status-warning); background:color-mix(in srgb, var(--status-warning) 8%, transparent); }
 .hl-roster-import .hl-import-row label { display:grid; gap:var(--space-1); min-width:0; }
 .hl-roster-import .hl-import-row label:first-child, .hl-roster-import .hl-import-row small { grid-column:1/-1; }
 .hl-roster-import .hl-import-row label:first-child { display:flex; align-items:center; gap:var(--space-2); }

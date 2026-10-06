@@ -4,17 +4,17 @@ This is the current work order. **Critical** items block inviting families or a 
 **High** items block a spec-complete simplified default route; **Medium** items close
 validation and operating gaps; **Low** items are explicitly deferred or small cleanup. The dated
 entries below retain the evidence and history behind these tasks. Jon's manual visual review of
-the current Android build passed; AGY's headless visual pass could not complete because its
-browser command permission was denied.
+the earlier Android build passed; the final AGY visual pass could not authenticate or reach its
+browser service.
 
 ### Critical — release and child-privacy gates
 
 - [ ] **Finish consent and publication rules (§2, §3.6, §9).** Get Jon's approval of guardian
   consent wording; implement re-consent when the version changes; keep public-demo permission
   separate for coach and guardian uploads; resolve the current mismatch between consent wording
-  and publication of coach-uploaded footage of linked children. Before screenshot import, disclose
-  that visible children's names go to Gemini and verify provider handling. Complete a release
-  privacy review.
+  and publication of coach-uploaded footage of linked children. Keep the implemented pre-selection
+  disclosure that visible children's names go to Gemini and verify provider handling. Complete a
+  release privacy review.
   - [x] Locally implement the version-mismatch access gate, linked-guardian renewal RPC, and
     named re-consent screen. Unknown consent text versions fail closed; the current text and
     stored version were not changed.
@@ -23,7 +23,8 @@ browser command permission was denied.
     currently linked guardian. A failed link lookup blocks export, and guardian IDs remain out
     of the public fixture. Guardian-upload permission remains a separate requirement.
   - [ ] Run the multi-child consent path on the parent browser. The Windows integration suite now
-    passes stale, renewed, and revoked consent cases. Obtain approval of any new wording before
+    passes stale, renewed, revoked, and two-linked-child isolation cases, including immediate
+    loss of only the removed child's access. Obtain approval of any new wording before
     bumping its stored version. Verify the new publication gate against real linked-player data and review
     the actual permission records before any public-demo export. The full read-only Gemini privacy
     review found no blocking issue. A final narrow review of malformed-link handling also found
@@ -38,12 +39,14 @@ browser command permission was denied.
   - [x] Gate legacy public report and signed-video reads on the creating coach's current team
     access. Removing the coach's access now closes that coach's outstanding legacy links; the
     frozen demo's separate report function remains unchanged.
-  - [ ] Run the new stale-consent, renewal, revoke, re-invite, and coach-access-removal share-token
-    integration case for simplified and legacy links on the Windows Supabase stack. Review whether
+  - [x] Run the new stale-consent, renewal, revoke, re-invite, and coach-access-removal share-token
+    integration case for simplified and legacy links on the Windows Supabase stack. All cases pass
+    with the creator-access behavior documented above. Review whether
     coach-created links should depend on every guardian's current consent before release.
-- [ ] **Prove access and deletion end to end (§2, §8, §10).** Repair the remaining guardian suite
-  failures, including legacy media/report assertions, and demo-schema/fixture parity. Then verify
-  the coach's allowed access and each linked, unrelated, and revoked guardian's exact allow/deny
+- [ ] **Prove access and deletion in the hosted release environment (§2, §8, §10).** Local guardian,
+  legacy media/report, deletion, and demo-schema/fixture checks pass. Repeat them against the hosted
+  release environment and verify the coach's allowed access and each linked, unrelated, and revoked
+  guardian's exact allow/deny
   rules for reports, progress, videos, and deletion. Explicitly prove that guardians cannot list,
   read, or infer the team roster or other players. Verify coach removal of a parent link and parent
   self-unlink end access immediately; verify each shared token exposes only its intended report.
@@ -58,7 +61,7 @@ browser command permission was denied.
     invalid paths, and check shared reports for internal IDs. Normalize uppercase upload
     extensions before storage reservation. Local unit and static checks pass.
   - [x] Run the full guardian and demo-fixture integration suites on Windows. The guardian suite
-    passes 59/59 and covers coach, linked/revoked/unrelated guardian, anonymous, and shared-link
+    passes 65/65 and covers coach, linked/revoked/unrelated guardian, anonymous, multi-child, notification, and shared-link
     boundaries plus audited deletion. The real-fixture demo suite passes 15/15. Migration 00049
     upgrades pre-00047 stored fixtures in memory without changing their payloads or hashes.
   - [x] Audit the legacy coach removal paths. Single-clip, whole-at-bat, practice-rep, and player
@@ -85,8 +88,8 @@ browser command permission was denied.
     A newer run with incomplete report evidence now withholds the older claim; it also cannot count
     as a clean game swing or become the Progress comparison video. Feedback on an older run no
     longer hides a newer run's report or feed headline. The shared read guard also rejects a
-    strength with an unrecognized phase. A new real-token integration case covers missing summaries,
-    malformed phases, and old feedback; run it on the Windows stack and verify re-analysis during
+    strength with an unrecognized phase. The real-token Windows integration case passes for missing summaries,
+    malformed phases, and old feedback; verify re-analysis during
     the 20-clip footage review.
   - [x] Recheck local prompt and semantic guards: the prompt asks for plain parent language and
     video-grounded strengths, unknown outcomes cannot be asserted as facts, and strengths require
@@ -96,13 +99,20 @@ browser command permission was denied.
   - [x] Reject blank One fix observation, evidence, cue, or next-check text during AI output
     validation. At read time, a current-run finding with incomplete copy now makes the report and
     feed unreadable and cannot count toward persisted game Progress or practice evidence. Focused
-    local validation passes; the expanded malformed-issue integration case needs the Windows stack.
+    local validation and the expanded malformed-issue Windows integration case pass.
 - [ ] **Complete the replacement family journey before inviting families (§3–4, §10–11).** Run the
   full authenticated coach → invite → guardian consent → upload → report → share loop on Android
   and a parent browser, including the parent switcher for two linked children, offline
   capture/upload queue and retry across app restarts, accessible 48 px targets, one-hand layout,
   and the approved prototype's behavior. Make the simplified routes default only after that loop
   passes; remove verified-unused legacy Group B UI without breaking the frozen demo or rollback.
+  - [x] Make the replacement Home the local default for signed-in coaches and guardians. Coaches
+    retain the explicit `?legacy=1` rollback route; guardians retain `family.html` for invite,
+    re-consent, unlink, and legacy rollback work, and otherwise continue into the replacement app.
+    Static route tests pass. This does not substitute for the authenticated device/browser loop.
+  - [ ] Complete the authenticated Android and parent-browser loop and rendered comparison before
+    inviting families. Only then remove the verified-unused legacy UI; until then the explicit
+    rollback route remains intentional.
 - [ ] **Finish persisted Progress behavior (§3.4, §5.5–5.6).** Test stored focus transitions after
   real feedback and deletion evidence, make the app read persisted focus status, and verify the
   Progress state and current drill shown to families. Notification triggering depends on these
@@ -113,10 +123,22 @@ browser command permission was denied.
     Early read. A stored fixed focus shows Looks fixed only while four intact clean game swings
     still support it. Focused local tests cover pending writes, stale status, deletion gaps, and
     fixed history.
-  - [ ] Run the feedback and deletion transitions against the Windows Supabase stack with real
-    readable game clips. Verify the parent Progress screen, drill, and notification trigger from
-    those persisted rows; the Mac does not have the local Supabase/GCS stack.
-- [ ] **Gate drill safety and shared-link payloads before exposure (§3.3, §3.5, §5.4).** Audit every
+  - [x] Run persisted transitions through the Windows Supabase stack with isolated readable-game
+    fixtures and the real feedback/deletion Edge Functions. Three repeated video-supported findings
+    create the stored focus; later clean evidence persists Improving; deleting a sequence member
+    makes the API return Early read without erasing the historical focus or claiming Looks fixed.
+    The full guardian suite passes 65/65.
+  - [ ] Repeat the transition check with real readable game footage, then inspect the authenticated
+    parent Progress screen and current drill. Native push/email delivery remains part of the
+    hosting/provider work in §7. The Mac does not have the local Supabase/GCS stack.
+  - [x] Add the provider-independent notification trigger and privacy boundary. Report-ready,
+    uploader-only failure, and Improving/Looks fixed transitions enqueue service-only, idempotent
+    one-player events. Recipients are resolved at delivery time from current coach/guardian access,
+    consent, and the user's preference; focus notices are limited to one per rolling seven days per
+    player. Pure delivery assembly batches report events per recipient and player, never across
+    children. The Windows integration suite proves clients cannot list or manufacture events and
+    verifies revocation/opt-out behavior. Push/email providers and device tokens remain open.
+- [ ] **Complete drill safety curation and rendered shared-link review (§3.3, §3.5, §5.4).** Audit every
   currently emittable drill for age, sport, equipment, and screen/adult-feeder safety. Keep
   unapproved or safety-flagged candidates out of the app; a fix with no suitable drill must show
   "No drill for this yet." Verify that missing player and team ages use the under-13 safety tier.
@@ -133,24 +155,25 @@ browser command permission was denied.
   - [x] Project simplified shared report and Progress payloads to display fields, removing explicit
     player, clip, issue, and drill ID fields. Apply the same identity scrub to free-text focus
     concepts and keep the first-name/last-initial redaction. Local projection tests pass; the
-    real shared-token integration case needs the Windows stack. Signed media URLs still use opaque
+    real shared-token integration case passes on the Windows stack. Signed media URLs still use opaque
     object paths.
   - [x] New simplified share URLs contain only the bearer token. The report API resolves its
     player and report clip from that token; older links with player/clip query parameters continue
-    to work only when those values match the token. Focused local page checks and Edge Function
-    type checking pass. The expanded real-token integration case still needs the Windows stack.
+    to work only when those values match the token. Focused local page checks, Edge Function
+    bundling, and the expanded real-token Windows integration case pass.
   - [ ] Review every currently active, human-approved drill and the actual parent screen on the
-    Windows stack. Run the new shared-token integration case, inspect the rendered page and signed
-    media URLs.
+    Windows stack. Inspect the rendered shared page and signed media URLs.
 - [ ] **Complete the launch infrastructure and migration gate (§3.5, §7, §9–11).** Verify real
   GCS upload, signed playback, deletion, CORS, and storage permissions; copy and verify old named
   objects to opaque paths before any parent-facing video or share link uses them. Validate and
-  apply hosted migrations 00041–00050, deploy the Edge bundle, host Supabase and a GPU worker,
+  apply hosted migrations 00041–00051, deploy the Edge bundle, host Supabase and a GPU worker,
   check the pre-deploy `unrecognized_demo_fixture_count()` predicate before the first hosted
-  clip deletion, measure processing time and cost, and prepare rollback. Add native push, email
-  fallback and player-scoped notification batching. Explicitly prove that single and bulk-upload
-  notifications never contain another child's name or activity. Deployment and rollback actions
-  require Jon's release authorization.
+  clip deletion, measure processing time and cost, and prepare rollback. Migration 00051 and the
+  worker hooks now provide the service-only notification outbox, delivery-time recipient lookup,
+  weekly focus throttle, and per-player batching boundary. Add native push, email fallback,
+  device-token handling, event claiming/retry, and provider delivery; then prove the provider output
+  on a real multi-player bulk upload. Deployment and rollback actions require Jon's release
+  authorization.
 
 ### High — core spec still incomplete
 
@@ -158,15 +181,24 @@ browser command permission was denied.
   specific “Best for” wording, concept, sport, minimum age, equipment, and screen/adult-feeder
   safety. Import only approved entries; verify every shown fix has suitable choices where curated
   content exists and that no drill text is invented or unsafe for the player's age.
-- [ ] **Finish GameChanger roster import (§3.6).** Add screenshot extraction with the privacy
-  notice and mandatory coach review; validate CSV identity-column mapping against a real export.
-  Check duplicate prevention, re-import, coach-only access, and confirm with a real export that
-  stats remain browser-only and source files are discarded. Keep CSV and paste available when
-  screenshot extraction fails.
+- [x] **Finish the available GameChanger roster import implementation and verification (§3.6).**
+  CSV, screenshot, and paste all end in editable review; duplicate matching/re-import behavior,
+  coach-only access, reordered/extra-column CSV parsing, stat exclusion, immediate source-input
+  clearing, bounded screenshot output, and fallback paths have automated coverage.
   - [x] Clear the chosen CSV from the browser file input immediately after local parsing, even
     when parsing fails or the file is too large. The parsed rows remain in memory only until the
-    coach maps identity columns; no stats are sent to Supabase. A real GameChanger export is still
-    required to verify its actual headers and end-to-end import behavior.
+    coach maps identity columns; no stats are sent to Supabase.
+  - [x] Add coach-only screenshot extraction with a disclosure shown before file selection. The
+    browser accepts bounded JPG, PNG, and WebP images, sends them transiently to a protected Gemini
+    Edge Function, immediately clears the file input, highlights uncertain rows, and always requires
+    editable coach review before import. Neither the image nor non-identity text is written to
+    HitterLoop storage or logs; CSV and paste remain available after failure. Provider handling and
+    the corresponding guardian-consent wording still require review before release.
+  - [x] Record the evidence limit instead of retaining an impossible test gate: Jon cannot provide
+    a real GameChanger CSV export or roster screenshot. Actual provider headers and screenshot
+    extraction therefore remain unverified, must not be described as validated, and are protected
+    by explicit mapping/edit review plus CSV/paste fallbacks. Revisit only if representative data
+    becomes available; it no longer blocks completion of the local simplified-app implementation.
 
 ### Medium — validation and operating readiness
 
@@ -196,6 +228,50 @@ browser command permission was denied.
 - [ ] **Revisit deferred product choices (§13).** Parents without a team, billing, analyzing every
   swing in a multi-swing clip, and native iOS can wait for usage evidence. Malformed delete IDs
   returning 403 is a small error-response follow-up recorded in the 0.33.0 entry below.
+
+## 2026-10-06: 0.39.0 roster screenshot extraction, simplified default, and notification boundary
+
+- Added the remaining local GameChanger import option: an acknowledged, coach-only screenshot is
+  sent transiently to the configured Gemini model and converted into bounded identity candidates.
+  The image is not stored or logged, no database write occurs before the existing review action,
+  and uncertain or incomplete rows are highlighted. CSV and pasted-list paths remain available.
+  Actual provider data handling and consent wording remain release gates; no real child roster was
+  sent during this work. Real GameChanger screenshot/export validation is unavailable and is
+  recorded below as an accepted evidence limitation rather than an open implementation task.
+- The Windows guardian suite now passes 65/65, including stale consent, renewal, revoke/re-invite,
+  creator access removal for simplified and legacy share links, malformed newest-run evidence,
+  audited deletion, and exact two-child guardian isolation without roster access. The real-fixture
+  suite passes 15/15. The earlier test run exposed and then fixed two test-fixture defects: a missing
+  required jersey number and reuse of an arbitrary link whose creator could correctly be revoked.
+- A new database-and-Edge integration case proves persisted Progress transitions: repeated readable
+  game evidence creates a focus, later clean evidence moves it to Improving, and deleting a serial
+  in the evidence window makes the report fail closed to Early read without inventing Looks fixed.
+  This used isolated synthetic fixtures; real footage, the rendered parent screen, and drill
+  content remain open.
+- The replacement app is now the local default after coach or guardian sign-in. The classic coach
+  workflow remains available through `?legacy=1`, and the family route remains the consent,
+  invite, unlink, and rollback boundary. Authenticated device/browser visual verification remains
+  open, so the old UI has not been removed.
+- Migration 00051 adds a service-only notification outbox and current-recipient resolver. The
+  analysis worker now queues per-player report-ready and uploader-only failure events, while
+  persisted Progress queues Improving/Looks fixed events no more than once per rolling week.
+  Delivery assembly batches per recipient/player and cannot mix children. No push/email provider,
+  device token, or hosted event worker was added or deployed.
+- Because no real GameChanger export or roster screenshot will be available, the import item is
+  closed at the testable boundary: synthetic reordered/extra-column CSVs, source clearing,
+  duplicate review, coach scope, bounded screenshot extraction, mandatory editing, and fallbacks
+  are covered. Actual GameChanger headers and extraction quality remain explicitly unverified.
+- The simplified app remains a local preview. Hosted privacy/access verification, guardian wording
+  approval, real-footage calibration, live drill curation, authenticated rendered QA, real GCS/GPU
+  timing, notification-provider delivery, and release/deployment authorization remain open.
+  No hosted service, cloud data, or public fixture was changed.
+- Final validation passes 228/228 standard tests, 65/65 guardian/privacy integration cases, and
+  15/15 real-fixture cases. The Edge runtime bundled all functions, including screenshot extraction.
+  The final required read-only Gemini review found no BLOCKING, NON-BLOCKING, or QUESTION / JUDGMENT
+  CALL defect in notification privacy, migration safety, default routing, GameChanger safeguards,
+  or the documentation claims. AGY rendered QA could not authenticate or reach its browser service,
+  and no Android emulator was connected, so **MANUAL VISUAL QA REQUIRED** for the authenticated
+  simplified route, family redirect, and import sheet.
 
 ## 2026-10-06: 0.38.0 token-only simplified share links
 
@@ -341,19 +417,22 @@ browser command permission was denied.
   word from a plural team name remains a low-risk naming edge case. Rendered visual QA remains open.
 
 - [ ] Verify the replacement screen against the approved prototype, including accessible mobile
-  layout. Run authenticated coach and guardian browser flows, then switch the default routes. Only after
-  those routes work, remove the obsolete Group B UI files identified in `docs/simplified_questions.md`.
-- [ ] Add GameChanger screenshot import with a clear notice before sending children's names to
-  Gemini. Keep CSV/paste as the fallback, and verify import mapping with a real GameChanger export.
+  layout and authenticated coach/guardian flows. The local default now uses the replacement route
+  with an explicit legacy rollback; only after the rendered flows pass should the obsolete Group B
+  UI files identified in `docs/simplified_questions.md` be removed.
+- [x] Complete the available GameChanger import verification. Screenshot extraction has a clear
+  pre-selection Gemini notice and mandatory review, with CSV/paste fallback. Real provider
+  screenshots/exports are unavailable, so actual headers and extraction quality remain unverified.
 - [ ] Curate and approve drill candidates, including age and screen/feeder safety fields, before
   activating them. Confirm selected cards match the fix and do not invent instructions.
-- [ ] Complete authenticated focus feedback/deletion verification, notification delivery and
-  settings, and the guardian re-consent gate. Get approval for the consent v2 draft;
+- [ ] Complete authenticated focus feedback/deletion verification and notification delivery.
+  Re-consent now fails closed locally; get approval for any replacement consent wording and
   keep separate public-demo permission for coach and guardian uploads.
-- [ ] Validate the Edge Function bundle, real GCS upload/playback/delete, old-object copy-and-verify
-  migration, 20 real at-bat reports, and end-to-end parent access. The local schema smoke test was
-  rolled back; hosted migrations 00041–00047, storage migration, hosting, and deployment are pending.
-- [ ] Perform manual rendered visual QA (the AGY headless browser was permission-blocked) and the
+- [ ] Validate real GCS upload/playback/delete, old-object copy-and-verify migration, 20 real at-bat
+  reports, and end-to-end parent access. The complete Edge Function bundle now starts locally and
+  the local schema smoke test was rolled back; hosted migrations 00041–00047, storage migration,
+  hosting, and deployment are pending.
+- [ ] Perform manual rendered visual QA (the final AGY run could not authenticate or reach its browser service) and the
   release privacy review. Do not invite families or enable the new default route before these pass.
 
 ## 2026-10-03: simplified app refactor in progress (0.31.0)

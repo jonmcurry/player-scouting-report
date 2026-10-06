@@ -12,6 +12,7 @@ import { loadActiveMethodologySnapshot, filterApplicableMethodology, renderMetho
 import { findPlayerId, loadCheckpointSlugToId, upsertChecklistScore } from "../services/db/checklistUpsert.js";
 import { getSupabaseClient } from "../services/db/supabaseClient.js";
 import { refreshPlayerFocus } from "../services/development/focusRepository.js";
+import { enqueueReportReady, reportHasShownFix } from "../services/notifications/outbox.js";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg"]);
 const TILT_EXCLUSIONS = [
@@ -245,6 +246,13 @@ export async function analyzeAndSync(
     const { error } = await supabase.from("video_clips").update({ swing_detection_state: "readable" }).eq("id", videoClipId);
     if (error) throw new Error(`Marking validated swing readable: ${error.message}`);
     await refreshPlayerFocus(playerId, videoClipId);
+    try {
+      await enqueueReportReady(supabase, playerId, videoClipId, reportHasShownFix(freshIssues));
+    } catch (notificationError) {
+      // A notification problem must not turn a stored, readable report into
+      // a false analysis failure. Delivery can reconcile the durable report.
+      console.error(`Report ready, but its notification could not be queued: ${notificationError instanceof Error ? notificationError.message : notificationError}`);
+    }
   }
   console.log(`Analyzed ${playerSlug}: run ${analysisRunId}; ${updated} checkpoint(s) updated, ${skipped} coach-reviewed checkpoint(s) protected, ${freshIssues.length} new issue draft(s), noActionNeeded=${result.noActionNeeded}.`);
 }

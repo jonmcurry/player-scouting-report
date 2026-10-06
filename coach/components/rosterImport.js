@@ -70,6 +70,24 @@ export function pasteRows(text) {
   });
 }
 
+/**
+ * Treat screenshot extraction as untrusted input. The coach must review every
+ * returned row, and anything incomplete or below high confidence is called out.
+ */
+export function screenshotRows(value) {
+  if (!Array.isArray(value)) throw new Error("The screenshot response did not contain a player list.");
+  if (value.length > 100) throw new Error("The screenshot contained too many rows. Crop it to one roster and try again.");
+  const clean = (input, max) => String(input ?? "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, max);
+  return value.map((row) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error("The screenshot response contained an invalid row.");
+    const firstName = clean(row.firstName, 80);
+    const lastName = clean(row.lastName, 80);
+    const jerseyNumber = clean(row.jerseyNumber, 12);
+    const confidence = ["high", "medium", "low"].includes(row.confidence) ? row.confidence : "low";
+    return { firstName, lastName, jerseyNumber, needsReview: confidence !== "high" || !firstName || !lastName };
+  }).filter((row) => row.firstName || row.lastName || row.jerseyNumber);
+}
+
 export function matchExisting(row, existing) {
   const name = normalize(`${row.firstName} ${row.lastName}`);
   if (!name) return null;
