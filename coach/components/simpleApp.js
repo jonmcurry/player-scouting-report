@@ -3,6 +3,7 @@ import { getDemoConfig, isDemoMode } from "../demoConfig.js";
 import { enqueueCapture, queuedCaptures, drainCaptureQueue } from "./captureQueue.js";
 import { acceptedVideoUpload, VIDEO_UPLOAD_HELP } from "./uploadPolicy.js";
 import { deleteClip } from "./clipDeletion.js";
+import { demoShowcase } from "./demoShowcase.js";
 
 const root = document.getElementById("simpleRoot");
 const message = document.getElementById("simpleMessage");
@@ -53,6 +54,11 @@ function setTab(tab) {
 }
 
 async function reportApi(playerId, clipId = null, token = null) {
+  if (state.demo && !token) {
+    const showcase = demoShowcase(playerId, getDemoConfig().basePath, clipId);
+    if (!showcase) throw new Error("Demo report not found");
+    return showcase;
+  }
   const { data, error } = await supabase.functions.invoke("get-simplified-report", {
     body: { ...(playerId ? { playerId } : {}), ...(clipId ? { clipId } : {}), ...(token ? { token } : {}),
       ...(state.demo ? { demo: true } : {}) },
@@ -77,7 +83,7 @@ async function loadHome() {
 
 function playerControls() {
   if (state.role === "coach") return `<section class="simple-card"><h2>Roster</h2>${state.players.map((player) =>
-    `<div class="simple-roster-row"><button class="simple-row" data-player="${esc(player.id)}" type="button"><span><strong>${esc(player.name)}</strong><small>${state.demo ? "Open latest report" : player.id === state.selected ? "Selected player" : "Open reports and progress"}</small></span><span aria-hidden="true">›</span></button>
+    `<div class="simple-roster-row"><button class="simple-row" data-player="${esc(player.id)}" type="button"><span><strong>${esc(player.name)}</strong><small>${state.demo ? "Open full report" : player.id === state.selected ? "Selected player" : "Open reports and progress"}</small></span><span aria-hidden="true">›</span></button>
       ${state.demo ? "" : `<button class="simple-action link" data-action="invite-parent" data-invite-player="${esc(player.id)}" type="button">Invite parent</button>`}</div>`).join("")}
     ${state.demo ? "" : `<p><a href="./team.html?team=${encodeURIComponent(state.teamSlug ?? "")}">Add or import players</a></p>`}</section>`;
   if (state.players.length < 2) return "";
@@ -103,7 +109,7 @@ async function showHome() {
     ${state.demo ? `<section class="simple-card"><p><strong>Public demo</strong></p><p class="simple-muted">Explore automatic reports and progress using a privacy-reviewed example. Changes are disabled and reset for each visitor.</p></section>`
       : `<button class="simple-action primary" data-action="record" type="button">Record at-bat</button>`}
     ${await queueBanner()}
-    ${home.progress?.current ? `<button class="simple-row simple-card" data-action="progress" type="button"><span><strong>Working on ${esc(home.progress.current.concept.replaceAll("_", " "))}</strong><small>See progress</small></span><span aria-hidden="true">›</span></button>` : ""}
+    ${home.progress?.current ? `<button class="simple-row simple-card" data-action="progress" type="button"><span><strong>Working on ${esc(home.progress.current.title ?? home.progress.current.concept.replaceAll("_", " "))}</strong><small>See progress</small></span><span aria-hidden="true">›</span></button>` : ""}
     <section class="simple-card"><h2>Recent at-bats</h2>${home.feed?.length ? home.feed.map((item) =>
       `<button class="simple-row" ${item.status === "deletion_pending" ? `data-retry-delete="${esc(item.id)}" data-entry-id="${esc(item.entryId)}"` : `data-clip="${esc(item.id)}"`} type="button"><span><strong>${esc(item.headline ?? statusText(item.status))}</strong><small>${esc(shortDate(item.date))} · ${item.kind === "practice" ? "Practice" : "Game"}</small></span><span>${esc(statusText(item.status))}</span></button>`).join("")
       : `<p>Film an at-bat to get your first report.</p><button class="simple-action link" data-action="guide" type="button">How to film</button>`}</section>`;
@@ -208,6 +214,7 @@ async function showReport(clipId, token = null, preloaded = null) {
 
 function progressSentence(progress) {
   const current = progress.current;
+  if (progress.summary) return progress.summary;
   if (progress.status === "checking") return "Checking the latest game swings. Try again shortly.";
   if (!current && progress.status === "early_read") return "Keep filming to see a pattern.";
   if (!current && progress.status === "looks_fixed") return "That focus hasn't shown up in the last 4 at-bats. Nice work.";
@@ -225,20 +232,22 @@ async function showProgress() {
   const progress = data.progress;
   root.innerHTML = `<span class="simple-eyebrow">Progress</span><h1>${esc(data.playerName)}</h1>
     <section class="simple-card"><h2>Current focus</h2>${progress.current
-      ? `<p class="simple-cue">${esc(progress.current.concept.replaceAll("_", " "))}</p>
+      ? `<p class="simple-cue">${esc(progress.current.title ?? progress.current.concept.replaceAll("_", " "))}</p>
+        ${progress.current.description ? `<p>${esc(progress.current.description)}</p>` : ""}
         <p class="simple-muted">Since ${esc(shortDate(progress.current.startedAt?.slice(0, 10)))}</p>
         <p class="simple-status">${esc(progress.current.status === "improving" ? "Improving" : progress.current.status === "early_read" ? "Early read" : progress.current.status === "checking" ? "Checking" : "Still showing up")}</p>
         <p>${esc(progressSentence(progress))}</p>
         ${progress.practice?.total ? `<p class="simple-muted">In practice: seen in ${esc(progress.practice.seen)} of the last ${esc(progress.practice.total)} readable swings.</p>` : ""}
-        <h2>Drill for this focus</h2>${progress.focusDrill ? drillCard(progress.focusDrill) : `<p>No drill for this yet.</p>`}
+        <h2>${state.demo ? "Coach-picked drill" : "Drill for this focus"}</h2>${progress.focusDrill ? drillCard(progress.focusDrill) : `<p>No drill for this yet.</p>`}
         ${state.shared || state.demo ? "" : `<button class="simple-action link" data-action="dismiss-focus" type="button">Doesn't look right</button>`}`
       : `<p>${esc(progressSentence(progress))}</p>`}</section>
     ${progress.thenVideo && progress.nowVideo ? `<section class="simple-card"><h2>Then vs. now</h2><p>Watch the two videos around contact. Camera views can differ.</p>
-      <div class="simple-compare"><figure><video id="thenVideo" src="${esc(progress.thenVideo.url)}" playsinline preload="metadata"></video><figcaption>Then</figcaption></figure>
-      <figure><video id="nowVideo" src="${esc(progress.nowVideo.url)}" playsinline preload="metadata"></video><figcaption>Now</figcaption></figure></div>
+      <div class="simple-compare"><figure><video id="thenVideo" src="${esc(progress.thenVideo.url)}" playsinline preload="metadata"></video><figcaption>${esc(progress.thenLabel ?? "Then")}</figcaption></figure>
+      <figure><video id="nowVideo" src="${esc(progress.nowVideo.url)}" playsinline preload="metadata"></video><figcaption>${esc(progress.nowLabel ?? "Now")}</figcaption></figure></div>
       <div class="simple-actions"><button class="simple-action secondary" data-action="play-compare" type="button">Play together</button>
       <button class="simple-action secondary" data-action="refresh-progress" type="button">Refresh videos</button></div></section>` : ""}
-    <section class="simple-card"><h2>History</h2>${progress.history.length ? progress.history.map((item) =>
+    <section class="simple-card"><h2>History</h2>${progress.observations?.length ? progress.observations.map((item) =>
+      `<p><strong>${esc(item.status)}</strong> · ${esc(shortDate(item.date))}</p><p>${esc(item.note)}</p>`).join("") : progress.history.length ? progress.history.map((item) =>
       `<p>${esc(item.concept.replaceAll("_", " "))} · ${esc(item.status === "fixed" ? "Looks fixed" : item.status === "dismissed" ? "Dismissed" : item.status.replaceAll("_", " "))} · ${esc(shortDate(item.endedAt?.slice(0, 10)))}</p>`).join("") : `<p>No past focus yet.</p>`}</section>
     ${state.shared || state.demo ? "" : `<button class="simple-action secondary" data-action="share-progress" type="button">Share progress</button>`}`;
   const thenVideo = document.getElementById("thenVideo");
@@ -348,6 +357,7 @@ async function sendCaptures(button) {
 }
 
 async function share(scope) {
+  if (state.demo) throw new Error("Sharing is disabled in the public demo.");
   const { data: token, error } = await supabase.rpc("create_simple_share_link", {
     p_player_id: state.selected, p_scope: scope, p_clip_id: scope === "report" ? state.report?.clipId : null,
   });
@@ -364,12 +374,13 @@ root.addEventListener("click", async (event) => {
   try {
     if (target.dataset.player) {
       state.selected = target.dataset.player;
-      await loadHome();
       if (state.demo) {
-        const latest = state.home?.feed?.find((item) => item.status === "ready");
+        state.home = await reportApi(state.selected);
+        const latest = state.home?.feed?.find((item) => item.id === state.home.featuredClipId)
+          ?? state.home?.feed?.find((item) => item.status === "ready");
         if (latest) await showReport(latest.id);
         else say("No completed report is available yet.");
-      }
+      } else await loadHome();
       return;
     }
     if (target.dataset.retryDelete) {

@@ -452,6 +452,7 @@ test("the simplified Android shell registers private push tokens and keeps email
 
 test("the public demo opens the simplified read-only experience", () => {
   const app = read("components/simpleApp.js");
+  const showcase = read("components/demoShowcase.js");
   const shared = read("shared.js");
   assert.match(app, /\.\.\.\(state\.demo \? \{ demo: true \} : \{\}\)/,
     "demo report requests opt into the isolated demo-schema branch");
@@ -461,16 +462,33 @@ test("the public demo opens the simplified read-only experience", () => {
   assert.match(app, /querySelector\('\.simple-nav \[data-tab="record"\]'\)\.hidden = true/,
     "recording is removed from the read-only demo navigation");
   assert.doesNotMatch(app, /Demo uses the classic view/);
-  assert.match(app, /state\.demo \? "Open latest report"/,
+  assert.match(app, /state\.demo \? "Open full report"/,
     "the demo roster row describes the action it performs");
-  assert.match(app, /if \(state\.demo\) \{[\s\S]{0,220}state\.home\?\.feed\?\.find[\s\S]{0,160}showReport\(latest\.id\)/,
+  assert.match(app, /if \(state\.demo\) \{[\s\S]{0,260}state\.home\?\.feed\?\.find[\s\S]{0,160}showReport\(latest\.id\)/,
     "choosing the demo player opens the latest completed report instead of redrawing the same Home screen");
+  assert.match(app, /if \(state\.demo && !token\)[\s\S]{0,180}demoShowcase/,
+    "demo Home, reports, and Progress do not wait on repeated Edge Function calls");
+  assert.match(showcase, /const reports = Object\.fromEntries\(clips\.map/);
+  assert.match(showcase, /Load was better in AB 2 than in AB 1\./);
+  assert.match(showcase, /Coach-assigned in Emily's reviewed demo record/);
+  assert.match(showcase, /featuredClipId: "emily-clip-003"/,
+    "the roster opens the report with the fixture's verified contact, stance, and load evidence");
+  assert.match(showcase, /concept: "load-timing"/);
+  assert.match(showcase, /Coach-confirmed on 4 swings\./);
+  assert.match(app, /async function share\(scope\) \{\s*if \(state\.demo\) throw new Error/,
+    "the read-only demo rejects share mutations even if an action is dispatched manually");
+  assert.equal((showcase.match(/mediaPath: "emily-2026-09-26\.1-clip-00[1-4]\.mp4"/g) ?? []).length, 4,
+    "all four approved fixture videos are represented");
   assert.match(shared, /simple\.html\?team=/,
     "reset returns to the simplified route");
   assert.match(app, /if \(state\.demo\) \{[\s\S]{0,180}supabase\.from\("teams"\)/,
     "demo team discovery uses the isolated schema's owner-scoped teams table");
   assert.match(read("sw.js"), /url\.origin === self\.location\.origin && url\.pathname\.startsWith\("\/cdn-cgi\/"\)[\s\S]{0,360}return;/,
     "Cloudflare instrumentation bypasses the service worker so blocked analytics cannot reject its fetch handler");
+  assert.match(read("sw.js"), /"\.\/simple\.html"/);
+  assert.match(read("sw.js"), /"\.\/components\/demoShowcase\.js"/);
+  assert.match(read("simple.html"), /coach\.css\?v=[0-9a-f]{10}/,
+    "the simplified page carries the current content-derived cache stamp");
 });
 
 test("simplified reports keep confirmed no-swing separate from detector uncertainty", () => {

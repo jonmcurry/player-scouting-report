@@ -9,6 +9,20 @@ mobile-width review of Home and an at-bat report; authenticated family/device re
 
 ### 2026-10-08 — simplified public-demo implementation and cloud boundary
 
+- [x] Make the Emily showcase immediate and complete without inventing evidence. Demo Home,
+  all four approved at-bat videos, their reports, and Progress now use a local read-only payload
+  derived from the publication-reviewed fixture, so selecting Emily no longer waits on two
+  sequential Edge Function calls. The reports surface the fixture's verified athletic-base,
+  extension, contact-point, and developing-load notes; clips without an individual correction say
+  so explicitly. Selecting Emily opens the evidence-rich contact/load report rather than a sparse
+  newest clip. Progress shows the stored “Same load, every pitch” priority, the coach's AB 1 →
+  AB 2 improving observation, aligned comparison videos, the fixture-assigned Load-and-pause
+  drill, and a dated history entry. No cloud row, canonical fixture, media file, or production
+  report rule was changed. Repository validation passed 231/231 tests, the real-fixture suite
+  passed 15/15, all four local media files still match their approved SHA-256 values, and the
+  post-fix Gemini review found no blocking issue. **MANUAL VISUAL QA REQUIRED:** the AGY browser
+  run was permission-blocked and the Windows browser-control runtime was unavailable, so no
+  rendered pass is claimed for this revision.
 - [x] Fix the first live-demo interaction report. Emily's row previously reloaded the already
   selected player and produced no visible change; it now explicitly says “Open latest report” and
   opens the newest completed report. Cloudflare's report-only CSP messages are not enforcement

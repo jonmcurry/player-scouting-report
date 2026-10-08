@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.43.0] - 2026-10-08
+
+### Added
+
+- The public Emily showcase now includes evidence-backed reports for all four approved videos,
+  the stored current focus and improvement note, an AB 1 versus AB 2 comparison, the assigned
+  Load-and-pause drill, and a dated Progress history entry.
+
+### Changed
+
+- Demo Home, report, and Progress content now loads from a local read-only presentation payload
+  derived from the publication-reviewed fixture, eliminating repeated Edge Function waits after
+  the roster loads while leaving production report behavior unchanged.
+- Selecting Emily opens the report containing the verified contact, stance, and load evidence.
+- Demo reports explicitly identify clips without an individually verified correction instead of
+  presenting an empty-looking section or manufacturing a finding.
+
 ## [0.42.1] - 2026-10-08
 
 ### Changed
