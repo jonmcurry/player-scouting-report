@@ -2,7 +2,7 @@
 
 ## [0.42.0] - 2026-10-08
 
-Supabase migrations 00041–00054 and the updated simplified-report, deletion, and roster-screenshot functions were deployed to the linked HitterLoop cloud project. The static public-site copy remains unpublished pending the required source commit and provenance-checked sync.
+Supabase migrations 00041–00054 and the updated simplified-report, deletion, and roster-screenshot functions were deployed to the linked HitterLoop cloud project. The provenance-checked static copy is also published at the public demo URL.
 
 ### Added
 
@@ -14,6 +14,7 @@ Supabase migrations 00041–00054 and the updated simplified-report, deletion, a
 - Demo startup reads the visitor's owner-scoped team directly from the isolated schema instead of depending on the production-only team-access view. The mobile-width Home and report renders now load the cloud fixture without exposing mutation controls or unsupported findings.
 - Demo reports read only the isolated `demo` schema after an anonymous-session ownership check. A legacy fixture run without simplified findings receives only the evidence-neutral readable-video statement; it never invents a strength, fix, drill, or progress claim.
 - Demo reset returns to the simplified route, and the website entry template targets that route instead of the classic team dashboard.
+- The committed HitterLoop source was synced into the personal site with all four approved fixture-media hashes unchanged, then deployed through the site's Cloudflare worker.
 
 ### Fixed
 

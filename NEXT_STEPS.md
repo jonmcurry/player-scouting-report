@@ -20,10 +20,14 @@ mobile-width review of Home and an at-bat report; authenticated family/device re
   rows; a report returned approved public media and the stored contact offset. Because the current
   fixture predates simplified findings, the adapter states only that the video was readable and
   returns zero strengths, fixes, and drills instead of manufacturing content.
-- [ ] Publish the static website copy. The personal-site entry template now targets
-  `simple.html`, but its provenance-checked sync intentionally refuses uncommitted HitterLoop
-  source. Commit authorization is required before that generated copy can be rebuilt and deployed;
-  do not bypass the check.
+- [x] Publish the static website copy. HitterLoop commit `9135307` passed the personal site's
+  provenance check; personal-site commit `893b5d8` regenerated 73 coach assets while preserving
+  the four approved media hashes, and Cloudflare worker version
+  `88b2d33a-f80f-4649-bbaf-3570786e6c7c` deployed them to
+  `https://joncurry.co/hitterloop/demo/`. The live JavaScript and stylesheet return 200 and contain
+  the simplified-report and owner-scoped demo-team paths. Cloudflare's managed challenge blocks
+  automated HTML inspection from this environment, so the successful pre-deploy rendered pass is
+  the available visual evidence rather than a claimed post-deploy browser pass.
 - [x] Deploy and verify the cloud data/function boundary. The linked project now reports migrations
   00001–00054 in sync. `get-simplified-report`, `delete-clip`, and the bundle-fixed
   `extract-roster-screenshot` were deployed. A fresh cloud anonymous clone returned Emily, four
