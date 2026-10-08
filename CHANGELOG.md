@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.42.1] - 2026-10-08
+
+### Changed
+
+- Selecting Emily in the public demo now opens her latest completed report instead of silently
+  redrawing the already-selected Home screen.
+
+### Fixed
+
+- The service worker leaves Cloudflare `/cdn-cgi/` instrumentation to the browser, so an analytics
+  request blocked by an extension cannot surface as an unhandled service-worker fetch rejection.
+
 ## [0.42.0] - 2026-10-08
 
 Supabase migrations 00041–00054 and the updated simplified-report, deletion, and roster-screenshot functions were deployed to the linked HitterLoop cloud project. The provenance-checked static copy is also published at the public demo URL.

@@ -11,7 +11,7 @@
 // all for exactly this reason, on an already-installed app, even after a
 // full rebuild+reinstall. Confirmed the fix was correct all along; only the
 // cache-bust was missing.
-const CACHE_NAME = "hitterloop-coach-2371a3873d";
+const CACHE_NAME = "hitterloop-coach-d502ec020f";
 // Separate, unversioned cache for cross-origin CDN libs (currently just
 // Three.js, see skeletonScene.js) - kept apart from CACHE_NAME so a normal
 // app-shell version bump doesn't force re-downloading a large lib that
@@ -30,7 +30,7 @@ const ASSETS = [
   "./session.html",
   "./family.html",
   "./simple.html",
-  "./coach.css?v=2371a3873d",
+  "./coach.css?v=d502ec020f",
   "./simple.css",
   "./shared.js",
   "./config.js",
@@ -119,6 +119,12 @@ self.addEventListener("fetch", (evt) => {
   if (evt.request.method !== "GET") return;
 
   const url = new URL(evt.request.url);
+  if (url.origin === self.location.origin && url.pathname.startsWith("/cdn-cgi/")) {
+    // Cloudflare injects optional analytics/challenge assets under /cdn-cgi/.
+    // Browser extensions can block them; never turn that into an unhandled
+    // service-worker fetch rejection or let it affect the product UI.
+    return;
+  }
   if (url.hostname === "esm.sh") {
     // The actual CDN this app loads from (Three.js, supabase-js) - cache-first,
     // falling back to network and opportunistically caching a successful

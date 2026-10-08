@@ -461,10 +461,16 @@ test("the public demo opens the simplified read-only experience", () => {
   assert.match(app, /querySelector\('\.simple-nav \[data-tab="record"\]'\)\.hidden = true/,
     "recording is removed from the read-only demo navigation");
   assert.doesNotMatch(app, /Demo uses the classic view/);
+  assert.match(app, /state\.demo \? "Open latest report"/,
+    "the demo roster row describes the action it performs");
+  assert.match(app, /if \(state\.demo\) \{[\s\S]{0,220}state\.home\?\.feed\?\.find[\s\S]{0,160}showReport\(latest\.id\)/,
+    "choosing the demo player opens the latest completed report instead of redrawing the same Home screen");
   assert.match(shared, /simple\.html\?team=/,
     "reset returns to the simplified route");
   assert.match(app, /if \(state\.demo\) \{[\s\S]{0,180}supabase\.from\("teams"\)/,
     "demo team discovery uses the isolated schema's owner-scoped teams table");
+  assert.match(read("sw.js"), /url\.origin === self\.location\.origin && url\.pathname\.startsWith\("\/cdn-cgi\/"\)[\s\S]{0,360}return;/,
+    "Cloudflare instrumentation bypasses the service worker so blocked analytics cannot reject its fetch handler");
 });
 
 test("simplified reports keep confirmed no-swing separate from detector uncertainty", () => {

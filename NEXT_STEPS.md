@@ -9,6 +9,11 @@ mobile-width review of Home and an at-bat report; authenticated family/device re
 
 ### 2026-10-08 — simplified public-demo implementation and cloud boundary
 
+- [x] Fix the first live-demo interaction report. Emily's row previously reloaded the already
+  selected player and produced no visible change; it now explicitly says “Open latest report” and
+  opens the newest completed report. Cloudflare's report-only CSP messages are not enforcement
+  failures, while the service worker now ignores `/cdn-cgi/` instrumentation so an ad blocker
+  cannot turn an optional analytics failure into an unhandled worker rejection.
 - [x] Replace the demo-only classic-view block with the simplified Home, report, and Progress
   routes. The public demo hides every mutating action (record/upload, invite, share, feedback,
   delete, notifications, and sign-out) while retaining roster switching and approved static

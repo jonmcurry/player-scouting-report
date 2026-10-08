@@ -77,7 +77,7 @@ async function loadHome() {
 
 function playerControls() {
   if (state.role === "coach") return `<section class="simple-card"><h2>Roster</h2>${state.players.map((player) =>
-    `<div class="simple-roster-row"><button class="simple-row" data-player="${esc(player.id)}" type="button"><span><strong>${esc(player.name)}</strong><small>${player.id === state.selected ? "Selected player" : "Open reports and progress"}</small></span><span aria-hidden="true">›</span></button>
+    `<div class="simple-roster-row"><button class="simple-row" data-player="${esc(player.id)}" type="button"><span><strong>${esc(player.name)}</strong><small>${state.demo ? "Open latest report" : player.id === state.selected ? "Selected player" : "Open reports and progress"}</small></span><span aria-hidden="true">›</span></button>
       ${state.demo ? "" : `<button class="simple-action link" data-action="invite-parent" data-invite-player="${esc(player.id)}" type="button">Invite parent</button>`}</div>`).join("")}
     ${state.demo ? "" : `<p><a href="./team.html?team=${encodeURIComponent(state.teamSlug ?? "")}">Add or import players</a></p>`}</section>`;
   if (state.players.length < 2) return "";
@@ -362,7 +362,16 @@ root.addEventListener("click", async (event) => {
   const target = event.target.closest("[data-action],[data-player],[data-clip],[data-retry-delete]");
   if (!target) return;
   try {
-    if (target.dataset.player) { state.selected = target.dataset.player; await loadHome(); return; }
+    if (target.dataset.player) {
+      state.selected = target.dataset.player;
+      await loadHome();
+      if (state.demo) {
+        const latest = state.home?.feed?.find((item) => item.status === "ready");
+        if (latest) await showReport(latest.id);
+        else say("No completed report is available yet.");
+      }
+      return;
+    }
     if (target.dataset.retryDelete) {
       await deleteClip(target.dataset.retryDelete);
       const { error } = await supabase.rpc("delete_simple_at_bat", { p_entry_id: target.dataset.entryId });
