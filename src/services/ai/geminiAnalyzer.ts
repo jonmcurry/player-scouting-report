@@ -48,6 +48,7 @@ import {
   type SwingAnalysisResult,
 } from "./swingAnalysisShared.js";
 import { CONCEPTS } from "../knowledge/knowledgePack.js";
+import { requirePaidGeminiService } from "./geminiDataTerms.js";
 
 export function getConfiguredGeminiModel(): string {
   const model = process.env.GEMINI_MODEL?.trim();
@@ -195,6 +196,7 @@ export async function analyzeSwing(
   if (frames.length === 0) {
     throw new Error("analyzeSwing requires at least one frame image");
   }
+  requirePaidGeminiService(process.env.GEMINI_PAID_SERVICE_CONFIRMED);
 
   const ai = deps.client ?? getClient();
   const model = getConfiguredGeminiModel();

@@ -1,6 +1,6 @@
 {
   "name": "hitterloop",
-  "version": "0.39.0",
+  "version": "0.42.0",
   "private": true,
   "description": "Node/TypeScript CLI layer for HitterLoop's swing-analysis pipeline: Supabase-backed coach editing, GCS media, Gemini-assisted drafts. Separate from and does not replace the existing Python pose3d pipeline (scripts/pose3d/).",
   "type": "module",
@@ -13,6 +13,7 @@
     "ingest-phases": "tsx src/cli/ingestPhases.ts",
     "ingest-pose3d-frames": "tsx src/cli/ingestPose3dFrames.ts",
     "process-upload-queue": "tsx src/cli/processUploadQueue.ts",
+    "dispatch-notifications": "tsx src/cli/dispatchNotifications.ts",
     "export-demo-fixture": "tsx src/cli/exportDemoFixture.ts",
     "import-demo-fixture": "tsx src/cli/importDemoFixture.ts",
     "reconcile-uploads": "tsx src/cli/reconcileUploads.ts",
@@ -32,13 +33,14 @@
     "db:reset": "npx supabase db reset"
   },
   "dependencies": {
-    "@google-cloud/storage": "^7.21.0",
+    "@google-cloud/storage": "^8.2.0",
     "@google/genai": "^2.13.0",
     "@supabase/supabase-js": "^2.110.9",
     "cheerio": "^1.2.0",
     "commander": "^15.0.0",
     "dotenv": "^17.4.2",
-    "fluent-ffmpeg": "^2.1.3"
+    "fluent-ffmpeg": "^2.1.3",
+    "google-auth-library": "^10.9.1"
   },
   "devDependencies": {
     "@google/design.md": "^0.4.0",
@@ -46,5 +48,8 @@
     "@types/node": "^22.10.0",
     "tsx": "^4.23.1",
     "typescript": "^5.7.0"
+  },
+  "overrides": {
+    "uuid": "^11.1.0"
   }
 }

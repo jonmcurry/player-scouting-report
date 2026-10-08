@@ -1,11 +1,44 @@
-## Prioritized outstanding work from `docs/SIMPLIFIED_APP_SPEC.md` (updated 2026-10-06)
+## Prioritized outstanding work from `docs/SIMPLIFIED_APP_SPEC.md` (updated 2026-10-08)
 
 This is the current work order. **Critical** items block inviting families or a hosted release;
 **High** items block a spec-complete simplified default route; **Medium** items close
 validation and operating gaps; **Low** items are explicitly deferred or small cleanup. The dated
 entries below retain the evidence and history behind these tasks. Jon's manual visual review of
-the earlier Android build passed; the final AGY visual pass could not authenticate or reach its
-browser service.
+the earlier Android build passed. The simplified public demo has also passed a local rendered
+mobile-width review of Home and an at-bat report; authenticated family/device review remains open.
+
+### 2026-10-08 — simplified public-demo implementation and cloud boundary
+
+- [x] Replace the demo-only classic-view block with the simplified Home, report, and Progress
+  routes. The public demo hides every mutating action (record/upload, invite, share, feedback,
+  delete, notifications, and sign-out) while retaining roster switching and approved static
+  video playback.
+- [x] Keep the demo read boundary isolated. `get-simplified-report` selects the `demo` schema only
+  after the anonymous visitor proves ownership of the cloned player; demo bearer-share requests
+  fail closed, and public media is returned as a safe fixture filename rather than a storage key.
+- [x] Exercise a cloned local canonical fixture end to end. Home returned Emily plus four feed
+  rows; a report returned approved public media and the stored contact offset. Because the current
+  fixture predates simplified findings, the adapter states only that the video was readable and
+  returns zero strengths, fixes, and drills instead of manufacturing content.
+- [ ] Publish the static website copy. The personal-site entry template now targets
+  `simple.html`, but its provenance-checked sync intentionally refuses uncommitted HitterLoop
+  source. Commit authorization is required before that generated copy can be rebuilt and deployed;
+  do not bypass the check.
+- [x] Deploy and verify the cloud data/function boundary. The linked project now reports migrations
+  00001–00054 in sync. `get-simplified-report`, `delete-clip`, and the bundle-fixed
+  `extract-roster-screenshot` were deployed. A fresh cloud anonymous clone returned Emily, four
+  ready feed rows, approved public media, and a ready report with zero invented strengths, fixes,
+  or drills.
+- [x] Render the replacement public-demo experience at 390 x 844 using the cloud data boundary
+  and approved fixture media. Home showed the public-demo explanation, Emily, and four ready
+  at-bats; the report showed the privacy-treated source video, contact controls, the neutral
+  readable-video statement, and no unsupported strength, fix, drill, or mutation control. This
+  found and fixed an incorrect startup dependency on a nonexistent `demo.coach_team_access` view;
+  demo startup now reads owner-scoped `demo.teams`, while the production access path is unchanged.
+- [ ] The 90 drill candidates were watch-verified by Gemini/AGY from 110 YouTube videos, including
+  frames and audio. That is evidence collection, not the required human content/safety approval.
+  A person still must select and approve the final 30–45 cards; until then both production and
+  demo correctly show no drill when no human-approved match exists.
 
 ### Critical — release and child-privacy gates
 
@@ -22,6 +55,17 @@ browser service.
     including coach uploads: the curation manifest must record separate permission from each
     currently linked guardian. A failed link lookup blocks export, and guardian IDs remain out
     of the public fixture. Guardian-upload permission remains a separate requirement.
+  - [x] Resolve the stale-consent share policy fail-closed: new share links cannot be created and
+    existing guardian- or coach-created simplified links return the same 404 as an invalid token
+    while any linked guardian is waiting to re-consent. A current renewal reopens a coach-owned
+    token but cannot revive the renewing guardian's older token.
+  - [x] Review the current official Gemini API handling boundary and enforce it technically.
+    Child names, screenshots, and swing imagery cannot be sent unless
+    `GEMINI_PAID_SERVICE_CONFIRMED=true`; release configuration may set that only for a project
+    with active Cloud Billing. The visible screenshot notice and consent draft now state that the
+    paid service does not use prompts/responses to improve products and may retain them for 55 days
+    for abuse monitoring. Recheck the linked official terms and adult-user restriction at release;
+    this implementation is not legal approval of the consent wording.
   - [ ] Run the multi-child consent path on the parent browser. The Windows integration suite now
     passes stale, renewed, revoked, and two-linked-child isolation cases, including immediate
     loss of only the removed child's access. Obtain approval of any new wording before
@@ -30,8 +74,6 @@ browser service.
     review found no blocking issue. A final narrow review of malformed-link handling also found
     no blocking issue; its empty-list concern is covered by the service-role loader throwing on
     query errors. Repeat the full review before release.
-    Decide release policy for coach-created links when a child's guardian consent becomes stale;
-    the local creator-access gates below do not require every linked guardian's current consent.
   - [x] Gate simplified share reads on the creator's current player access. A guardian-created
     token now fails while consent is stale or the link is removed, and cannot revive after renewal
     or re-invitation because its issue time predates the new consent time. Coach-created tokens
@@ -61,7 +103,7 @@ browser service.
     invalid paths, and check shared reports for internal IDs. Normalize uppercase upload
     extensions before storage reservation. Local unit and static checks pass.
   - [x] Run the full guardian and demo-fixture integration suites on Windows. The guardian suite
-    passes 65/65 and covers coach, linked/revoked/unrelated guardian, anonymous, multi-child, notification, and shared-link
+    passes 68/68 and covers coach, linked/revoked/unrelated guardian, anonymous, multi-child, notification, and shared-link
     boundaries plus audited deletion. The real-fixture demo suite passes 15/15. Migration 00049
     upgrades pre-00047 stored fixtures in memory without changing their payloads or hashes.
   - [x] Audit the legacy coach removal paths. Single-clip, whole-at-bat, practice-rep, and player
@@ -127,7 +169,7 @@ browser service.
     fixtures and the real feedback/deletion Edge Functions. Three repeated video-supported findings
     create the stored focus; later clean evidence persists Improving; deleting a sequence member
     makes the API return Early read without erasing the historical focus or claiming Looks fixed.
-    The full guardian suite passes 65/65.
+    The full guardian suite passes 68/68.
   - [ ] Repeat the transition check with real readable game footage, then inspect the authenticated
     parent Progress screen and current drill. Native push/email delivery remains part of the
     hosting/provider work in §7. The Mac does not have the local Supabase/GCS stack.
@@ -138,6 +180,20 @@ browser service.
     player. Pure delivery assembly batches report events per recipient and player, never across
     children. The Windows integration suite proves clients cannot list or manufacture events and
     verifies revocation/opt-out behavior. Push/email providers and device tokens remain open.
+  - [x] Add reliable provider-worker consumption without choosing a provider. Migration 00052
+    atomically leases bounded batches, recovers leases after 15 minutes, stores one receipt per
+    event/recipient, rejects ineligible recipients at write time, protects completion with an
+    unguessable lease token, and applies bounded retry backoff. The TypeScript dispatcher skips
+    recorded receipts after a partial failure, supplies a deterministic provider idempotency key,
+    and keeps every batch player-scoped. Service-role
+    integration and pure provider-boundary tests pass. No message has been sent externally.
+  - [x] Add the deployable channel boundary. Migration 00053 stores at most five service-only
+    Android tokens per account behind owner registration/removal RPCs. The Capacitor shell requests
+    permission, registers the FCM token, opens the correct player from a notification, and removes
+    its token on sign-out. `dispatch-notifications` prefers FCM and falls back to Resend email;
+    rejected tokens are disabled, provider payloads remain one-player, and the real local
+    claim/send/receipt/finish path passes. Firebase/Resend configuration and a real send remain
+    hosted release work, not local implementation work.
 - [ ] **Complete drill safety curation and rendered shared-link review (§3.3, §3.5, §5.4).** Audit every
   currently emittable drill for age, sport, equipment, and screen/adult-feeder safety. Keep
   unapproved or safety-flagged candidates out of the app; a fix with no suitable drill must show
@@ -152,6 +208,12 @@ browser service.
     migration 00047 leaves that field null. The selector therefore emits none of those seeds on
     a freshly migrated database. Actual live rows, manual edits, and the 90 research candidates
     still require the human safety and content review below.
+  - [x] Replace the implicit `is_active`/`best_for` curation proxy with an explicit fail-closed
+    approval record. Migration 00054 adds draft/approved/rejected state, reviewer and timestamp,
+    requires complete card/source fields for approval, and prevents ordinary coaches from setting
+    approval fields. Report and Progress selection now require `approved`; all existing seeds and
+    new team drills default to draft. This secures the boundary but does not invent the outstanding
+    human decisions.
   - [x] Project simplified shared report and Progress payloads to display fields, removing explicit
     player, clip, issue, and drill ID fields. Apply the same identity scrub to free-text focus
     concepts and keep the first-name/last-initial redaction. Local projection tests pass; the
@@ -166,14 +228,21 @@ browser service.
 - [ ] **Complete the launch infrastructure and migration gate (§3.5, §7, §9–11).** Verify real
   GCS upload, signed playback, deletion, CORS, and storage permissions; copy and verify old named
   objects to opaque paths before any parent-facing video or share link uses them. Validate and
-  apply hosted migrations 00041–00051, deploy the Edge bundle, host Supabase and a GPU worker,
+  apply hosted migrations 00041–00054, deploy the Edge bundle, host Supabase and a GPU worker,
   check the pre-deploy `unrecognized_demo_fixture_count()` predicate before the first hosted
-  clip deletion, measure processing time and cost, and prepare rollback. Migration 00051 and the
-  worker hooks now provide the service-only notification outbox, delivery-time recipient lookup,
-  weekly focus throttle, and per-player batching boundary. Add native push, email fallback,
-  device-token handling, event claiming/retry, and provider delivery; then prove the provider output
-  on a real multi-player bulk upload. Deployment and rollback actions require Jon's release
-  authorization.
+  clip deletion, measure processing time and cost, and prepare rollback. Migrations 00051–00054 and
+  the worker hooks now provide the service-only notification outbox, delivery-time recipient lookup,
+  weekly focus throttle, per-player batching, atomic leases, receipts, stale-worker recovery, and
+  retry backoff, private Android tokens, stale-consent share gating, and explicit drill curation.
+  Configure Firebase and Resend, add the release `google-services.json`, confirm paid Gemini
+  billing/data terms, and prove provider output on a real multi-player bulk upload. Deployment and rollback actions
+  require Jon's release authorization.
+  - [x] Apply migrations 00041–00054 to the linked cloud Supabase project and verify local/remote
+    migration parity. Deploy `get-simplified-report`, `delete-clip`, and
+    `extract-roster-screenshot`; the public-demo smoke test passes through a fresh anonymous clone.
+  - [ ] Finish the non-Supabase launch boundary: real GCS copy/upload/playback/deletion and CORS,
+    hosted GPU timing, Firebase/Resend credentials and real sends, paid Gemini release
+    configuration, authenticated cross-role checks, and rollback rehearsal.
 
 ### High — core spec still incomplete
 
@@ -215,6 +284,15 @@ browser service.
     and the parent report shows a plain duration-limit explanation.
   - [ ] Measure a real ≤60-second phone clip and GameChanger clip on the target GPU, and verify
     signed upload/playback plus CORS against real GCS rather than the emulator.
+  - [x] Measure the available phone/game source on the target GPU without an external AI call. The
+    RTX 5070 Ti completed the local pose pipeline for `Emily_C_AB1 (2).mp4` (37.228 seconds of
+    source video) in 53.331 seconds with `pipeline_status=complete`. This establishes the local pose
+    portion only; hosted upload/download, Gemini report generation, queue delay, and a real
+    GameChanger clip remain unmeasured.
+  - [ ] Upgrade the Capacitor toolchain as a coordinated major-version change, then repeat sync,
+    Android assembly, and device QA. The shipped 6.2.2 Android/iOS runtimes have the origin-proxy
+    fix and production audits are clean, but Capacitor CLI 6.2.1 pins vulnerable `tar` 6.2.1.
+    A direct safe-version override was tested and removed because it breaks `cap sync`.
 - [x] **Align project documentation with the new product contract (§12).** The README and repository
   agent contract now describe automatic, fail-closed reports, optional feedback, current simplified
   routes, player-scoped family access, and the legacy workflow's temporary rollback role. Phase B
@@ -226,8 +304,81 @@ browser service.
   callers and real data, then separately review removal of historical checklist, priority,
   pitch, comparison, and other obsolete tables. Do not drop them during the additive first release.
 - [ ] **Revisit deferred product choices (§13).** Parents without a team, billing, analyzing every
-  swing in a multi-swing clip, and native iOS can wait for usage evidence. Malformed delete IDs
-  returning 403 is a small error-response follow-up recorded in the 0.33.0 entry below.
+  swing in a multi-swing clip, and native iOS can wait for usage evidence.
+
+## 2026-10-07: 0.41.0 release-boundary completion
+
+- Closed the remaining local notification implementation gap without sending externally. Android
+  now registers private FCM tokens; the service worker can deliver through FCM with Resend fallback;
+  rejected tokens are disabled; successful recipients receive durable receipts; and opaque compact
+  idempotency keys do not expose internal account, player, or event IDs to email headers.
+- Simplified report sharing now fails closed for both guardian- and coach-created links whenever any
+  linked guardian has stale consent. Link creation is also blocked until every linked guardian is
+  current. The integration suite proves the deny/renew/revoke behavior.
+- Gemini child-data processing now fails closed unless a paid-service terms review has been
+  explicitly confirmed in configuration. The import disclosure and draft consent reflect the
+  current official paid-service and 55-day abuse-monitoring language. This does not substitute for
+  Jon's wording approval or a release-time terms/legal review.
+- Added an explicit service-managed drill curation state. “Active” no longer implies reviewed;
+  reports require a recorded human approval with complete card/source fields. Existing seeds and
+  coach-created rows remain drafts, so no unreviewed drill can leak into an automatic report.
+- The available target GPU completed the local pose pipeline for a 37.228-second real source clip
+  in 53.331 seconds. The result is evidence for local pose throughput, not for hosted end-to-end
+  report latency or the unavailable GameChanger format.
+- Root and mobile production dependency audits report zero known vulnerabilities after the Google
+  Storage and Capacitor runtime updates. Capacitor sync and Android debug assembly pass with the
+  push plugin present; no emulator was connected for installation. The Capacitor 6 development CLI
+  still pins vulnerable `tar` 6.2.1. Forcing patched `tar` 7.5.22 broke `cap sync`, so the override
+  was removed; close that tooling-only advisory through a separately tested Capacitor major upgrade.
+- Migrations 00053–00054 were applied only to the local stack. The focused notification tests,
+  simplified page checks, and 68/68 guardian/privacy integration cases pass. No hosted service,
+  cloud data, child record, public fixture, provider message, or deployment was changed.
+- Final validation passes the full TypeScript/browser suite (247 backend passes with one expected
+  environment skip, plus 229/229 coach/browser checks), the 68/68 guardian/privacy suite, the
+  15/15 real-fixture suite, contrast checks, Capacitor Android sync, and Android debug assembly.
+  Root and mobile production audits are clean. No emulator was connected, so the APK was not
+  installed. AGY visual QA could not complete because the external browser path was not permitted
+  to receive potentially private rendered data; **MANUAL VISUAL QA REQUIRED**.
+- The required Gemini review completed. Its claimed stale-consent blocker inspected the legacy
+  `get-player-report` route, not the simplified `get-simplified-report` route that calls
+  `all_linked_guardians_current`; the real simplified-token integration case passes. Its demo
+  parity concern is answered by migration 00054's explicit `demo.drill_library` columns and the
+  15/15 fixture suite. Its Capacitor concern is addressed by clarifying that Android/iOS platform
+  packages—not `@capacitor/core`—are at 6.2.2. Codex's internal review found and fixed a real gap
+  the reviewer missed: drill curation protection now covers INSERT as well as UPDATE, including
+  rejection and reviewer-only changes; the service-role approval path remains verified.
+- Every remaining unchecked item above now requires human evidence/approval or a real release
+  environment: consent wording/legal approval, 20-clip fix agreement, authenticated rendered/device
+  QA, drill-by-drill human decisions, hosted Supabase/GCS/GPU validation, real Firebase/Resend sends,
+  and post-release usage evidence. GameChanger exports/screenshots remain explicitly unavailable
+  and are not represented as tested.
+
+## 2026-10-07: 0.40.0 reliable notification delivery boundary
+
+- Added service-only notification delivery leases and receipts. Multiple workers cannot claim the
+  same active event; a crashed worker's lease becomes recoverable after 15 minutes; stale lease
+  tokens cannot finish another worker's event. Successful recipients are recorded before final
+  completion, so a partial provider outage retries only recipients without a receipt. A stable,
+  opaque idempotency key gives the chosen provider a duplicate-suppression hook if it accepted a
+  message but the following receipt write failed. This is not an exactly-once guarantee: if a new
+  event joins an unreceipted retry batch, the combined batch has a new key and can repeat the older
+  event's notice.
+- Added a provider-neutral dispatcher and Supabase store adapter. It resolves current recipients at
+  send time, omits prior receipts, retains per-recipient/per-player batching, records successful
+  deliveries, and releases failed events with bounded backoff. It intentionally does not select a
+  push/email vendor, register device tokens, or send any child information externally.
+- `delete-clip` now rejects a malformed clip ID with 400 before authorization instead of letting the
+  database UUID cast turn the request into the same 403 used for a valid but unauthorized clip.
+- Local migration 00052, the standard test command, 66/66 guardian/privacy integration cases, and
+  15/15 real-fixture cases pass. No Android emulator was connected, so no APK was installed.
+- The required independent Gemini review completed with no BLOCKING or NON-BLOCKING finding. Its
+  sole QUESTION / JUDGMENT CALL was the provider-idempotency boundary described above; the
+  documentation now states that limitation and does not claim exactly-once delivery.
+- The remaining simplified-app gates require evidence or authority that is not present in the
+  repository: approved guardian wording and stale-consent share policy, human drill curation, real
+  footage and GPU timing, authenticated rendered/device QA, hosted GCS/Supabase verification, and
+  push/email provider credentials. Real GameChanger roster artifacts remain explicitly unavailable.
+  No hosted service, cloud data, public fixture, or external notification was changed.
 
 ## 2026-10-06: 0.39.0 roster screenshot extraction, simplified default, and notification boundary
 

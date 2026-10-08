@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.42.0] - 2026-10-08
+
+Supabase migrations 00041–00054 and the updated simplified-report, deletion, and roster-screenshot functions were deployed to the linked HitterLoop cloud project. The static public-site copy remains unpublished pending the required source commit and provenance-checked sync.
+
+### Added
+
+- The privacy-reviewed public fixture can now use the same automatic Home, at-bat report, and Progress read path as the replacement app, with approved static demo media aligned to stored contact times.
+
+### Changed
+
+- The public demo is read-only and defaults to the simplified route. Upload, invite, feedback, sharing, deletion, notification, and other account mutations are absent while player switching, report playback, and Progress remain available.
+- Demo startup reads the visitor's owner-scoped team directly from the isolated schema instead of depending on the production-only team-access view. The mobile-width Home and report renders now load the cloud fixture without exposing mutation controls or unsupported findings.
+- Demo reports read only the isolated `demo` schema after an anonymous-session ownership check. A legacy fixture run without simplified findings receives only the evidence-neutral readable-video statement; it never invents a strength, fix, drill, or progress claim.
+- Demo reset returns to the simplified route, and the website entry template targets that route instead of the classic team dashboard.
+
+### Fixed
+
+- The roster-screenshot Edge Function now bundles successfully; its Gemini response schema and generation configuration close correctly without changing the transient, coach-only, fail-closed boundary.
+
+## [0.41.0] - 2026-10-07
+
+The simplified app remains a local preview. No hosted migration, provider credential, notification, child record, public fixture, or deployment was changed.
+
+### Added
+
+- Android push-token registration now uses the Capacitor push plugin and narrow owner-only RPCs backed by a service-only token table; sign-out removes the device token from the current account.
+- `dispatch-notifications` runs the leased notification outbox through Firebase Cloud Messaging with Resend email fallback, disables rejected device tokens, preserves one-player payloads, and uses compact opaque idempotency keys.
+- Drill rows now carry an explicit human curation state and reviewer record. Automatic reports require `approved`; active or coach-created draft content remains ineligible, and ordinary coaches cannot set decision or reviewer fields during either insert or update.
+- Provider and integration coverage now exercises native-push preference, email fallback, Firebase invalid-token handling, Resend payload redaction, and the real local Supabase claim/send/receipt/finish path.
+
+### Changed
+
+- Simplified share creation and reads fail closed while any linked guardian is waiting to accept the current consent version, including coach-created links.
+- Gemini child-name and swing-image processing now requires an explicit paid-service data-terms confirmation. The screenshot disclosure records Google's current paid-service training and 55-day abuse-monitoring terms while retaining CSV and paste fallbacks.
+- The local RTX 5070 Ti completed the pose pipeline for a 37.2-second source clip in 53.331 seconds; full hosted upload, AI-report, and notification timing remains a release check.
+- Google Cloud Storage moved to 8.2.0 and the shipped Capacitor Android/iOS platform packages moved to 6.2.2; production dependency audits now report zero known vulnerabilities. Capacitor 6's local CLI still pins vulnerable `tar` 6.2.1 and requires a coordinated Capacitor major upgrade.
+- Demo fixture export explicitly resets source drill-curation decisions to draft with no reviewer identity, preserving schema parity without transferring private approval metadata.
+
+## [0.40.0] - 2026-10-07
+
+The simplified app remains a local preview. No hosted service, cloud data, public fixture, or external notification was changed.
+
+### Added
+
+- Service-only notification workers can atomically lease bounded event batches, recover stale leases, and retry failed deliveries with bounded backoff.
+- Per-recipient delivery receipts skip recorded successes after a partial failure, while stable opaque idempotency keys give the future provider a duplicate-suppression hook for sends accepted just before a receipt-write failure. Delivery is not claimed to be exactly-once.
+- A provider-neutral dispatcher and Supabase store adapter preserve current-access recipient resolution and one-player batching without selecting or contacting a push/email vendor.
+
+### Fixed
+
+- Malformed clip IDs now receive a 400 response from `delete-clip` before authorization instead of falling through to the valid-but-forbidden 403 response.
+
 ## [0.39.0] - 2026-10-06
 
 The simplified app remains a local preview. No hosted service, cloud data, or public fixture was changed.

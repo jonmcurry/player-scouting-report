@@ -18,17 +18,34 @@ const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 const notFound = () => reply({ error: "Report not found." }, 404);
+const demoReadableRun = <T extends { summary?: string | null; strengths?: unknown }>(run: T | null | undefined, demo: boolean) =>
+  demo && run && !hasReportEvidence(run)
+    ? { ...run, summary: "Video was clear enough to review.", strengths: [] }
+    : run;
 
 // supabase-js cannot infer a row type from its ungenerated schema here.
-async function progressVideo(service: any, playerId: string, clipId: string | null) {
+async function progressVideo(service: any, playerId: string, clipId: string | null, demo = false) {
   if (!clipId) return null;
   const { data: clip, error } = await service.from("video_clips")
-    .select("id, status, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)")
+    .select(demo
+      ? "id, status, demo_media_path, demo_media_offset_s, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)"
+      : "id, status, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)")
     .eq("id", clipId).eq("game_log_entries.player_id", playerId).maybeSingle();
   if (error || !clip || clip.status !== "ready") return null;
-  const { data: deleting, error: deletionError } = await service.from("clip_deletions")
-    .select("clip_id").eq("clip_id", clipId).limit(1);
-  if (deletionError || deleting?.length) return null;
+  if (!demo) {
+    const { data: deleting, error: deletionError } = await service.from("clip_deletions")
+      .select("clip_id").eq("clip_id", clipId).limit(1);
+    if (deletionError || deleting?.length) return null;
+  }
+  if (demo) {
+    if (!clip.demo_media_path) return null;
+    const { data: phases, error: phaseError } = await service.from("swing_phases")
+      .select("time_s, swing_phase_types!inner(slug)").eq("video_clip_id", clipId)
+      .eq("swing_phase_types.slug", "contact").limit(1);
+    if (phaseError) return null;
+    return { clipId, mediaPath: clip.demo_media_path,
+      contactTime: (phases?.[0]?.time_s ?? 0) + (clip.demo_media_offset_s ?? 0) };
+  }
   const bucket = Deno.env.get("GCS_BUCKET_NAME") ?? "";
   const object = opaqueRawObject(clip.raw_gcs_path, bucket, clip.game_log_entry_id, clip.clip_slug, clip.id);
   if (!object) return null;
@@ -46,7 +63,8 @@ async function progressVideo(service: any, playerId: string, clipId: string | nu
   return { clipId, url, contactTime: phases?.[0]?.time_s ?? null };
 }
 
-/** A bearer link stops working when its creator loses access or renews consent. */
+/** A bearer link stops working when its creator loses access, consent becomes
+ * stale, or any currently linked guardian is waiting to re-consent. */
 async function shareCreatorCanRead(service: any, creatorId: string, playerId: string, createdAt: string): Promise<boolean> {
   const { data: player, error: playerError } = await service.from("players")
     .select("team_id").eq("id", playerId).maybeSingle();
@@ -54,6 +72,10 @@ async function shareCreatorCanRead(service: any, creatorId: string, playerId: st
   const { data: coaches, error: coachError } = await service.from("coach_team_access")
     .select("coach_id").eq("coach_id", creatorId).eq("team_id", player.team_id).limit(1);
   if (coachError) return false;
+  const { data: guardiansCurrent, error: consentGateError } = await service.rpc("all_linked_guardians_current", {
+    p_player_id: playerId,
+  });
+  if (consentGateError || guardiansCurrent !== true) return false;
   if (coaches?.length) return true;
   // Compare in PostgreSQL, which preserves finer timestamp precision than JS.
   // Renewal and re-invite both move consented_at past old token creation.
@@ -73,14 +95,16 @@ Deno.serve(async (request) => {
   if (request.method !== "POST") return reply({ error: "Method not allowed." }, 405);
   try {
     const body = await request.json().catch(() => ({}));
+    const demo = body.demo === true;
     let playerId = body.playerId;
     let clipId = body.clipId;
     if ((playerId !== undefined && (typeof playerId !== "string" || !UUID.test(playerId)))
       || (clipId !== undefined && (typeof clipId !== "string" || !UUID.test(clipId)))) return notFound();
     const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      { auth: { persistSession: false, autoRefreshToken: false } });
+      { auth: { persistSession: false, autoRefreshToken: false } }).schema(demo ? "demo" : "public");
     let shared = false;
     let shareScope: "report" | "progress" | null = null;
+    if (demo && typeof body.token === "string" && body.token.length > 0) return notFound();
     if (typeof body.token === "string" && body.token.length > 0) {
       const { data: link, error } = await service.from("player_share_links").select("player_id, created_by, created_at, revoked_at, expires_at, share_scope, video_clip_id")
         .eq("token", body.token).maybeSingle();
@@ -98,17 +122,23 @@ Deno.serve(async (request) => {
       if (!playerId) return notFound();
       const authorization = request.headers.get("Authorization");
       if (!authorization) return notFound();
-      const caller = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!,
+      const callerClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!,
         { global: { headers: { Authorization: authorization } }, auth: { persistSession: false, autoRefreshToken: false } });
-      const { data: user, error: userError } = await caller.auth.getUser(authorization.replace(/^Bearer\s+/i, ""));
-      if (userError || !user?.user || user.user.is_anonymous) return notFound();
-      const [{ data: guardian }, { data: player }] = await Promise.all([
-        caller.rpc("is_guardian_for_player", { target_player_id: playerId }),
-        service.from("players").select("team_id").eq("id", playerId).maybeSingle(),
-      ]);
-      if (!player) return notFound();
-      const { data: coach } = await caller.rpc("is_coach_for_team", { target_team_id: player.team_id });
-      if (guardian !== true && coach !== true) return notFound();
+      const caller = callerClient.schema(demo ? "demo" : "public");
+      const { data: user, error: userError } = await callerClient.auth.getUser(authorization.replace(/^Bearer\s+/i, ""));
+      if (userError || !user?.user || (!demo && user.user.is_anonymous)) return notFound();
+      if (demo) {
+        const { data: ownsDemoPlayer } = await caller.rpc("is_demo_owner_of_player", { target_player_id: playerId });
+        if (ownsDemoPlayer !== true) return notFound();
+      } else {
+        const [{ data: guardian }, { data: player }] = await Promise.all([
+          caller.rpc("is_guardian_for_player", { target_player_id: playerId }),
+          service.from("players").select("team_id").eq("id", playerId).maybeSingle(),
+        ]);
+        if (!player) return notFound();
+        const { data: coach } = await caller.rpc("is_coach_for_team", { target_team_id: player.team_id });
+        if (guardian !== true && coach !== true) return notFound();
+      }
     }
     const { data: player, error: playerError } = await service.from("players")
       .select("id, name, age_band, readable_game_swing_count, teams!inner(name, sport, age_group)").eq("id", playerId).single();
@@ -138,7 +168,7 @@ Deno.serve(async (request) => {
     // clips must disappear from the feed and focus immediately, even while
     // the retryable deletion is waiting to finish.
     const visibleIds = [...new Set([...(allClips ?? []), ...(allRecent ?? [])].map((clip) => clip.id))];
-    const { data: deletionRows, error: deletionError } = visibleIds.length
+    const { data: deletionRows, error: deletionError } = !demo && visibleIds.length
       ? await service.from("clip_deletions").select("clip_id").in("clip_id", visibleIds)
       : { data: [], error: null };
     if (deletionError) throw deletionError;
@@ -151,8 +181,11 @@ Deno.serve(async (request) => {
       : { data: [], error: null };
     if (focusRunError) throw focusRunError;
     const latestRun = latestRunsByClip(focusRuns ?? []);
+    if (demo) for (const [id, run] of latestRun) latestRun.set(id, demoReadableRun(run, true)!);
     const { data: focusIssues, error: focusIssueError } = (recent ?? []).length
-      ? await service.from("issues").select("id, video_clip_id, analysis_run_id, concept, phase, basis, confidence, context_explains_it, emergency_swing_suspected, review_status, issue, evidence, coaching_cue, look_for_next")
+      ? await service.from("issues").select(demo
+        ? "id, video_clip_id, analysis_run_id, concept, phase, basis, confidence, review_status, issue, evidence, coaching_cue, look_for_next"
+        : "id, video_clip_id, analysis_run_id, concept, phase, basis, confidence, context_explains_it, emergency_swing_suspected, review_status, issue, evidence, coaching_cue, look_for_next")
         .in("video_clip_id", (recent ?? []).map((clip) => clip.id))
       : { data: [], error: null };
     if (focusIssueError) throw focusIssueError;
@@ -167,7 +200,7 @@ Deno.serve(async (request) => {
       }
       const list = findings.get(row.video_clip_id) ?? [];
       list.push({ id: row.id, concept: row.concept ?? "", phase: row.phase, basis: row.basis ?? "", confidence: row.confidence,
-        contextExplainsIt: row.context_explains_it, emergencySwingSuspected: row.emergency_swing_suspected,
+        contextExplainsIt: row.context_explains_it ?? false, emergencySwingSuspected: row.emergency_swing_suspected ?? false,
         hidden: row.review_status === "hidden" || row.review_status === "rejected" });
       findings.set(row.video_clip_id, list);
     }
@@ -194,7 +227,7 @@ Deno.serve(async (request) => {
       .eq("game_log_entries.player_id", playerId).eq("game_log_entries.session_type", "practice")
       .eq("status", "ready").order("created_at", { ascending: false }).limit(20);
     if (practiceError) throw practiceError;
-    const { data: practiceDeletions, error: practiceDeletionError } = (practiceClips ?? []).length
+    const { data: practiceDeletions, error: practiceDeletionError } = !demo && (practiceClips ?? []).length
       ? await service.from("clip_deletions").select("clip_id").in("clip_id", (practiceClips ?? []).map((clip) => clip.id))
       : { data: [], error: null };
     if (practiceDeletionError) throw practiceDeletionError;
@@ -206,7 +239,9 @@ Deno.serve(async (request) => {
         .order("created_at", { ascending: false }) : { data: [], error: null };
     if (practiceRunError) throw practiceRunError;
     const { data: practiceIssues, error: practiceIssueError } = visiblePractice.length
-      ? await service.from("issues").select("video_clip_id, analysis_run_id, concept, basis, review_status, context_explains_it, emergency_swing_suspected, issue, evidence, coaching_cue, look_for_next")
+      ? await service.from("issues").select(demo
+        ? "video_clip_id, analysis_run_id, concept, basis, review_status, issue, evidence, coaching_cue, look_for_next"
+        : "video_clip_id, analysis_run_id, concept, basis, review_status, context_explains_it, emergency_swing_suspected, issue, evidence, coaching_cue, look_for_next")
         .in("video_clip_id", visiblePractice.map((clip) => clip.id)) : { data: [], error: null };
     if (practiceIssueError) throw practiceIssueError;
     const practice = current ? practiceEvidence(visiblePractice.map((clip) => clip.id), practiceRuns ?? [],
@@ -214,12 +249,12 @@ Deno.serve(async (request) => {
     let focusDrill: ReportDrill | null = null;
     if (current) {
       const { data: focusDrills, error: focusDrillError } = await service.from("drill_library")
-        .select("id, name, target_tags, best_for, is_active, min_age, sport, home_friendly, equipment, phase, requires_screen, weighted_or_overspeed, instructions, cue, looks_right_when, common_mistakes, demo_url, demo_timestamp, source_credit")
+        .select("id, name, target_tags, best_for, is_active, curation_status, min_age, sport, home_friendly, equipment, phase, requires_screen, weighted_or_overspeed, instructions, cue, looks_right_when, common_mistakes, demo_url, demo_timestamp, source_credit")
         .eq("is_active", true);
       if (focusDrillError) throw focusDrillError;
       const age = player.age_band ? Number(player.age_band.match(/\d+/)?.[0] ?? 12) : Number(team.age_group?.match(/\d+/)?.[0] ?? 12);
       const candidates: ReportDrill[] = (focusDrills ?? []).map((row) => ({ id: row.id, name: row.name,
-        targetTags: row.target_tags, bestFor: row.best_for ?? "", isActive: row.is_active, minAge: row.min_age,
+        targetTags: row.target_tags, bestFor: row.best_for ?? "", isActive: row.is_active, curationStatus: row.curation_status, minAge: row.min_age,
         sport: row.sport, homeFriendly: row.home_friendly, equipment: row.equipment, phase: row.phase,
         requiresScreen: row.requires_screen, weightedOrOverspeed: row.weighted_or_overspeed,
         instructions: row.instructions, cue: row.cue, looksRightWhen: row.looks_right_when,
@@ -241,6 +276,7 @@ Deno.serve(async (request) => {
       : { data: [], error: null };
     if (headlineError) throw headlineError;
     const newestRuns = latestRunsByClip(headlines ?? []);
+    if (demo) for (const [id, run] of newestRuns) newestRuns.set(id, demoReadableRun(run, true)!);
     const { data: disputedFeed, error: disputedFeedError } = (clips ?? []).length
       ? await service.from("issues").select("video_clip_id, analysis_run_id, review_status, issue, evidence, coaching_cue, look_for_next")
         .in("video_clip_id", (clips ?? []).map((clip) => clip.id))
@@ -273,8 +309,8 @@ Deno.serve(async (request) => {
     const identity = shared ? privateName(player.name) : player.name;
     if (!clipId) {
       const [thenVideo, nowVideo] = await Promise.all([
-        progressVideo(service, playerId, progress.thenClipId),
-        progress.nowClipId === progress.thenClipId ? null : progressVideo(service, playerId, progress.nowClipId),
+        progressVideo(service, playerId, progress.thenClipId, demo),
+        progress.nowClipId === progress.thenClipId ? null : progressVideo(service, playerId, progress.nowClipId, demo),
       ]);
       const fullProgress = { ...progress, practice, focusDrill, thenVideo,
         nowVideo: nowVideo ?? (progress.nowClipId === progress.thenClipId ? thenVideo : null) };
@@ -283,7 +319,9 @@ Deno.serve(async (request) => {
         feed: shareScope === "progress" ? [] : feed });
     }
     const { data: clip, error: clipError } = await service.from("video_clips")
-      .select("id, status, swing_detection_state, error_message, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)")
+      .select(demo
+        ? "id, status, swing_detection_state, error_message, demo_media_path, demo_media_offset_s, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)"
+        : "id, status, swing_detection_state, error_message, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)")
       .eq("id", clipId).eq("game_log_entries.player_id", playerId).maybeSingle();
     if (clipError || !clip) return notFound();
     const { data: entryClips, error: entryClipsError } = shared
@@ -293,37 +331,44 @@ Deno.serve(async (request) => {
     const [{ data: run, error: runError }, { data: rows, error: issueError }, { data: drillRows, error: drillError }] = await Promise.all([
       service.from("analysis_runs").select("id, summary, strengths").eq("video_clip_id", clipId)
         .order("created_at", { ascending: false }).limit(1).maybeSingle(),
-      service.from("issues").select("id, analysis_run_id, concept, phase, basis, confidence, context_explains_it, emergency_swing_suspected, review_status, issue, evidence, coaching_cue, look_for_next, hidden_by").eq("video_clip_id", clipId),
-      service.from("drill_library").select("id, name, target_tags, best_for, is_active, min_age, sport, home_friendly, equipment, phase, requires_screen, weighted_or_overspeed, instructions, cue, looks_right_when, common_mistakes, demo_url, demo_timestamp, source_credit").eq("is_active", true),
+      service.from("issues").select(demo
+        ? "id, analysis_run_id, concept, phase, basis, confidence, review_status, issue, evidence, coaching_cue, look_for_next, hidden_by"
+        : "id, analysis_run_id, concept, phase, basis, confidence, context_explains_it, emergency_swing_suspected, review_status, issue, evidence, coaching_cue, look_for_next, hidden_by").eq("video_clip_id", clipId),
+      service.from("drill_library").select("id, name, target_tags, best_for, is_active, curation_status, min_age, sport, home_friendly, equipment, phase, requires_screen, weighted_or_overspeed, instructions, cue, looks_right_when, common_mistakes, demo_url, demo_timestamp, source_credit").eq("is_active", true),
     ]);
     if (runError || issueError || drillError) throw runError ?? issueError ?? drillError;
     const issues: ReportIssue[] = (rows ?? []).filter((row) => belongsToRun(row, run)).map((row) => ({
       id: row.id, concept: row.concept ?? "", phase: row.phase, basis: row.basis ?? "", confidence: row.confidence,
-      contextExplainsIt: row.context_explains_it, emergencySwingSuspected: row.emergency_swing_suspected,
+      contextExplainsIt: row.context_explains_it ?? false, emergencySwingSuspected: row.emergency_swing_suspected ?? false,
       hidden: row.review_status === "hidden" || row.review_status === "rejected", hiddenBy: row.hidden_by,
       issue: row.issue, evidence: row.evidence, coachingCue: row.coaching_cue, lookForNext: row.look_for_next,
     }));
     const drills: ReportDrill[] = (drillRows ?? []).map((row) => ({ id: row.id, name: row.name,
-      targetTags: row.target_tags, bestFor: row.best_for ?? "", isActive: row.is_active, minAge: row.min_age,
+      targetTags: row.target_tags, bestFor: row.best_for ?? "", isActive: row.is_active, curationStatus: row.curation_status, minAge: row.min_age,
       sport: row.sport, homeFriendly: row.home_friendly, equipment: row.equipment, phase: row.phase,
       requiresScreen: row.requires_screen, weightedOrOverspeed: row.weighted_or_overspeed,
       instructions: row.instructions, cue: row.cue, looksRightWhen: row.looks_right_when,
       commonMistakes: row.common_mistakes, demoUrl: row.demo_url, demoTimestamp: row.demo_timestamp,
       sourceCredit: row.source_credit }));
     const age = player.age_band ? Number(player.age_band.match(/\d+/)?.[0] ?? 12) : Number(team.age_group?.match(/\d+/)?.[0] ?? 12);
-    const report = assembleReport({ run: run ? { id: run.id, summary: run.summary, strengths: run.strengths } : null,
+    const effectiveRun = demoReadableRun(run, demo);
+    const report = assembleReport({ run: effectiveRun ? { id: effectiveRun.id, summary: effectiveRun.summary, strengths: effectiveRun.strengths } : null,
       issues, drills, qualityPassed: clip.status === "ready",
       swingDetectionState: clip.swing_detection_state,
       currentFocus: current?.concept ?? null,
       drillContext: { sport: team.sport === "baseball" || team.sport === "softball" ? team.sport : null, age } });
     if (report.state === "unreadable" && clip.status === "failed") report.reason = plainFailureReason(clip.error_message);
-    const { data: deleting, error: deletingError } = await service.from("clip_deletions")
-      .select("clip_id").eq("clip_id", clipId).limit(1);
-    if (deletingError || deleting?.length) return notFound();
+    if (!demo) {
+      const { data: deleting, error: deletingError } = await service.from("clip_deletions")
+        .select("clip_id").eq("clip_id", clipId).limit(1);
+      if (deletingError || deleting?.length) return notFound();
+    }
     const bucket = Deno.env.get("GCS_BUCKET_NAME") ?? "";
-    const object = opaqueRawObject(clip.raw_gcs_path, bucket, clip.game_log_entry_id, clip.clip_slug, clip.id);
+    const object = demo ? null : opaqueRawObject(clip.raw_gcs_path, bucket, clip.game_log_entry_id, clip.clip_slug, clip.id);
     let videoUrl: string | null = null;
-    if (object && clip.status === "ready") {
+    let mediaPath: string | null = null;
+    if (demo && clip.status === "ready") mediaPath = clip.demo_media_path ?? null;
+    else if (object && clip.status === "ready") {
       const emulator = Deno.env.get("GCS_EMULATOR_HOST");
       if (emulator) videoUrl = `${emulator}/download/storage/v1/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(object)}?alt=media`;
       else {
@@ -335,7 +380,8 @@ Deno.serve(async (request) => {
       .select("time_s, swing_phase_types!inner(slug)").eq("video_clip_id", clipId)
       .eq("swing_phase_types.slug", "contact").limit(1);
     if (phaseError) throw phaseError;
-    const contactTime = phases?.[0]?.time_s ?? null;
+    const contactTime = phases?.[0]?.time_s == null ? null
+      : phases[0].time_s + (demo ? clip.demo_media_offset_s ?? 0 : 0);
     if (shared && report.state === "ready") {
       report.summary = sharedText(report.summary);
       report.strengths = report.strengths.map(sharedText);
@@ -355,7 +401,7 @@ Deno.serve(async (request) => {
     return reply({ ...(shared ? {} : { playerId, clipId, entryId: clip.game_log_entry_id,
       entryClipIds: (entryClips ?? []).map((row) => row.id) }), playerName: identity,
       report: shared ? sharedReportPayload(report, sharedText) : report, status: clip.status,
-      videoUrl, contactTime, ...(shared ? {} : { progress }) });
+      videoUrl, mediaPath, contactTime, ...(shared ? {} : { progress }) });
   } catch (error) {
     console.error("get-simplified-report:", error);
     return reply({ error: "Couldn't load the report. Please try again." }, 500);

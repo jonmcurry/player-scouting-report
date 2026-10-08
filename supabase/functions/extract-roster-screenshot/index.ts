@@ -57,6 +57,10 @@ Deno.serve(async (req) => {
       .eq("coach_id", userData.user.id).eq("team_id", teamId).limit(1);
     if (accessError || !access?.length) return json({ error: "Team not found or not accessible" }, 404);
 
+    if (Deno.env.get("GEMINI_PAID_SERVICE_CONFIRMED") !== "true") {
+      return json({ error: "Screenshot extraction is unavailable. Use CSV or paste the roster instead." }, 503);
+    }
+
     const apiKey = Deno.env.get("GEMINI_API_KEY")?.trim();
     const model = Deno.env.get("GEMINI_MODEL")?.trim();
     if (!apiKey || !model) return json({ error: "Screenshot extraction is not configured." }, 503);
@@ -78,6 +82,7 @@ Deno.serve(async (req) => {
             },
           } } },
         },
+      },
       }),
     });
     if (!response.ok) {

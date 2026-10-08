@@ -1,5 +1,6 @@
 export interface CuratedDrill {
   id: string; name: string; targetTags: string[]; bestFor: string; isActive: boolean;
+  curationStatus: "draft" | "approved" | "rejected" | null;
   minAge: number | null; sport: "baseball" | "softball" | "both";
   homeFriendly: boolean; equipment: string; phase: string | null;
   requiresScreen: boolean; weightedOrOverspeed: boolean;
@@ -11,7 +12,7 @@ const normalized = (tag: string) => tag.toLowerCase().replaceAll("-", "_");
 export function selectDrills<T extends CuratedDrill>(drills: T[], context: DrillContext): T[] {
   const age = context.age ?? 12;
   if (!context.sport) return [];
-  const eligible = drills.filter((drill) => drill.isActive && drill.bestFor.trim()
+  const eligible = drills.filter((drill) => drill.isActive && drill.curationStatus === "approved" && drill.bestFor.trim()
     && drill.targetTags.some((tag) => normalized(tag) === context.concept)
     && (drill.sport === "both" || drill.sport === context.sport)
     && (drill.minAge === null || age >= drill.minAge)

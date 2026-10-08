@@ -1,6 +1,6 @@
 {
   "name": "hitterloop-mobile",
-  "version": "0.39.0",
+  "version": "0.42.0",
   "private": true,
   "description": "Capacitor native shell (Android/iOS) for the coach/ web app. Does not duplicate coach/ - webDir points at ../coach directly.",
   "scripts": {
@@ -14,9 +14,11 @@
   "dependencies": {
     "@capacitor/android": "^6.2.1",
     "@capacitor/core": "6.2.1",
-    "@capacitor/ios": "^6.2.1"
+    "@capacitor/ios": "^6.2.1",
+    "@capacitor/push-notifications": "^6.0.5"
   },
   "devDependencies": {
     "@capacitor/cli": "6.2.1"
-  }
+  },
+  "overrides": {}
 }

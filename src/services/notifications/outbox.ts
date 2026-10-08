@@ -42,7 +42,24 @@ export interface NotificationDelivery {
   recipientId: string;
   playerId: string;
   eventIds: string[];
+  idempotencyKey: string;
   body: string;
+}
+
+function fnv1a64(value: string, seed: bigint): string {
+  let hash = seed;
+  for (const character of value) {
+    hash ^= BigInt(character.codePointAt(0) ?? 0);
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+  }
+  return hash.toString(16).padStart(16, "0");
+}
+
+/** Compact opaque provider key; raw account/player/event ids never leave in
+ * an email header, and large bulk batches stay below provider key limits. */
+function deliveryKey(parts: string[]): string {
+  const value = parts.join(":");
+  return `hl-${fnv1a64(value, 0xcbf29ce484222325n)}${fnv1a64(value, 0x84222325cbf29ce4n)}`;
 }
 
 /** Pure provider boundary: one child per delivery, with report events batched per recipient/player. */
@@ -59,19 +76,20 @@ export function buildNotificationDeliveries(events: PendingNotificationEvent[], 
     const name = playerNames.get(group.playerId);
     if (!name) throw new Error(`Missing player name for notification ${group.playerId}`);
     const eventIds = group.events.map((event) => event.id);
+    const idempotencyKey = deliveryKey([group.recipientId, group.playerId, group.kind, ...[...eventIds].sort()]);
     if (group.kind === "report_ready") {
       const body = group.events.length > 1
         ? `${group.events.length} at-bat reports are ready for ${name}.`
         : `${name}'s at-bat report is ready: ${group.events[0]!.reportHasFix ? "1 thing to work on." : "looking good."}`;
-      return { recipientId: group.recipientId, playerId: group.playerId, eventIds, body };
+      return { recipientId: group.recipientId, playerId: group.playerId, eventIds, idempotencyKey, body };
     }
-    if (group.kind === "analysis_failed") return { recipientId: group.recipientId, playerId: group.playerId, eventIds,
+    if (group.kind === "analysis_failed") return { recipientId: group.recipientId, playerId: group.playerId, eventIds, idempotencyKey,
       body: `We couldn't analyze ${name}'s at-bat. Tap for a filming tip.` };
     const focus = group.events.at(-1)!;
     const concept = (focus.focusConcept ?? "the current focus").replaceAll("_", " ");
     const detail = focus.focusStatus === "fixed" ? "hasn't shown up in the last 4 readable game swings"
       : `is showing up less (${focus.focusSeen} of the last ${focus.focusWindowSize})`;
-    return { recipientId: group.recipientId, playerId: group.playerId, eventIds,
+    return { recipientId: group.recipientId, playerId: group.playerId, eventIds, idempotencyKey,
       body: `Good news for ${name}: ${concept} ${detail}.` };
   });
 }

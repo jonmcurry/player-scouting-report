@@ -25,6 +25,11 @@ test("delivery batching is recipient- and player-scoped, never a mixed-child mes
     if (delivery.playerId === "b") assert.doesNotMatch(delivery.body, /Maya/);
   }
   assert.match(deliveries.find((row) => row.recipientId === "parent-a")!.body, /2 at-bat reports/);
+  const parentKey = deliveries.find((row) => row.recipientId === "parent-a")!.idempotencyKey;
+  assert.match(parentKey, /^hl-[0-9a-f]{32}$/);
+  assert.equal(parentKey, buildNotificationDeliveries([...events].reverse(), recipients,
+    new Map([["a", "Maya"], ["b", "Jordan"]])).find((row) => row.recipientId === "parent-a")!.idempotencyKey,
+  "event ordering does not change the provider idempotency key");
 });
 
 test("failure and focus copy stay within their single player event", () => {

@@ -43,6 +43,7 @@ const IN_DEMO = "This swing is in the public demo — retire the demo version fi
 const DEMO_UNREADABLE =
   "A stored public demo fixture couldn't be checked for this swing, so nothing was deleted. The demo fixtures need a review first.";
 const UNVERIFIED_PATH = "This video's storage location can't be verified, so it wasn't deleted. Nothing was changed.";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function deleteObject(bucket: string, object: string): Promise<void> {
   const emulatorHost = Deno.env.get("GCS_EMULATOR_HOST");
@@ -66,8 +67,8 @@ Deno.serve(async (req) => {
 
   try {
     const { clipId } = await req.json().catch(() => ({}));
-    if (!clipId || typeof clipId !== "string") {
-      return jsonResponse({ error: "clipId is required" }, 400);
+    if (!clipId || typeof clipId !== "string" || !UUID.test(clipId)) {
+      return jsonResponse({ error: "A valid clipId is required" }, 400);
     }
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {

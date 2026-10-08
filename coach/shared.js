@@ -49,7 +49,7 @@ function injectDemoBanner() {
       const { data, error } = await supabase.rpc("reset_demo_session");
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
-      window.location.href = `${demo.basePath}team.html?team=${encodeURIComponent(row.team_slug)}`;
+      window.location.href = `${demo.basePath}simple.html?team=${encodeURIComponent(row.team_slug)}`;
     } catch {
       btn.disabled = false;
       alert("Could not reset the demo. Please try again.");

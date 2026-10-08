@@ -207,6 +207,11 @@ browser, an Edge Function or any lightweight serverless runtime.
 - Node and Python communicate through a `pipeline_status.json` contract rather than exit codes, since
   a real post-completion CUDA teardown crash had already made exit codes unreliable.
 
+**Notification worker (`src/cli/dispatchNotifications.ts`).** A separate service-role poller leases
+the notification outbox, resolves access and consent at send time, prefers registered Android FCM
+tokens, and falls back to Resend email. Configure the notification variables in `.env.example` and
+run `npm run dispatch-notifications`. It refuses to start without at least one configured channel.
+
 **Python pipeline (`scripts/pose3d/`).** Runs in an isolated `.venv_pose3d`. See the next section.
 
 **AI (`src/services/ai/`).** Two interchangeable backends behind one shared prompt and schema.
@@ -456,6 +461,7 @@ cp .env.example .env                # paste the URL/keys that `supabase start` p
 npx supabase db reset               # applies supabase/migrations/ + seed.sql
 docker compose up -d gcs-cors-proxy # GCS emulator + CORS proxy (starts gcs-emulator too)
 npm run process-upload-queue        # leave running: polls for pending clips
+npm run dispatch-notifications      # optional locally; needs Firebase and/or Resend configuration
 ```
 
 Serve `coach/` with any static server and open it in a browser. Locally, `coach/config.js` finds
@@ -513,6 +519,7 @@ Gradle and `adb` directly. Distribution is by APK. It is not on the Play Store.
 | Command | What it does |
 |---|---|
 | `npm run process-upload-queue` | The worker: claim, download, pipeline, ingest, AI diagnosis. Ctrl-C to stop |
+| `npm run dispatch-notifications` | Lease and deliver report/failure/focus notices through FCM with Resend fallback. Ctrl-C to stop; `-- --once` runs one batch |
 | `npm run reconcile-uploads` | Report GCS objects with no `video_clips` row. Add `-- --delete-older-than-days 7` to clean up |
 | `npm run extract` | Extract frames from a video (fluent-ffmpeg) |
 | `npm run ingest` | Load `pose3d_to_checklist.py` output as `source='pose3d'` drafts |
@@ -647,13 +654,14 @@ behavior, schema, RLS, pipeline or AI change. One-time actions on an existing ma
 | Area | State |
 |---|---|
 | Coach PWA + Android APK | Working against local dev stack, verified on an emulator |
-| Simplified Home / Record / Report / Progress | Local preview; replacement route is not yet the default |
-| Guardian access, consent renewal, upload, report, share, and deletion rules | Implemented locally; 58 integration cases pass |
+| Simplified Home / Record / Report / Progress | Local preview and the signed-in default; `?legacy=1` retains the rollback route until authenticated rendered QA passes |
+| Guardian access, consent renewal, upload, report, share, deletion, and private notification-token rules | Implemented locally; 68 integration cases pass |
 | Upload → automatic processing → fail-closed report | Working locally; 20 real-at-bat calibration remains open |
 | Legacy development, review, compare, and share workflow | Retained for rollback and the frozen demo during replacement QA |
 | Hosted Supabase project | **Not created.** `PROD_SUPABASE_URL/KEY` in `coach/config.js` are blank |
 | Cloud processing (Cloud Run / GPU) | **Not deployed.** The worker needs a GPU-capable host with the Python venv. The Dockerfile only covers the Node CLIs, not the pipeline |
-| Gemini backend | Wired as the production default, but not confirmed against a live key in the docs. The Claude CLI backend is the one verified end to end |
+| Gemini backend | Wired as the production default and fail-closed unless paid-service data terms are explicitly confirmed; 20-clip report agreement and release-time terms review remain open |
+| Push/email notifications | Worker and Android registration are implemented locally; Firebase project, `google-services.json`, Resend credentials, and a real delivery are not configured |
 | Email confirmation for signup | Off locally. Needs real SMTP before public exposure |
 | Coach invites to an existing team | Not built |
 | iOS | Scaffolded only (needs Xcode) |

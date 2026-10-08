@@ -19,6 +19,9 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import "dotenv/config";
 import { fixtureUuid } from "../../src/services/demoExport/ids.js";
 import { persistPlayerFocus } from "../../src/services/development/focusPersistence.js";
+import { dispatchNotificationBatch } from "../../src/services/notifications/dispatcher.js";
+import { createSupabaseNotificationDispatchStore } from "../../src/services/notifications/supabaseDispatchStore.js";
+import type { NotificationDelivery } from "../../src/services/notifications/outbox.js";
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY!;
@@ -717,7 +720,38 @@ test("guardian_can_view_clip: own child's clip only", async () => {
   assert.equal(await rpc(guardian, "guardian_can_view_clip", { p_clip_id: randomUUID() }), false);
 });
 
+test("simplified drills require a service-recorded human curation decision", async () => {
+  assert.ok((await coachA.from("drill_library").insert({
+    team_id: teamIds[0], slug: `curation-bypass-${run}`, name: "Unsafe self-approval",
+    target_tags: ["load"], best_for: "A specific load symptom", instructions: "Use a tee safely.",
+    looks_right_when: "The hitter stays balanced.", cue: "Stay balanced", source_credit: "Test coach",
+    demo_url: "https://example.test/drill", is_active: true, curation_status: "approved",
+    curated_at: new Date().toISOString(), curated_by: coachAUserId,
+  })).error, "ordinary coaches cannot self-approve a drill during insert");
+  const inserted = must(await coachA.from("drill_library").insert({
+    team_id: teamIds[0], slug: `curation-${run}`, name: "Curation candidate",
+    target_tags: ["load"], best_for: "A specific load symptom", instructions: "Use a tee safely.",
+    looks_right_when: "The hitter stays balanced.", cue: "Stay balanced", source_credit: "Test coach",
+    demo_url: "https://example.test/drill", is_active: true,
+  }).select("id, curation_status").single(), "insert team drill candidate");
+  assert.equal(inserted.curation_status, "draft");
+  assert.ok((await coachA.from("drill_library").update({ curation_status: "approved",
+    curated_at: new Date().toISOString(), curated_by: coachAUserId }).eq("id", inserted.id)).error,
+  "ordinary coaches cannot mark drill content as safety-approved");
+  assert.ok((await coachA.from("drill_library").update({ curation_status: "rejected" })
+    .eq("id", inserted.id)).error, "ordinary coaches cannot record a rejection decision");
+  assert.ok((await coachA.from("drill_library").update({ curated_at: new Date().toISOString() })
+    .eq("id", inserted.id)).error, "ordinary coaches cannot forge reviewer metadata on a draft");
+  const approved = must(await admin.from("drill_library").update({ curation_status: "approved",
+    curated_at: new Date().toISOString(), curated_by: coachAUserId }).eq("id", inserted.id)
+    .select("curation_status").single(), "service records human drill approval");
+  assert.equal(approved.curation_status, "approved");
+  must(await admin.from("drill_library").delete().eq("id", inserted.id), "remove curation candidate");
+});
+
 test("notification outbox is service-only and resolves current, opted-in, player-scoped recipients", async () => {
+  must(await admin.from("notification_events").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+    "notification test isolation");
   const entry = await rpc(guardian, "guardian_create_entry", { p_player_id: emily, p_kind: "game", p_date: "2026-10-05" });
   const clip = must(await admin.from("video_clips").insert({
     game_log_entry_id: entry, clip_slug: randomUUID(), status: "ready",
@@ -746,6 +780,8 @@ test("notification outbox is service-only and resolves current, opted-in, player
   const failedId = await rpc(admin, "enqueue_notification_event", {
     p_event_kind: "analysis_failed", p_player_id: emily, p_source_id: clip.id,
   });
+  must(await admin.from("notification_events").update({ available_at: "2099-01-01T00:00:00Z" })
+    .eq("id", failedId), "hold failure notification for lease isolation");
   assert.deepEqual(must(await admin.rpc("notification_event_recipients", { p_event_id: failedId }), "failure recipients"),
     [{ user_id: guardianId }], "analysis failure goes only to its still-authorized uploader");
   must(await admin.from("player_guardians").update({ consent_version: `${CONSENT}-stale` })
@@ -754,6 +790,96 @@ test("notification outbox is service-only and resolves current, opted-in, player
     "stale consent removes the uploader before delivery");
   must(await admin.from("player_guardians").update({ consent_version: CONSENT })
     .eq("user_id", guardianId).eq("player_id", emily), "restore notification consent");
+
+  assert.ok((await guardian.rpc("claim_notification_events", { p_limit: 1 })).error,
+    "clients cannot lease notification events");
+  must(await admin.from("notification_events").update({ available_at: "2000-01-01T00:00:00Z" })
+    .eq("id", eventId), "make report notification claimable");
+  const claimed = must(await admin.rpc("claim_notification_events", { p_limit: 1 }), "claim report event");
+  assert.equal(claimed.length, 1);
+  assert.equal(claimed[0].id, eventId);
+  assert.ok(claimed[0].claim_token);
+  assert.deepEqual(must(await admin.rpc("claim_notification_events", { p_limit: 1 }), "second claim"), [],
+    "an active lease prevents a concurrent worker claim");
+  assert.ok((await admin.rpc("record_notification_delivery", {
+    p_event_ids: [eventId], p_user_id: coachBId,
+  })).error, "a worker cannot record an ineligible recipient");
+  recipients = must(await admin.rpc("notification_event_recipients", { p_event_id: eventId }), "current report recipients")
+    .map((row: { user_id: string }) => row.user_id);
+  for (const userId of recipients) await rpc(admin, "record_notification_delivery", {
+    p_event_ids: [eventId], p_user_id: userId,
+  });
+  assert.equal(await rpc(admin, "finish_notification_event", {
+    p_event_id: eventId, p_claim_token: randomUUID(), p_error: null,
+  }), false, "a stale worker cannot finish another worker's lease");
+  assert.equal(await rpc(admin, "finish_notification_event", {
+    p_event_id: eventId, p_claim_token: claimed[0].claim_token, p_error: null,
+  }), true);
+  assert.equal((await admin.from("notification_delivery_receipts").select("user_id").eq("event_id", eventId)).data?.length,
+    recipients.length, "one durable receipt per current recipient");
+
+  must(await admin.from("notification_events").update({ available_at: "2000-01-01T00:00:00Z" })
+    .eq("id", failedId), "make failure notification claimable");
+  const failedClaim = must(await admin.rpc("claim_notification_events", { p_limit: 1 }), "claim failure event");
+  assert.equal(failedClaim[0]?.id, failedId);
+  assert.equal(await rpc(admin, "finish_notification_event", {
+    p_event_id: failedId, p_claim_token: failedClaim[0].claim_token, p_error: "provider unavailable",
+  }), true);
+  const retry = must(await admin.from("notification_events")
+    .select("claimed_at, claim_token, delivery_attempts, last_error, available_at").eq("id", failedId).single(), "failed retry state");
+  assert.equal(retry.claimed_at, null);
+  assert.equal(retry.claim_token, null);
+  assert.equal(retry.delivery_attempts, 1);
+  assert.equal(retry.last_error, "provider unavailable");
+  assert.ok(new Date(retry.available_at).getTime() > Date.now(), "failed delivery receives backoff");
+
+  const workerClip = must(await admin.from("video_clips").insert({
+    game_log_entry_id: entry, clip_slug: randomUUID(), status: "ready",
+    uploaded_by: guardianId, uploaded_by_role: "guardian",
+  }).select("id").single(), "worker notification clip");
+  const workerEventId = await rpc(admin, "enqueue_notification_event", {
+    p_event_kind: "report_ready", p_player_id: emily, p_source_id: workerClip.id, p_report_has_fix: false,
+  });
+  must(await admin.from("notification_events").update({ available_at: "2000-01-01T00:00:00Z" })
+    .eq("id", workerEventId), "make worker notification claimable");
+  const sent: NotificationDelivery[] = [];
+  const dispatched = await dispatchNotificationBatch(createSupabaseNotificationDispatchStore(admin as never), {
+    send: async (delivery) => { sent.push(delivery); },
+  }, 10);
+  assert.deepEqual(dispatched, { claimed: 1, delivered: recipients.length, failed: 0 });
+  assert.equal(sent.length, recipients.length);
+  assert.ok(sent.every((delivery) => delivery.playerId === emily && delivery.eventIds[0] === workerEventId),
+    "the executable worker keeps every provider call scoped to the event's one player");
+  const workerState = must(await admin.from("notification_events").select("delivered_at")
+    .eq("id", workerEventId).single(), "worker event state");
+  assert.ok(workerState.delivered_at, "the provider-neutral worker completes the real leased event");
+});
+
+test("native push tokens are private, owner-registered, bounded, and service-readable", async () => {
+  const anonymous = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const token = `android-${run}-${"x".repeat(32)}`;
+  await rpc(guardian, "register_notification_push_token", { p_token: token, p_platform: "android" });
+  assert.deepEqual((await guardian.from("notification_push_tokens").select("*")).data ?? [], [],
+    "a guardian cannot enumerate even their own push-token row");
+  const stored = must(await admin.from("notification_push_tokens").select("user_id, platform, disabled_at")
+    .eq("token", token).single(), "service reads registered push token");
+  assert.equal(stored.user_id, guardianId);
+  assert.equal(stored.platform, "android");
+  assert.equal(stored.disabled_at, null);
+  await assert.rejects(rpc(anonymous, "register_notification_push_token", {
+    p_token: `anon-${run}-${"x".repeat(32)}`, p_platform: "android",
+  }), /permission|invalid|not allowed/i);
+  await assert.rejects(rpc(guardian, "register_notification_push_token", {
+    p_token: token, p_platform: "ios",
+  }), /invalid push token/);
+
+  await rpc(parent2, "unregister_notification_push_token", { p_token: token });
+  assert.equal((await admin.from("notification_push_tokens").select("token").eq("token", token)).data?.length, 1,
+    "another account cannot unregister the token");
+  await rpc(guardian, "unregister_notification_push_token", { p_token: token });
+  assert.equal((await admin.from("notification_push_tokens").select("token").eq("token", token)).data?.length, 0);
 });
 
 // ---------------------------------------------------------------------------
@@ -825,6 +951,10 @@ async function callDeleteClip(client: SupabaseClient | null, clipId: string) {
   });
   return { status: res.status, body: await res.json().catch(() => null) };
 }
+
+test("delete-clip rejects a malformed clip id before authorization", async () => {
+  assert.equal((await callDeleteClip(guardian, "not-a-uuid")).status, 400);
+});
 
 async function callHideSimpleIssue(client: SupabaseClient | null, issueId: string) {
   const token = client ? (await client.auth.getSession()).data.session!.access_token : SUPABASE_ANON_KEY;
@@ -1666,9 +1796,13 @@ test("simplified share token follows its creator's current consent and player ac
   must(await admin.from("player_guardians").update({ consent_version: "stale-consent-test" })
     .eq("player_id", player.id).eq("user_id", family.id), "stale share consent");
   assert.equal((await open(familyToken)).status, 404, "stale consent closes a family-created link");
-  assert.equal((await open(coachToken)).status, 200, "a coach-created link follows coach access");
+  assert.equal((await open(coachToken)).status, 404, "stale linked-guardian consent closes coach-created links too");
+  await assert.rejects(rpc(coachA, "create_simple_share_link", {
+    p_player_id: player.id, p_scope: "progress", p_clip_id: null,
+  }), /guardian consent is current/);
   await rpc(family.client, "renew_guardian_consent", { p_player_id: player.id, p_consent_version: CONSENT });
   assert.equal((await open(familyToken)).status, 404, "renewal cannot revive a token issued under older consent");
+  assert.equal((await open(coachToken)).status, 200, "current guardian consent reopens a coach-owned token");
   const renewedToken = await rpc(family.client, "create_simple_share_link", {
     p_player_id: player.id, p_scope: "progress", p_clip_id: null,
   });

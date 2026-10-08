@@ -633,6 +633,7 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
       cue: null, common_mistakes: [], home_friendly: false, sport: "both", min_age: null,
       phase: null, demo_url: null, demo_timestamp: null, source_credit: null,
       requires_screen: false, weighted_or_overspeed: false,
+      curation_status: "draft", curated_at: null, curated_by: null,
     }));
   }
   if (manifest.report?.shareLink !== false) {

@@ -299,12 +299,16 @@ test("D: other result wording is caught when the outcome is unknown", () => {
 
 test("the Gemini provider path rejects a semantically invalid response before returning it (so nothing is written)", async () => {
   const saved = process.env.GEMINI_MODEL;
+  const savedPaidConfirmation = process.env.GEMINI_PAID_SERVICE_CONFIRMED;
   process.env.GEMINI_MODEL = "test-model";
+  process.env.GEMINI_PAID_SERVICE_CONFIRMED = "true";
   try {
     const client = { models: { generateContent: async () => ({ text: JSON.stringify(response({ summary: "The swing is visible.", strengths: [], issues: [issue({ confidence: "high" })] })) }) } } as unknown as Pick<GoogleGenAI, "models">;
     await assert.rejects(analyzeSwing([{ data: Buffer.from("png"), mimeType: "image/png" }], input(), { client }), SemanticValidationError);
   } finally {
     if (saved === undefined) delete process.env.GEMINI_MODEL; else process.env.GEMINI_MODEL = saved;
+    if (savedPaidConfirmation === undefined) delete process.env.GEMINI_PAID_SERVICE_CONFIRMED;
+    else process.env.GEMINI_PAID_SERVICE_CONFIRMED = savedPaidConfirmation;
   }
 });
 

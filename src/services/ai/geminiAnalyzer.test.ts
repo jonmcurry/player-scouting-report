@@ -38,13 +38,16 @@ function harness(steps: (Error | string)[]) {
 }
 const apiError = (status: number, message = `{"error":{"code":${status}}}`) => new ApiError({ status, message });
 
-const savedEnv = { model: process.env.GEMINI_MODEL, key: process.env.GEMINI_API_KEY };
+const savedEnv = { model: process.env.GEMINI_MODEL, key: process.env.GEMINI_API_KEY,
+  paid: process.env.GEMINI_PAID_SERVICE_CONFIRMED };
 test.beforeEach(() => {
   process.env.GEMINI_MODEL = "gemini-3.8-flash";
   process.env.GEMINI_API_KEY = FAKE_KEY;
+  process.env.GEMINI_PAID_SERVICE_CONFIRMED = "true";
 });
 test.afterEach(() => {
-  for (const [name, value] of [["GEMINI_MODEL", savedEnv.model], ["GEMINI_API_KEY", savedEnv.key]] as const) {
+  for (const [name, value] of [["GEMINI_MODEL", savedEnv.model], ["GEMINI_API_KEY", savedEnv.key],
+    ["GEMINI_PAID_SERVICE_CONFIRMED", savedEnv.paid]] as const) {
     if (value === undefined) delete process.env[name]; else process.env[name] = value;
   }
 });

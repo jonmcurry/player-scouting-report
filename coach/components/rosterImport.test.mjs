@@ -37,7 +37,8 @@ test("screenshot extraction stays review-required and rejects malformed or overs
 
 test("screenshot UI discloses Gemini before selection and keeps extracted rows in review", () => {
   const source = readFileSync(new URL("./rosterImportSheet.js", import.meta.url), "utf8");
-  assert.match(source, /image is sent to Google's Gemini service/);
+  assert.match(source, /image is sent to Google's paid Gemini service/);
+  assert.match(source, /retained for 55 days for abuse monitoring/);
   assert.match(source, /id="rosterScreenshot"[^>]+disabled/);
   assert.match(source, /Every extracted row must be reviewed/);
   assert.match(source, /extract-roster-screenshot/);
@@ -49,7 +50,14 @@ test("screenshot function is coach-scoped, bounded, transient, and fail-closed",
   assert.match(source, /coach_team_access/);
   assert.match(source, /\.eq\("coach_id", userData\.user\.id\)\.eq\("team_id", teamId\)/);
   assert.match(source, /imageBase64\.length > MAX_BASE64_LENGTH/);
+  assert.match(source, /GEMINI_PAID_SERVICE_CONFIRMED/);
   assert.match(source, /responseMimeType: "application\/json"/);
   assert.doesNotMatch(source, /\.from\("players"\).*insert/s);
   assert.doesNotMatch(source, /console\.(?:log|error|warn)/);
+});
+
+test("screenshot function response schema keeps generationConfig structurally closed", () => {
+  const fn = readFileSync(new URL("../../supabase/functions/extract-roster-screenshot/index.ts", import.meta.url), "utf8");
+  assert.match(fn, /responseSchema:[\s\S]*?\n\s*},\n\s*},\n\s*}\),/,
+    "responseSchema and generationConfig both close before JSON.stringify");
 });

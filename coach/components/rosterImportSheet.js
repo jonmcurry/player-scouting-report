@@ -14,7 +14,7 @@ export function openRosterImportSheet({ supabase, teamId, existing, onDone }) {
     <div id="rosterMapping"></div>
     <fieldset class="hl-import-privacy">
       <legend>GameChanger screenshot</legend>
-      <p>A screenshot can show children's names. If you use this option, the image is sent to Google's Gemini service to read the roster. HitterLoop does not save the image. Google handles it under the terms that apply to HitterLoop's Gemini account.</p>
+      <p>A screenshot can show children's names. If you use this option, the image is sent to Google's paid Gemini service to read the roster. HitterLoop does not save the image. Google's current terms say paid prompts are not used to improve its products and may be retained for 55 days for abuse monitoring. Use CSV or paste instead if you do not want to send the image.</p>
       <label><input id="screenshotDisclosure" type="checkbox"> I understand and am allowed to send this roster screenshot for extraction.</label>
       <label class="hl-import-field">Choose screenshot <input id="rosterScreenshot" type="file" accept="image/jpeg,image/png,image/webp" disabled></label>
       <small>Every extracted row must be reviewed before anything is saved.</small>

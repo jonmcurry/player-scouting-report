@@ -441,6 +441,32 @@ test("the replacement simplified app is the default after sign-in while legacy t
     "invite/re-consent hands current guardians to the replacement Home");
 });
 
+test("the simplified Android shell registers private push tokens and keeps email fallback copy", () => {
+  const app = read("components/simpleApp.js");
+  assert.match(app, /isPluginAvailable\?\.\("PushNotifications"\)/);
+  assert.match(app, /register_notification_push_token/);
+  assert.match(app, /unregister_notification_push_token/);
+  assert.match(app, /Use device notifications when enabled, otherwise email/);
+  assert.match(app, /notification\?\.data\?\.playerId/);
+});
+
+test("the public demo opens the simplified read-only experience", () => {
+  const app = read("components/simpleApp.js");
+  const shared = read("shared.js");
+  assert.match(app, /\.\.\.\(state\.demo \? \{ demo: true \} : \{\}\)/,
+    "demo report requests opt into the isolated demo-schema branch");
+  assert.match(app, /Public demo/);
+  assert.match(app, /state\.shared \|\| state\.demo/,
+    "report and progress mutations are omitted from the public demo");
+  assert.match(app, /querySelector\('\.simple-nav \[data-tab="record"\]'\)\.hidden = true/,
+    "recording is removed from the read-only demo navigation");
+  assert.doesNotMatch(app, /Demo uses the classic view/);
+  assert.match(shared, /simple\.html\?team=/,
+    "reset returns to the simplified route");
+  assert.match(app, /if \(state\.demo\) \{[\s\S]{0,180}supabase\.from\("teams"\)/,
+    "demo team discovery uses the isolated schema's owner-scoped teams table");
+});
+
 test("simplified reports keep confirmed no-swing separate from detector uncertainty", () => {
   const simple = read("components/simpleApp.js");
   assert.match(simple, /no_swing: "No swing"/);

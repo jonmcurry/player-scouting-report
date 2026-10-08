@@ -1,5 +1,5 @@
 import { supabase, escapeHtml, signOut } from "../shared.js";
-import { isDemoMode } from "../demoConfig.js";
+import { getDemoConfig, isDemoMode } from "../demoConfig.js";
 import { enqueueCapture, queuedCaptures, drainCaptureQueue } from "./captureQueue.js";
 import { acceptedVideoUpload, VIDEO_UPLOAD_HELP } from "./uploadPolicy.js";
 import { deleteClip } from "./clipDeletion.js";
@@ -10,7 +10,7 @@ const dialog = document.getElementById("captureDialog");
 const sheet = document.getElementById("captureSheet");
 const params = new URLSearchParams(location.search);
 const state = { userId: null, role: null, teamId: null, teamSlug: null, players: [], selected: null, home: null,
-  report: null, tab: "home", files: [], kind: "game", result: null, shared: false };
+  report: null, tab: "home", files: [], kind: "game", result: null, shared: false, demo: isDemoMode(), pushToken: null, pushReady: false };
 
 const esc = (value) => escapeHtml(String(value ?? ""));
 const eurl = (value) => {
@@ -21,6 +21,31 @@ const statusText = (status) => ({ pending: "Uploading…", processing: "Analyzin
   unreadable: "Couldn't read this one", failed: "Couldn't read this one", no_swing: "No swing", deletion_pending: "Retry delete" })[status] ?? "Analyzing…";
 const shortDate = (value) => value ? new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
 function say(text) { message.textContent = text; }
+
+async function setupNativePush(requestPermission = true) {
+  const capacitor = window.Capacitor;
+  const push = capacitor?.isPluginAvailable?.("PushNotifications")
+    ? capacitor.registerPlugin("PushNotifications") : null;
+  if (!push || state.pushReady || !state.userId) return;
+  let permission = await push.checkPermissions();
+  if (permission.receive === "prompt" && requestPermission) permission = await push.requestPermissions();
+  if (permission.receive !== "granted") return;
+  state.pushReady = true;
+  await push.addListener("registration", async ({ value }) => {
+    if (!value) return;
+    const { error } = await supabase.rpc("register_notification_push_token", { p_token: value, p_platform: "android" });
+    if (error) { state.pushReady = false; say("Device notifications couldn't be enabled."); return; }
+    state.pushToken = value;
+  });
+  await push.addListener("registrationError", () => { state.pushReady = false; say("Device notifications couldn't be enabled."); });
+  await push.addListener("pushNotificationActionPerformed", ({ notification }) => {
+    const playerId = notification?.data?.playerId;
+    if (typeof playerId === "string" && state.players.some((player) => player.id === playerId)) {
+      location.href = `./simple.html?player=${encodeURIComponent(playerId)}`;
+    }
+  });
+  await push.register();
+}
 function setTab(tab) {
   state.tab = tab;
   document.querySelectorAll(".simple-nav [data-tab]").forEach((button) =>
@@ -29,9 +54,18 @@ function setTab(tab) {
 
 async function reportApi(playerId, clipId = null, token = null) {
   const { data, error } = await supabase.functions.invoke("get-simplified-report", {
-    body: { ...(playerId ? { playerId } : {}), ...(clipId ? { clipId } : {}), ...(token ? { token } : {}) },
+    body: { ...(playerId ? { playerId } : {}), ...(clipId ? { clipId } : {}), ...(token ? { token } : {}),
+      ...(state.demo ? { demo: true } : {}) },
   });
   if (error || !data || data.error) throw new Error(data?.error ?? error?.message ?? "Couldn't load report");
+  if (state.demo) {
+    const mediaUrl = (path) => path
+      ? new URL(`${getDemoConfig().basePath}media/${encodeURIComponent(path)}`, location.origin).href : null;
+    if (data.mediaPath) data.videoUrl = mediaUrl(data.mediaPath);
+    for (const key of ["thenVideo", "nowVideo"]) {
+      if (data.progress?.[key]?.mediaPath) data.progress[key].url = mediaUrl(data.progress[key].mediaPath);
+    }
+  }
   return data;
 }
 
@@ -44,8 +78,8 @@ async function loadHome() {
 function playerControls() {
   if (state.role === "coach") return `<section class="simple-card"><h2>Roster</h2>${state.players.map((player) =>
     `<div class="simple-roster-row"><button class="simple-row" data-player="${esc(player.id)}" type="button"><span><strong>${esc(player.name)}</strong><small>${player.id === state.selected ? "Selected player" : "Open reports and progress"}</small></span><span aria-hidden="true">›</span></button>
-      <button class="simple-action link" data-action="invite-parent" data-invite-player="${esc(player.id)}" type="button">Invite parent</button></div>`).join("")}
-    <p><a href="./team.html?team=${encodeURIComponent(state.teamSlug ?? "")}">Add or import players</a></p></section>`;
+      ${state.demo ? "" : `<button class="simple-action link" data-action="invite-parent" data-invite-player="${esc(player.id)}" type="button">Invite parent</button>`}</div>`).join("")}
+    ${state.demo ? "" : `<p><a href="./team.html?team=${encodeURIComponent(state.teamSlug ?? "")}">Add or import players</a></p>`}</section>`;
   if (state.players.length < 2) return "";
   return `<div class="simple-switcher" role="group" aria-label="Choose a child">${state.players.map((player) =>
     `<button type="button" data-player="${esc(player.id)}" aria-pressed="${player.id === state.selected}">${esc(player.name)}</button>`).join("")}</div>`;
@@ -66,7 +100,8 @@ async function showHome() {
   const home = state.home;
   if (!home) return;
   root.innerHTML = `<span class="simple-eyebrow">Home</span><h1>${esc(home.playerName)}</h1>${playerControls()}
-    <button class="simple-action primary" data-action="record" type="button">Record at-bat</button>
+    ${state.demo ? `<section class="simple-card"><p><strong>Public demo</strong></p><p class="simple-muted">Explore automatic reports and progress using a privacy-reviewed example. Changes are disabled and reset for each visitor.</p></section>`
+      : `<button class="simple-action primary" data-action="record" type="button">Record at-bat</button>`}
     ${await queueBanner()}
     ${home.progress?.current ? `<button class="simple-row simple-card" data-action="progress" type="button"><span><strong>Working on ${esc(home.progress.current.concept.replaceAll("_", " "))}</strong><small>See progress</small></span><span aria-hidden="true">›</span></button>` : ""}
     <section class="simple-card"><h2>Recent at-bats</h2>${home.feed?.length ? home.feed.map((item) =>
@@ -135,7 +170,7 @@ async function showReport(clipId, token = null, preloaded = null) {
     root.innerHTML = `<span class="simple-eyebrow">At-bat report</span><h1>No swing to analyze in this at-bat.</h1>
       ${data.videoUrl ? `<video class="simple-video" src="${esc(data.videoUrl)}" controls playsinline></video>` : ""}
       <div class="simple-card"><p>This at-bat stays in the feed. The result choice did not decide whether a swing happened.</p></div>
-      ${state.shared ? "" : `<div class="simple-actions"><button class="simple-action secondary" data-action="share-report" type="button">Share</button>
+      ${state.shared || state.demo ? "" : `<div class="simple-actions"><button class="simple-action secondary" data-action="share-report" type="button">Share</button>
       <button class="simple-action secondary" data-action="delete" type="button">Delete at-bat</button></div>`}`;
     return;
   }
@@ -144,7 +179,7 @@ async function showReport(clipId, token = null, preloaded = null) {
     root.innerHTML = `<span class="simple-eyebrow">At-bat report</span><h1>${pending ? "Analyzing…" : "We couldn't analyze this video"}</h1>
       <div class="simple-card"><p>${pending ? "Usually ready in a few minutes." : esc(report.reason)}</p>${pending ? "" : `<button class="simple-action link" data-action="guide" type="button">How to film next time</button>`}</div>
       ${data.videoUrl ? `<video class="simple-video" src="${esc(data.videoUrl)}" controls playsinline></video>` : ""}
-      ${state.shared ? "" : `<button class="simple-action secondary" data-action="home" type="button">Back to Home</button>`}`;
+      ${state.shared || state.demo ? "" : `<button class="simple-action secondary" data-action="home" type="button">Back to Home</button>`}`;
     return;
   }
   root.innerHTML = `<span class="simple-eyebrow">At-bat report</span><h1>${esc(data.playerName)}</h1>
@@ -161,7 +196,7 @@ async function showReport(clipId, token = null, preloaded = null) {
         <p class="simple-cue">“${esc(report.fix.coachingCue)}”</p><p><strong>Next time, watch for:</strong> ${esc(report.fix.lookForNext)}</p>`
       : `<p>Nothing clear to fix from this at-bat. Keep filming. Patterns show up over 3+ at-bats.</p>`}</section>
     ${report.fix ? `<section><h2>Drills that can help</h2>${report.drills.length ? report.drills.map(drillCard).join("") : `<p>No drill for this yet.</p>`}</section>` : ""}
-    ${state.shared ? "" : `<div class="simple-actions"><button class="simple-action secondary" data-action="share-report" type="button">Share</button>
+    ${state.shared || state.demo ? "" : `<div class="simple-actions"><button class="simple-action secondary" data-action="share-report" type="button">Share</button>
       ${report.fix ? `<button class="simple-action secondary" data-action="hide-fix" type="button">Doesn't look right</button>` : ""}
       <button class="simple-action secondary" data-action="delete" type="button">Delete at-bat</button></div>`}`;
   const video = document.getElementById("reportVideo");
@@ -196,7 +231,7 @@ async function showProgress() {
         <p>${esc(progressSentence(progress))}</p>
         ${progress.practice?.total ? `<p class="simple-muted">In practice: seen in ${esc(progress.practice.seen)} of the last ${esc(progress.practice.total)} readable swings.</p>` : ""}
         <h2>Drill for this focus</h2>${progress.focusDrill ? drillCard(progress.focusDrill) : `<p>No drill for this yet.</p>`}
-        ${state.shared ? "" : `<button class="simple-action link" data-action="dismiss-focus" type="button">Doesn't look right</button>`}`
+        ${state.shared || state.demo ? "" : `<button class="simple-action link" data-action="dismiss-focus" type="button">Doesn't look right</button>`}`
       : `<p>${esc(progressSentence(progress))}</p>`}</section>
     ${progress.thenVideo && progress.nowVideo ? `<section class="simple-card"><h2>Then vs. now</h2><p>Watch the two videos around contact. Camera views can differ.</p>
       <div class="simple-compare"><figure><video id="thenVideo" src="${esc(progress.thenVideo.url)}" playsinline preload="metadata"></video><figcaption>Then</figcaption></figure>
@@ -205,7 +240,7 @@ async function showProgress() {
       <button class="simple-action secondary" data-action="refresh-progress" type="button">Refresh videos</button></div></section>` : ""}
     <section class="simple-card"><h2>History</h2>${progress.history.length ? progress.history.map((item) =>
       `<p>${esc(item.concept.replaceAll("_", " "))} · ${esc(item.status === "fixed" ? "Looks fixed" : item.status === "dismissed" ? "Dismissed" : item.status.replaceAll("_", " "))} · ${esc(shortDate(item.endedAt?.slice(0, 10)))}</p>`).join("") : `<p>No past focus yet.</p>`}</section>
-    ${state.shared ? "" : `<button class="simple-action secondary" data-action="share-progress" type="button">Share progress</button>`}`;
+    ${state.shared || state.demo ? "" : `<button class="simple-action secondary" data-action="share-progress" type="button">Share progress</button>`}`;
   const thenVideo = document.getElementById("thenVideo");
   const nowVideo = document.getElementById("nowVideo");
   if (thenVideo && nowVideo) {
@@ -249,10 +284,17 @@ function guideSheet() {
 }
 
 async function settingsSheet() {
+  if (state.demo) {
+    sheet.innerHTML = `<h2 id="simpleSheetTitle">Demo</h2><p>This public demo is read-only and resets for each visitor.</p>
+      <a class="simple-action secondary" href="${esc(getDemoConfig().returnUrl)}">About HitterLoop</a>
+      <button class="simple-action link" data-action="close-sheet" type="button">Done</button>`;
+    dialog.showModal();
+    return;
+  }
   const { data, error } = await supabase.from("user_settings").select("notify_reports").eq("user_id", state.userId).maybeSingle();
   if (error) throw error;
   sheet.innerHTML = `<h2 id="simpleSheetTitle">Settings</h2><label class="simple-setting"><input id="notifyReports" type="checkbox" ${data?.notify_reports !== false ? "checked" : ""}>
-    <span><strong>Report notifications</strong><small>Tell me when a new report is ready, once notifications are available.</small></span></label>
+    <span><strong>Report notifications</strong><small>Use device notifications when enabled, otherwise email.</small></span></label>
     <button class="simple-action secondary" data-action="guide" type="button">How to film</button>
     <button class="simple-action secondary" data-action="sign-out" type="button">Sign out</button>
     <button class="simple-action link" data-action="close-sheet" type="button">Done</button>`;
@@ -414,7 +456,10 @@ sheet.addEventListener("click", async (event) => {
   if (target.dataset.result) { state.result = target.dataset.result === "skip" ? null : target.dataset.result;
     sheet.querySelectorAll("[data-result]").forEach((button) => button.setAttribute("aria-pressed", button === target ? "true" : "false")); }
   if (target.dataset.action === "close-sheet") dialog.close();
-  if (target.dataset.action === "sign-out") { await signOut(); location.href = "./index.html"; }
+  if (target.dataset.action === "sign-out") {
+    if (state.pushToken) await supabase.rpc("unregister_notification_push_token", { p_token: state.pushToken });
+    await signOut(); location.href = "./index.html";
+  }
   if (target.dataset.action === "guide") guideSheet();
   if (target.dataset.action === "copy-invite") {
     try { await navigator.clipboard.writeText(sheet.querySelector(".simple-invite-link")?.value ?? ""); say("Invite link copied."); }
@@ -428,7 +473,10 @@ sheet.addEventListener("change", async (event) => {
   if (event.target.id !== "notifyReports") return;
   const { error } = await supabase.from("user_settings").upsert({ user_id: state.userId, notify_reports: event.target.checked });
   if (error) { event.target.checked = !event.target.checked; say("Couldn't save notification setting."); }
-  else say("Notification setting saved.");
+  else {
+    if (event.target.checked) await setupNativePush(true);
+    say("Notification setting saved.");
+  }
 });
 
 for (const id of ["recordFile", "chooseFiles"]) document.getElementById(id).addEventListener("change", (event) => {
@@ -450,7 +498,7 @@ window.addEventListener("online", () => { if (state.userId) drainCaptureQueue(st
 
 async function start() {
   try {
-    if (isDemoMode()) { root.innerHTML = `<h1>Demo uses the classic view</h1><p><a href="./team.html">Return to demo</a></p>`; return; }
+    if (state.demo) document.querySelector('.simple-nav [data-tab="record"]').hidden = true;
     const token = params.get("share");
     if (token) {
       state.shared = true;
@@ -467,9 +515,18 @@ async function start() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { location.href = `./index.html?next=${encodeURIComponent("./simple.html")}`; return; }
     state.userId = session.user.id;
-    const { data: access, error: accessError } = await supabase.from("coach_team_access").select("team_id, teams(slug, name)");
-    if (accessError) throw accessError;
-    const team = (access ?? []).find((item) => item.teams?.slug === params.get("team")) ?? access?.[0];
+    let team;
+    if (state.demo) {
+      const { data: demoTeams, error: demoTeamError } = await supabase.from("teams")
+        .select("id,slug,name").order("created_at").limit(1);
+      if (demoTeamError) throw demoTeamError;
+      const selectedDemoTeam = (demoTeams ?? []).find((item) => item.slug === params.get("team")) ?? demoTeams?.[0];
+      team = selectedDemoTeam ? { team_id: selectedDemoTeam.id, teams: selectedDemoTeam } : null;
+    } else {
+      const { data: access, error: accessError } = await supabase.from("coach_team_access").select("team_id, teams(slug, name)");
+      if (accessError) throw accessError;
+      team = (access ?? []).find((item) => item.teams?.slug === params.get("team")) ?? access?.[0];
+    }
     if (team) {
       state.role = "coach"; state.teamId = team.team_id; state.teamSlug = team.teams?.slug ?? null;
       const { data: players, error } = await supabase.from("players").select("id,name").eq("team_id", team.team_id).order("name");
@@ -499,15 +556,20 @@ async function start() {
       state.players.forEach((player, i) => { player.name = summaries[i]?.playerName ?? "Child"; });
     }
     await loadHome();
+    if (!state.demo) {
+      const { data: notificationSetting } = await supabase.from("user_settings").select("notify_reports")
+        .eq("user_id", state.userId).maybeSingle();
+      if (notificationSetting?.notify_reports !== false) setupNativePush(true).catch(() => {});
+    }
     const guideKey = `hitterloop-filming-guide-seen:${state.userId}`;
     let showFirstUseGuide = true;
     try { showFirstUseGuide = localStorage.getItem(guideKey) !== "1"; }
     catch { /* Storage can be unavailable in private browsing. */ }
-    if (showFirstUseGuide) {
+    if (showFirstUseGuide && !state.demo) {
       guideSheet();
       try { localStorage.setItem(guideKey, "1"); } catch { /* The guide remains available in Settings. */ }
     }
-    drainCaptureQueue(state.userId, state.role === "parent", () => loadHome());
+    if (!state.demo) drainCaptureQueue(state.userId, state.role === "parent", () => loadHome());
   } catch (error) { root.innerHTML = `<h1>Couldn't load HitterLoop</h1><p class="simple-error">${esc(error.message)}</p>`; }
 }
 start();

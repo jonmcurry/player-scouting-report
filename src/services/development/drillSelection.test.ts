@@ -4,7 +4,7 @@ import { selectDrills, type CuratedDrill } from "./drillSelection.js";
 
 const drill = (id: string, extra: Partial<CuratedDrill> = {}): CuratedDrill => ({
   id, name: id, targetTags: ["front-side-stability"], bestFor: "Front side opens early",
-  isActive: true, minAge: 8, sport: "both", homeFriendly: true, equipment: id,
+  isActive: true, curationStatus: "approved", minAge: 8, sport: "both", homeFriendly: true, equipment: id,
   phase: "stride", requiresScreen: false, weightedOrOverspeed: false, ...extra,
 });
 const context = { concept: "front_side_stability", phase: "stride", sport: "softball" as const, age: 12 };
@@ -12,6 +12,7 @@ const context = { concept: "front_side_stability", phase: "stride", sport: "soft
 test("drills fail closed on unknown sport or uncurated content and cap at three", () => {
   assert.deepEqual(selectDrills([drill("a")], { ...context, sport: null }), []);
   assert.deepEqual(selectDrills([drill("a", { bestFor: " " })], context), []);
+  assert.deepEqual(selectDrills([drill("a", { curationStatus: "draft" })], context), []);
   assert.equal(selectDrills(["a", "b", "c", "d"].map((id) => drill(id)), context).length, 3);
 });
 
