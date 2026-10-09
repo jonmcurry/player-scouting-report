@@ -1,7 +1,6 @@
 # pose3d pipeline
 
-Replacement for the MediaPipe-only prototype (`scripts/pose_analyze.py`).
-Detects the batter and bat in a real 10U game clip filmed from behind the
+The current production pose-analysis pipeline. Detects the batter and bat in a real 10U game clip filmed from behind the
 backstop, tracks both through the clip, lifts to 3D, computes coaching
 metrics, and renders an annotated overlay for visual QA.
 
@@ -36,7 +35,7 @@ To feed a player's report CHECKLIST from one or more clips' `metrics.json`:
 
 The stack is heavy (torch/CUDA, two cloned research repos, a downloaded
 checkpoint) and isolated in its own venv so it can't destabilize the main
-Python environment the older MediaPipe-based scripts depend on.
+Python environment.
 
 ```powershell
 python -m venv .venv_pose3d
@@ -75,12 +74,6 @@ Both were attempted first and are **not installable in this environment**:
 | Bat detection: YOLOv8/v11 | Used as specified | - | COCO class 34 ("baseball bat") detects real game-footage bats with no custom training. |
 | ByteTrack | Used as specified | - | Ultralytics' built-in `model.track(..., tracker="bytetrack.yaml")`, with an added track-continuity fix in `detect_2d.py` (see Known issues found below). |
 | One-Euro filter | Used as specified | - | `one_euro_filter.py`, applied to every keypoint and the bat tip/knob independently. |
-
-The old MediaPipe-only prototype (`scripts/pose_analyze.py`) still exists,
-unused by default. Run it explicitly via `-LegacyMediapipe` on
-`run_pose3d.ps1` if ever needed for comparison - it uses the **main** Python
-environment, not `.venv_pose3d`, and writes to `scripts/pose_out/` in its own
-CSV format, not this pipeline's JSON contract.
 
 ## Pipeline stages
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.43.1] - 2026-10-09
+
+### Removed
+
+- Retired the unused MediaPipe comparison pipeline and its `-LegacyMediapipe` launcher option;
+  the supported YOLO/VideoPose3D pipeline is unchanged.
+- Removed stock Capacitor Android example tests, the completed one-off `k-0.2.0` publication
+  script, and the obsolete hard-coded prototype screenshot renderer.
+
 ## [0.43.0] - 2026-10-08
 
 ### Added

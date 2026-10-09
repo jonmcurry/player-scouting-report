@@ -29,8 +29,8 @@ comparable across clips of the same player, not a fabricated mph/inches
 figure.
 
 "Lead" arm/leg selection: batter handedness/orientation isn't known from
-video alone, so this reuses the same heuristic pose_analyze.py validated for
-"front leg" (whichever side's ankle sits lower in frame = closer to camera)
+video alone, so this uses the established "front leg" heuristic (whichever
+side's ankle sits lower in frame = closer to camera)
 extended to picking the lead (front) arm too, and is documented per-clip
 in the output rather than silently assumed.
 

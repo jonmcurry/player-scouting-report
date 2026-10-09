@@ -280,8 +280,6 @@ Design notes:
 - **Validation runner:** `npm run validate:swings` runs five labeled clips deterministically
   (SHA-256 video IDs, private diagnostic videos, quality gates, regression metadata). Videos and
   outputs are gitignored.
-- **Legacy path:** `scripts/pose_analyze.py` and friends (MediaPipe) are the original prototype,
-  kept only for side-by-side comparison via `run_pose3d.ps1 -LegacyMediapipe`. Do not build on them.
 - **Why YOLO11 + VideoPose3D instead of RTMPose + MotionBERT:** the originally specified stack was
   not installable here (no `mmcv` wheel for the torch build; MotionBERT's checkpoint sits behind an
   interactive auth wall). Full rationale in [scripts/pose3d/README.md](scripts/pose3d/README.md).
@@ -577,7 +575,6 @@ src/
   types/scouting.ts    Domain types and thresholds
 scripts/
   pose3d/              The Python pipeline (detect, lift, metrics, overlay, validation)
-  pose_*.py            Legacy MediaPipe prototype (comparison only)
   process-validation-batch.ts, bump-coach-cache.mjs, run_pose3d.ps1
 supabase/
   migrations/          00001 … 00050

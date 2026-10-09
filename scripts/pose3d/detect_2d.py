@@ -86,10 +86,8 @@ L_ANKLE, R_ANKLE = 15, 16
 NUM_KP = 17
 
 # How far (as a fraction of frame width) the batter's tracked centroid may
-# jump between frames and still count as the same person. Same principle as
-# the earlier MediaPipe-era batter tracker (BATTER_SEED/TRACK_GATE in
-# render_real_overlay.py) - re-derived here since this detector's box format
-# and confidence scale differ.
+# jump between frames and still count as the same person. The gate is derived
+# for this detector's box format and confidence scale.
 TRACK_GATE_FRAC = 0.18
 
 

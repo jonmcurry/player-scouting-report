@@ -7,6 +7,13 @@ entries below retain the evidence and history behind these tasks. Jon's manual v
 the earlier Android build passed. The simplified public demo has also passed a local rendered
 mobile-width review of Home and an at-bat report; authenticated family/device review remains open.
 
+### 2026-10-09 — deprecated-file cleanup
+
+- Removed the unused MediaPipe comparison scripts and launcher flag, stale Capacitor template
+  tests, completed one-off methodology publication script, and obsolete hard-coded prototype
+  screenshot renderer. The research provenance, legacy rollback UI, ignored local evidence, and
+  unwired reconstruction experiment remain pending separate keep/remove decisions.
+
 ### 2026-10-08 — simplified public-demo implementation and cloud boundary
 
 - [x] Make the Emily showcase immediate and complete without inventing evidence. Demo Home,

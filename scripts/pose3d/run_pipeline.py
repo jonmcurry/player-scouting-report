@@ -42,9 +42,8 @@ Stack (see scripts/pose3d/README.md for the full rationale + install notes):
      reading.
   6. Annotated overlay video for visual QA.
 
-This is the DEFAULT path. The old pure-MediaPipe prototype
-(scripts/pose_analyze.py) still exists, unused by default - see
-scripts/pose3d/README.md for when/how to run it instead.
+This is the production path. See scripts/pose3d/README.md for setup and
+operation details.
 
 Usage: python run_pipeline.py <video_path> <out_dir>
 """
