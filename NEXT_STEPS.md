@@ -7,6 +7,16 @@ entries below retain the evidence and history behind these tasks. Jon's manual v
 the earlier Android build passed. The simplified public demo has also passed a local rendered
 mobile-width review of Home and an at-bat report; authenticated family/device review remains open.
 
+### Planned — youth-first analysis depth expansion
+
+- [ ] Implement the phased requirements in
+  [`docs/ANALYSIS_DEPTH_SRD.md`](docs/ANALYSIS_DEPTH_SRD.md): athlete fingerprints, a phase-by-phase
+  coach report, softball/baseball style and intent handling, controlled adaptability sessions,
+  auditable evidence drawers, a governed measurement hierarchy, and standardized capture modes.
+  The simplified family report remains the default at every competition level. Existing critical
+  consent, hosted-access, deletion, and real-footage validation gates remain first; advanced claims
+  ship only after their own population- and capture-specific validation.
+
 ### 2026-10-09 — deprecated-file cleanup
 
 - Removed the unused MediaPipe comparison scripts and launcher flag, stale Capacitor template

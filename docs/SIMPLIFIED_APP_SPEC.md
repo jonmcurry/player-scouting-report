@@ -10,6 +10,12 @@
 | [`docs/review/hitterloop-market-assessment.md`](review/hitterloop-market-assessment.md) | Why the product was simplified: market and competitor research, voice of the customer, the case against the coach-approval workflow |
 | [`docs/design/simplified-app/`](design/simplified-app/) | Approved visual design: a clickable prototype (`index.html`) plus screenshots of every screen (§3.0) |
 | [`docs/research/drill-library-candidates-v2.md`](research/drill-library-candidates-v2.md) | Watch-verified drill candidates awaiting human review (§5.4) |
+| [`docs/ANALYSIS_DEPTH_SRD.md`](ANALYSIS_DEPTH_SRD.md) | Additive, youth-first technical-analysis expansion for softball and baseball; preserves this specification's default family experience |
+
+This document remains the source of truth for the default family experience and first hosted
+release. `ANALYSIS_DEPTH_SRD.md` governs a later, progressively disclosed coach/performance layer.
+Its validated features may extend the v1 exclusions in §14, but they do not relax this document's
+one-fix rule, video-evidence threshold, youth safeguards, or fail-closed behavior.
 
 ---
 
@@ -791,6 +797,10 @@ MAJOR bump (e.g. 1.0.0 when Phase 5 ships) or a MINOR bump per phase. That's Jon
 ---
 
 ## 14. What this spec deliberately does not include
+
+The exclusions below apply to the simplified v1 family surface. The optional coach/performance
+expansion in `docs/ANALYSIS_DEPTH_SRD.md` may introduce validated measurements, comparisons, and
+exports behind separate authorization and evidence gates while leaving this default surface intact.
 
 - Team management, scoring, stats, lineups. (GameChanger does this.)
 - Pitch tracking, pitch location, counts.
