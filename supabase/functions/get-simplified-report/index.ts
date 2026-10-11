@@ -304,7 +304,8 @@ Deno.serve(async (request) => {
       const entry = clip.game_log_entries as unknown as { date: string; session_type: string; result_simple: string | null };
       const newest = newestRuns.get(clip.id);
       const summary = hasReportEvidence(newest) && !invalidFeedClips.has(clip.id) ? newest!.summary : null;
-      const presentation = analysisPending(clip) ? { status: "processing", headline: null }
+      // A stored summary wins over the hold (e.g. if the final 100% write failed).
+      const presentation = !summary && analysisPending(clip) ? { status: "processing", headline: null }
         : invalidFeedClips.has(clip.id) ? { status: "unreadable", headline: null }
         : feedAnalysisPresentation(clip.status, clip.swing_detection_state, summary ?? null);
       return { id: clip.id, entryId: clip.game_log_entry_id, date: entry.date, kind: entry.session_type, result: entry.result_simple,
