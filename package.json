@@ -1,6 +1,6 @@
 {
   "name": "hitterloop",
-  "version": "0.50.2",
+  "version": "0.51.0",
   "private": true,
   "description": "Node/TypeScript CLI layer for HitterLoop's swing-analysis pipeline: Supabase-backed coach editing, GCS media, Gemini-assisted drafts. Separate from and does not replace the existing Python pose3d pipeline (scripts/pose3d/).",
   "type": "module",
@@ -19,6 +19,7 @@
     "dispatch-notifications": "tsx src/cli/dispatchNotifications.ts",
     "export-demo-fixture": "tsx src/cli/exportDemoFixture.ts",
     "import-demo-fixture": "tsx src/cli/importDemoFixture.ts",
+    "import-curated-drills": "tsx src/cli/importCuratedDrills.ts",
     "reconcile-uploads": "tsx src/cli/reconcileUploads.ts",
     "migrate-opaque-paths": "tsx src/cli/migrateOpaqueRawPaths.ts",
     "ingest": "tsx src/cli/ingest.ts",

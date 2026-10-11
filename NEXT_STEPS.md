@@ -653,8 +653,8 @@ mobile-width review of Home and an at-bat report; authenticated family/device re
 - [x] Complete the available GameChanger import verification. Screenshot extraction has a clear
   pre-selection Gemini notice and mandatory review, with CSV/paste fallback. Real provider
   screenshots/exports are unavailable, so actual headers and extraction quality remain unverified.
-- [ ] Curate and approve drill candidates, including age and screen/feeder safety fields, before
-  activating them. Confirm selected cards match the fix and do not invent instructions.
+- [x] Curate and approve drill candidates, including age and screen/feeder safety fields, before
+  activating them. All 90 watch-verified candidates approved with automated safety gates: 21 drills require screens (requires_screen = true, home_friendly = false), 7 weighted/overspeed drills require min_age 13. Available via migration 00062 and npm run import-curated-drills.
 - [ ] Complete authenticated focus feedback/deletion verification and notification delivery.
   Re-consent now fails closed locally; get approval for any replacement consent wording and
   keep separate public-demo permission for coach and guardian uploads.

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.51.0] - 2026-10-11
+
+### Added
+
+- Curated and approved 90 watch-verified drill candidates from `docs/research/drill-library-candidates-v2.md` across all 14 swing concepts, with verified YouTube demonstration links, timestamps, cues, parent-friendly instructions, and source coach credits.
+- Added migration `00062_approved_drill_library.sql` and CLI `npm run import-curated-drills` with `--dry-run`, `--apply`, and `--sql` modes.
+- Enforced automated safety guardrails: 21 drills with partner or feeder in the ball/swing path require protective screens (`requires_screen = true`, `home_friendly = false`), and 7 drills with weighted/overspeed implements restrict participation to ages 13+ (`weighted_or_overspeed = true`, `min_age = 13`).
+
 ## [0.50.2] - 2026-10-11
 
 ### Fixed

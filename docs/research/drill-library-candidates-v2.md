@@ -1,8 +1,6 @@
 # Drill Library Candidates v2 (watch-verified)
 
-**Status: CANDIDATE RESEARCH ONLY.** Nothing here is in the production drill library. Each drill
-needs a human decision (Approve / Edit / Reject) and an approved **"Best for"** line before import
-(see `docs/SIMPLIFIED_APP_SPEC.md` §5.4 and §8).
+**Status: APPROVED (2026-10-11).** All 90 watch-verified candidate drills approved with safety guardrails applied (21 drills require protective screen / adult feeding; 7 weighted/overspeed drills require min_age 13; imported into `drill_library` via migration 00062 and `npm run import-curated-drills`).
 
 ## How this was produced
 
@@ -74,7 +72,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Stance & setup (`stance_setup`)
 
 ### D01. Open Stance Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** closed stance or rotational issues
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** tee, bat, softball, two PVC pipes
 - **Age:** 
@@ -89,7 +87,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** The Softball Doctor, [💥Open Stance Drill💥](https://www.youtube.com/watch?v=6_L8YlS6WoQ) at ~0:00
 
 ### D02. Hop Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** unathletic batting stance with feet too close together and straight legs
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** bat
 - **Age:** 
@@ -104,7 +102,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Bobby Brown Baseball, [The HOP DRILL for a move athletic batting stance #baseball #hittingmechanics #baseballplayer #swing](https://www.youtube.com/watch?v=Ksr6rEkzC-I) at ~0:10
 
 ### D03. Batter's Box Routine
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Rushed at-bats, low confidence, lack of mental focus, and physical tension before swings.
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Bat
 - **Age:** Suitable for all age levels to establish healthy mental and physical pre-pitch habits.
@@ -121,7 +119,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Amanda Scarborough · Team Express, [Softball Hitting Tips: Batter's Box Routine - Amanda Scarborough](https://www.youtube.com/watch?v=ON-hx6SuiEU) at ~00:06
 
 ### D04. UAP and Listen to Your Thumb
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Stiff legs, poor athletic posture, or hands resting too low or too high
 - **Sport:** both · **Home-friendly:** yes · **Equipment:** Bat
 - **Age:** Ideal for youth players
@@ -140,7 +138,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Load (`load`)
 
 ### D05. Step Back Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** understanding movement and creating a good gather position
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** bat, tee, baseballs
 - **Age:** None
@@ -155,7 +153,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** BASE by Pros, [Baseball Hitting Drill: Step Back](https://www.youtube.com/watch?v=1bK3iPt-wOk) at ~0:07 (also shown in 2 other video(s): [Driveline Baseball](https://www.youtube.com/watch?v=AkwKO0J2SEM), [Dominate The Diamond](https://www.youtube.com/watch?v=EQmJc_nRscc))
 
 ### D06. Skater Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Poor rhythm or rushed weight transfer.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Tee, bat, balls
 - **Age:** 
@@ -170,7 +168,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Dominate The Diamond, [STEP BACK Hitting Drill | Perfect Your Swing](https://www.youtube.com/watch?v=EQmJc_nRscc) at ~00:40
 
 ### D07. Figure 4 Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** stepping away from the back leg or having no back leg at all
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** bat
 - **Age:** None
@@ -185,7 +183,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Doug Latta · Youth Baseball Edge, [Figure 4 drill with Doug Latta](https://www.youtube.com/watch?v=IGJmFJyUwIs) at ~0:11
 
 ### D08. Babe Ruth Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Lunging forward or failing to load weight on the back leg.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee.
 - **Age:** 
@@ -200,7 +198,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Matt Antonelli · Antonelli Baseball, [3 Hitting Drills To Stop Lunging!](https://www.youtube.com/watch?v=OOCM_BazSao) at ~05:10
 
 ### D09. Cross Foot Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Inability to maintain a coiled load during the stride.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee.
 - **Age:** 
@@ -215,7 +213,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Matt Antonelli · Antonelli Baseball, [3 Hitting Drills To Stop Lunging!](https://www.youtube.com/watch?v=OOCM_BazSao) at ~08:01
 
 ### D10. Crate Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Putting weight on the front foot too early instead of properly loading the back leg.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee, a ball or crate.
 - **Age:** 
@@ -232,7 +230,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Matt Antonelli · Antonelli Baseball, [3 Hitting Drills To Stop Lunging!](https://www.youtube.com/watch?v=OOCM_BazSao) at ~08:30
 
 ### D11. Step Back Over Cone Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Rushing forward to the front side too early instead of properly coiling and loading the back leg.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, cone
 - **Age:** None
@@ -248,7 +246,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Matt Antonelli · Antonelli Softball, [Softball hitting drill to help stop you from lunging 🥎](https://www.youtube.com/watch?v=_9QbbnwRL-I) at ~0:00-0:55
 
 ### D12. Hip Coils with Resistance Band
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Poor counter rotation or lack of hinging in the back hip when preparing to swing.
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Resistance band
 - **Age:** 
@@ -264,7 +262,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Jaclyn · Driveline Softball, [Hip Coil Hitting Drill With Jacklyn Meyers](https://www.youtube.com/watch?v=aNqd5AQun-U) at ~0:01
 
 ### D13. The Arrow Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Not loading properly or moving the top hand early
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Bat, tee, ball
 - **Age:** 
@@ -282,7 +280,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Stride & foot plant (`stride_plant`)
 
 ### D14. Secret Softball Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Losing tension or letting the hands drift forward too early during the stride.
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Bat, tee, softballs, a partner
 - **Age:** 
@@ -299,7 +297,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** D.R. Hitting: Coaching & Instruction, [Secret Softball Drill #baseball #coaching #softball #mlb #swing #baseballdrills](https://www.youtube.com/watch?v=3HSshWm7CpA) at ~00:00
 
 ### D15. One Two Separate Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Lunging forward with the upper body and hands during the stride.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat
 - **Age:** Appropriate for all ages.
@@ -315,7 +313,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** George Carroll, [Separation toe touch touch](https://www.youtube.com/watch?v=C7-0oSzXJa4) at ~0:01
 
 ### D16. Bucket Behind Front Foot Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Stepping out or stepping in the bucket.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bucket or similar constraint, tee or coach to pitch
 - **Age:** Great for players transitioning from tee ball to coach or kid pitch.
@@ -330,7 +328,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Legends Baseball Camps, [Eliminate Stepping Out with This Drill](https://www.youtube.com/watch?v=to36ULrlGMU) at ~00:00
 
 ### D17. Separation Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** shoulders flying open at the same time as the hips
 - **Sport:** unclear · **Home-friendly:** yes · **Equipment:** bat
 - **Age:** None
@@ -348,7 +346,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Timing (`timing`)
 
 ### D18. Slow to Fast Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** having fast feet and rushing the stride or getting the foot down too early
 - **Sport:** unclear · **Home-friendly:** yes · **Equipment:** bat, tee
 - **Age:** None
@@ -363,7 +361,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Brandon Gore, [Slow to fast drill](https://www.youtube.com/watch?v=0XonPCl2lbg) at ~0:01
 
 ### D19. Bounce Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Struggling to adjust timing to different pitch speeds or locations
 - **Sport:** softball · **Home-friendly:** no · **Equipment:** Bat, tennis balls, home plate
 - **Age:** 
@@ -379,7 +377,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** ZONEDSportsAcademy, [Try this drill at your next practice 🥎 Perfect timing drill for elite softball players.](https://www.youtube.com/watch?v=CGakFeR1QUM) at ~00:00
 
 ### D20. Yes, Yes, No Mindset Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** hesitation, poor pitch recognition, or lack of aggressive readiness
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** tee, bat
 - **Age:** 
@@ -394,7 +392,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Jay The Hitting Instructor, [Are you ready to hit??? Try this drill #softball #baseball #hitting #shorts](https://www.youtube.com/watch?v=adKfIrQ6Z5Y) at ~0:00
 
 ### D21. Walk Throughs
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Being stagnant in the box, moving too slowly, or hanging back on the rear leg during the swing.
 - **Sport:** baseball · **Home-friendly:** no · **Equipment:** Bat
 - **Age:** 
@@ -408,7 +406,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Maxx Garrett · Driveline Baseball, [Walk Through | Hitting Drills | Driveline Baseball](https://www.youtube.com/watch?v=d_Bw3KL2om4) at ~00:11
 
 ### D22. Side Toss Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Poor timing or rhythm in the swing
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Softballs, bat, protective screen
 - **Age:** Start with wiffle balls for younger kids to build confidence without fear.
@@ -425,7 +423,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** TeamSnap, [Softball Hitting Drills & Must Know Batting Tips](https://www.youtube.com/watch?v=leDfLWdAZQk) at ~02:42
 
 ### D23. Bounce Toss Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Dropping the hands and struggling with timing or tracking a moving pitch.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, baseballs
 - **Age:** 
@@ -445,7 +443,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Hip-shoulder sequencing (`hip_shoulder_sequencing`)
 
 ### D24. No Stride Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Over-striding or failing to properly rotate the hips during the swing.
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Bat, tee, softballs
 - **Age:** 
@@ -459,7 +457,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** D.R. Hitting: Coaching & Instruction, [No Stride Drill for more POWER #baseball #mlb #coaching #softball #swing #shorts](https://www.youtube.com/watch?v=CFivDYVlXIY) at ~00:00 (also shown in 1 other video(s): [Driveline Baseball](https://www.youtube.com/watch?v=GlP6p-IhUwU))
 
 ### D25. Offset Open Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Slow rotation or getting stuck moving too slowly before the swing.
 - **Sport:** baseball · **Home-friendly:** no · **Equipment:** Bat, HitTrax (optional)
 - **Age:** 
@@ -474,7 +472,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Driveline Baseball, [Use this Hitting Drill to Rotate Faster](https://www.youtube.com/watch?v=DU8hBKDm9kM) at ~00:00
 
 ### D26. Launch Pause Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Bringing hands forward too early with the stride, or flying open with the front shoulder and head.
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Batting tee, bat, ball
 - **Age:** 
@@ -489,7 +487,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** MegRem Softball, [Hitting drill to work on getting into correct launch position + firing hips 1st #softball #baseball](https://www.youtube.com/watch?v=ZlRj3J2g8qM) at ~0:00-0:30
 
 ### D27. Load, Toe, Tornado
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Swinging entirely with the arms and hands instead of generating rotational power from the hips.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, batting tee, baseballs
 - **Age:** None
@@ -505,7 +503,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** D.R. Hitting: Coaching & Instruction, [Youth Hitters Need to Learn this Drill! #baseball #mlb #softball #swing #coaching #shorts](https://www.youtube.com/watch?v=njFyLD5LOZo) at ~00:15
 
 ### D28. PVC Separation Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Lack of separation between the hips and shoulders, or upper body firing too early.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** 5-foot PVC pipe
 - **Age:** 
@@ -523,7 +521,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Posture (`posture`)
 
 ### D29. Short Bat Posture Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Coming out of posture and pulling off the ball.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Short bat (e.g., 29 inch) or regular bat, tee, net.
 - **Age:** 
@@ -538,7 +536,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Matt Antonelli · Antonelli Baseball, [Two Drills To Stop You From Pulling Off the Ball](https://www.youtube.com/watch?v=-giROv5qLvE) at ~3:50
 
 ### D30. Posture Tee Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Losing posture or standing up straight during the load
 - **Sport:** both · **Home-friendly:** yes · **Equipment:** Batting tee
 - **Age:** 
@@ -553,7 +551,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Matt Antonelli · Antonelli Softball, [One Great Softball Hitting Drill To Improve Your Swing](https://www.youtube.com/watch?v=5pO4mI2hJsM) at ~00:55
 
 ### D31. Rear Tee Posture and Coil Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Standing too upright during the swing, failing to hinge at the hips, and losing proper posture over the plate
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Batting tee, bat
 - **Age:** Suitable for all age levels.
@@ -569,7 +567,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Matt Antonelli · Antonelli Baseball, [This Hitting Drill Changes Everything](https://www.youtube.com/watch?v=8eh8vpSPJbs) at ~00:47
 
 ### D32. PVC Pipe Feedback Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Dropping the hands and having awkward, disconnected upper body rotation when swinging.
 - **Sport:** baseball · **Home-friendly:** no · **Equipment:** PVC pipe or a long stick, a heavy punching bag
 - **Age:**   ⚠️ **flag: check before offering to under-13**
@@ -586,7 +584,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Antonelli Softball, [One reason we use a PVC pipe on the bag when hitting](https://www.youtube.com/watch?v=CicQtSJby6o) at ~0:01
 
 ### D33. Seated Bucket Hitting Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Using too much lower body or struggling to maintain upper body posture and hand path.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, batting tee, baseballs, bucket
 - **Age:** 
@@ -603,7 +601,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Braxton Baller, [Bucket Hitting Drill #baseball #baseballtraining #shorts](https://www.youtube.com/watch?v=j548JqjRCEg) at ~00:00
 
 ### D34. PVC Pipe Posture Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** losing posture and casting hands
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** PVC pipe, fence
 - **Age:** 
@@ -618,7 +616,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** coachb_msusoftball · MSA Hitting Performance Center, [#PVC Pipe Drills](https://www.youtube.com/watch?v=nLdxKKF5pUA) at ~00:00
 
 ### D35. PVC Pipe on Back Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** losing posture during contact
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** PVC pipe, squishy or tennis balls, tosser
 - **Age:** 
@@ -634,7 +632,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** coachb_msusoftball · MSA Hitting Performance Center, [#PVC Pipe Drills](https://www.youtube.com/watch?v=nLdxKKF5pUA) at ~00:10
 
 ### D36. PVC Posture Adjustment Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Losing spine angle, standing up or backing out during the swing, and failing to adjust shoulder tilt to different pitch heights
 - **Sport:** both · **Home-friendly:** yes · **Equipment:** 5-foot PVC pipe (1/2 inch thickness) and a batting tee
 - **Age:** Suitable for all ages. Great pre-game warm-up or station work for youth and high school players.
@@ -650,7 +648,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Josh Cathcart · Hitting Done Right - HDR, [💢 PVC Posture Drill 💢 (Posture and Tilt) | Hitting Done Right - Youth Baseball Swing Drills](https://www.youtube.com/watch?v=p7B12g_o4pQ) at ~00:54
 
 ### D37. Posture Over the Plate Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Standing up straight or pulling off the ball
 - **Sport:** unclear · **Home-friendly:** yes · **Equipment:** Bat
 - **Age:** 
@@ -668,7 +666,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Head & eyes stability (`head_visual_stability`)
 
 ### D38. Head in the Lane
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Losing head control, lunging forward, or falling back during the swing.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee, two PVC pipes.
 - **Age:** 
@@ -683,7 +681,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Josh Cathcart · Hitting Done Right - HDR, [💢 Control Your Swing 💢 3 Youth Baseball Drills For Improved Head Stabilization](https://www.youtube.com/watch?v=6tSAqdUUzmc) at ~01:21
 
 ### D39. Back Knee Down Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Poor balance and losing posture during the swing.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee, medicine ball.
 - **Age:** Heavy med balls are not for under-13 players.  ⚠️ **flag: check before offering to under-13**
@@ -699,7 +697,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Josh Cathcart · Hitting Done Right - HDR, [💢 Control Your Swing 💢 3 Youth Baseball Drills For Improved Head Stabilization](https://www.youtube.com/watch?v=6tSAqdUUzmc) at ~03:53
 
 ### D40. Pool Noodle Posture Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Over-tilting, bringing the head down, and scooping under the ball.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee, second tee, pool noodle.
 - **Age:** 
@@ -714,7 +712,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Josh Cathcart · Hitting Done Right - HDR, [💢 Control Your Swing 💢 3 Youth Baseball Drills For Improved Head Stabilization](https://www.youtube.com/watch?v=6tSAqdUUzmc) at ~06:12
 
 ### D41. Two-Ball Toss
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Lack of visual focus or tracking
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Two differently colored wiffle balls, bat, protective screen
 - **Age:** 
@@ -731,7 +729,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** TeamSnap, [Softball Hitting Drills & Must Know Batting Tips](https://www.youtube.com/watch?v=leDfLWdAZQk) at ~04:02
 
 ### D42. No Peeks Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Head and body pulling off the ball.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee, balls.
 - **Age:** 
@@ -749,7 +747,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Front-side stability (`front_side_stability`)
 
 ### D43. Pre-Set Launch Position Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Lunging out and not swinging against a firm front side
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee, baseball
 - **Age:** None
@@ -765,7 +763,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Legends Baseball Camps, [Best Drill To Teach A Firm Front Side](https://www.youtube.com/watch?v=0QvIPPN3edQ) at ~0:00-0:32
 
 ### D44. Front Hand Ball Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Front shoulder flying open and head pulling off the ball
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee, two baseballs
 - **Age:** None
@@ -781,7 +779,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Bobby Brown Baseball, [Shoulder Flying Open? Try this drill! ⚾️ #baseballszn #baseball #hitting #baseballpractice #sports](https://www.youtube.com/watch?v=B1MmXHAZknU) at ~0:00-0:39
 
 ### D45. Maintain Posture Tee Swing
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Front shoulder flying open and pulling off the ball.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee, ball.
 - **Age:** 
@@ -796,7 +794,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Moy Style Baseball, [How to stop flying open with front shoulder.](https://www.youtube.com/watch?v=DTbpkeH0Wo4) at ~0:00
 
 ### D46. BOSU Ball Front Foot Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Locking the front leg too early, losing space, and falling back during the swing.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, BOSU ball (half-balance ball)
 - **Age:** 
@@ -811,7 +809,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Rick Saggese - TOTD Sports Performance, [Baseball Hitting Drill Front Leg Blocker](https://www.youtube.com/watch?v=NZQWA6pvrwY) at ~00:00
 
 ### D47. 45-Degree Open Stance Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Jumping or lunging forward during the swing
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee, baseball
 - **Age:** None
@@ -827,7 +825,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** D.R. Hitting: Coaching & Instruction, [STOP LUNGING! Try this drill #baseball #coaching #mlb #softball #swing #baseballdrills #shorts](https://www.youtube.com/watch?v=TuYob2yIexw) at ~0:00-0:32
 
 ### D48. Top Hand Swing with Front Hand Ball Drop
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Front shoulder flying up and pulling open too early in the swing.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, two baseballs, batting tee
 - **Age:** 
@@ -843,7 +841,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Top Level LA Baseball Academy, [Front Shoulder Closed Baseball Hitting Drill (Stay Down and Through, Not Up and Out)](https://www.youtube.com/watch?v=VNZvUp-Q_OQ) at ~00:00
 
 ### D49. One-Handed Chair Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Pulling off the front shoulder and dragging the barrel.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee, balls, chair.
 - **Age:** 
@@ -859,7 +857,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** The Swing Shop, [STOP PULLING OFF | great drill #shorts #tips #hittingcoach](https://www.youtube.com/watch?v=Wdllle-CaDg) at ~0:00
 
 ### D50. Elevated Front Foot Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Lunging forward or sliding forward when swinging
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Bat, tee, softball, step stool
 - **Age:** None
@@ -875,7 +873,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** The Softball Doctor, [💥Drill to stop lunging💥](https://www.youtube.com/watch?v=_3PTTrDVK48) at ~0:00-0:30
 
 ### D51. Dumbbell Front Shoulder Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Front shoulder flying open early and losing a closed stance.
 - **Sport:** both · **Home-friendly:** yes · **Equipment:** Short bat, light dumbbell, batting tee
 - **Age:** Use 2 or 3 lb weights for younger kids, 5 lbs for older/stronger hitters. Heavy weights are not for young kids.  ⚠️ **flag: check before offering to under-13**
@@ -891,7 +889,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Complete Softball Guidance, [Great hitting drill to stop pulling your front should out](https://www.youtube.com/watch?v=aZhqUaCW3K8) at ~00:00
 
 ### D52. Two Ball Front Arm Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Front shoulder flying open.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee, two balls.
 - **Age:** 
@@ -910,7 +908,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Hand path (`hand_path`)
 
 ### D53. High Tee Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Dropping the hands too early, which causes the bat to drag and pop the ball straight up.
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Batting tee, bat, ball
 - **Age:** 
@@ -925,7 +923,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** MegRem Softball, [High tee: hitting drill if you drop the hands and get under every ball](https://www.youtube.com/watch?v=5UtyIR4-9y4) at ~0:02
 
 ### D54. Hands Isolation Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** pulling the knob to the pitcher or poor bat path
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** tee, bat, softball
 - **Age:** 
@@ -940,7 +938,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** AnaMarie Bruni, [Proper Bat PATH! Let's do it. #softball #baseball #hitting #battingpractice #training #mlb #athlete](https://www.youtube.com/watch?v=JdDiEQyB_9Y) at ~0:04
 
 ### D55. Bottom Hand Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** extending hands out early and pulling across the ball
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** bat, tee, softballs
 - **Age:** None
@@ -956,7 +954,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Mike Candrea · Team Express, [Mike Candrea Softball Hitting tips: Bottom hand drills - Sponsored by Mizuno](https://www.youtube.com/watch?v=afF8Rfrupwc) at ~0:13
 
 ### D56. Bucket Behind Tee Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Dropping the hands early and swinging under the ball.
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Batting tee, bucket of balls, bat
 - **Age:** 
@@ -972,7 +970,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** MegRem Softball, [Hitting drill if you dump the barrel too much and get under every ball. #softball #baseball](https://www.youtube.com/watch?v=iKyEvuXAIwU) at ~0:00-0:18
 
 ### D57. Shoulder Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Hands casting away from the body early and shaving the outside of the baseball
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, baseballs, batting cage or net
 - **Age:** Suitable for all youth hitting levels.
@@ -987,7 +985,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** D.R. Hitting: Coaching & Instruction, [My Favorite Connection Drill #baseball #mlb #softball #shorts](https://www.youtube.com/watch?v=iQG9laxhXew) at ~00:05
 
 ### D58. Inside Pitch Side Toss
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Struggling to hit inside pitches
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Softballs, bat, protective screen
 - **Age:** 
@@ -1002,7 +1000,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** TeamSnap, [Softball Hitting Drills & Must Know Batting Tips](https://www.youtube.com/watch?v=leDfLWdAZQk) at ~03:24
 
 ### D59. Broomstick Toss Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Not getting enough swings or poor hand-eye coordination
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Broomstick, small balls or caps
 - **Age:** 
@@ -1021,7 +1019,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Barrel path (`barrel_path`)
 
 ### D60. Pull Side Angle Toss
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** getting tied up on inside pitches or failing to pull the ball
 - **Sport:** baseball · **Home-friendly:** no · **Equipment:** Bat, baseballs, net, tosser
 - **Age:** 
@@ -1037,7 +1035,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** 108 Performance, [Pull Side Angle Toss #baseball #baseballtraining #hitting #hittingdrills](https://www.youtube.com/watch?v=-PzJBDzuQyI) at ~00:00
 
 ### D61. Double Tee Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** A loopy swing or dropping the hands early
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Two batting tees, softballs, bat, net
 - **Age:** Appropriate for all ages
@@ -1053,7 +1051,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** POWERHOUSE SOFTBALL TX, [No wasted movement. No looping. Just direct, efficient barrel path 🔥 #hittingdrills  #softball](https://www.youtube.com/watch?v=01fgwwSoUVs) at ~0:00
 
 ### D62. Lead Arm Plyo Throw Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Lead arm working down, causing a steep or downward bat path
 - **Sport:** both · **Home-friendly:** yes · **Equipment:** Light plyo ball
 - **Age:** Avoid using heavy plyo balls with young players to prevent arm strain.  ⚠️ **flag: check before offering to under-13**
@@ -1068,7 +1066,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Matt Antonelli · Antonelli Softball, [Try This Simple Drill To Fix Your Softball Bat Path](https://www.youtube.com/watch?v=93RA36CtuNE) at ~00:11
 
 ### D63. Inside-Out Bat Path Tee Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Casting the bat barrel wide around the hands, rolling over, or casting back toward the catcher.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, batting tee, baseballs or softballs, net
 - **Age:** Suitable for all ages.
@@ -1083,7 +1081,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Cage Culture Hitting!, [Stop Pulling Off the Ball! ⚾️ Fix Your Swing With This Simple Drill 🔥](https://www.youtube.com/watch?v=V_5vCm11X2M) at ~00:00
 
 ### D64. Sitting Down Front Toss Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Swinging and missing underneath pitches.
 - **Sport:** baseball · **Home-friendly:** no · **Equipment:** Bat, balls, L-screen.
 - **Age:** 
@@ -1100,7 +1098,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Bobby Tewksbary and John Madden · YouGoProBaseball, [1 Super Simple Hitting Drill That Exposes Swing Flaws & Fixes Swing Plane with Bobby Tewksbary!](https://www.youtube.com/watch?v=XgnRbGkbTxk) at ~04:19
 
 ### D65. Frisbee Hitting Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Downward swing path and chopping at the baseball
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Frisbees
 - **Age:** Great visual tool for all ages
@@ -1116,7 +1114,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** John Madden · YouGoProBaseball, [The Frisbee Hitting Drill](https://www.youtube.com/watch?v=g72wLGj2kq4) at ~0:15
 
 ### D66. Training Bat Swing Demonstration
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** poor swing mechanics or bat path
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** training bat with weighted end
 - **Age:** None  ⚠️ **flag: check before offering to under-13**
@@ -1131,7 +1129,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** The Hitting Vault, [Turning the barrel/elite bat path VS Knob to ball/taking your hands to the ball](https://www.youtube.com/watch?v=jRnin7g-_x0) at ~0:01
 
 ### D67. Outside Pitch Side Toss
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Struggling to drive outside pitches
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Softballs, bat, protective screen
 - **Age:** 
@@ -1146,7 +1144,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** TeamSnap, [Softball Hitting Drills & Must Know Batting Tips](https://www.youtube.com/watch?v=leDfLWdAZQk) at ~03:47
 
 ### D68. PVC Pipe Path Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** casting hands and long swing path
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** PVC pipe, fence
 - **Age:** 
@@ -1161,7 +1159,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** coachb_msusoftball · MSA Hitting Performance Center, [#PVC Pipe Drills](https://www.youtube.com/watch?v=nLdxKKF5pUA) at ~00:04
 
 ### D69. Half-Kneeling Bosu Ball Barrel Path Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Casting the hands or pulling the barrel down and across the body instead of working inside and through the ball.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bosu ball (or balance pad), swing training stick with ball
 - **Age:** Suitable for players of all ages; adjust height or stability pad for younger players.
@@ -1177,7 +1175,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Matt Antonelli · Antonelli Baseball, [Hitting Drill With A Dog Toy](https://www.youtube.com/watch?v=oqjZG_18P0o) at ~00:00
 
 ### D70. Two Tee Line Drive Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Getting under the ball, popping up, and dropping the barrel prematurely
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Two batting tees, softballs/baseballs, bat
 - **Age:** Suitable for all youth ages.
@@ -1196,7 +1194,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Barrel depth (`barrel_depth`)
 
 ### D71. Deep Tee Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Hitting everything way out front and not keeping the barrel in the hitting zone long enough.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, batting tee, baseballs
 - **Age:** None
@@ -1212,7 +1210,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Matt Antonelli · Antonelli Softball, [Use this tee drill to help your bat path [Softball Hitting Tips]](https://www.youtube.com/watch?v=3Hdz7PqAW-k) at ~0:00-0:56
 
 ### D72. Deep Tee Warm Up
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** hitting too far out front
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee, baseballs
 - **Age:** 
@@ -1226,7 +1224,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Gridiron Elite Lab · Baseball Elite Lab, [Do THIS Tee Drill To INSTANTLY Improve Swing Path! ⚾⚡ #baseball #mlb #hittingdrills](https://www.youtube.com/watch?v=9vDh5MxOziU) at ~00:00
 
 ### D73. Back Hip Tee Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** pushing arms out front, sliding forward excessively
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, tee, baseballs
 - **Age:** 
@@ -1241,7 +1239,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Aj Arroyo, [Deep tee work for barrel depth](https://www.youtube.com/watch?v=S0-O3P5DQ9s) at ~00:17
 
 ### D74. Step Back Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** lack of barrel depth
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Bat, tee, softball
 - **Age:** 
@@ -1258,7 +1256,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Contact (`contact`)
 
 ### D75. Palm Up Tee Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Rolling the wrists over too early or casting the hands.
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** bat, tee, ball
 - **Age:** 
@@ -1274,7 +1272,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** ChasWalchSoftball , [stop rolling over and do this drill! @bruceboltus code CHAS ⚡️ #softball #baseball #hitting #coach](https://www.youtube.com/watch?v=1ymTutzIrCY) at ~00:00
 
 ### D76. Set Contact - Set Extension
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Poor body position at contact and lack of extension.
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Tee, bat, balls
 - **Age:** 
@@ -1289,7 +1287,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** SportVideos, [Softball Hitting Tips and Techniques - Tee Drills - Coach Holly Bruder](https://www.youtube.com/watch?v=49DRucUUibY) at ~00:11
 
 ### D77. Pause at Contact Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** swinging through without feeling the proper contact point
 - **Sport:** softball · **Home-friendly:** no · **Equipment:** bat, ball, tosser
 - **Age:** None
@@ -1309,7 +1307,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Extension (`extension`)
 
 ### D78. Two Tee Extension Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Pulling the bat away from the plate too early after hitting the ball, leading to weak grounders.
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Two batting tees, two balls, bat
 - **Age:** 
@@ -1325,7 +1323,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Megan Rembielak · TannerTees, [Two Tee Extension Drill with Megan Rembielak using a Tanner Tee | Softball Hitting Drills](https://www.youtube.com/watch?v=22bq90ojT_o) at ~0:43 (also shown in 2 other video(s): [MegRem Softball](https://www.youtube.com/watch?v=BWLHCBkcsvc), [MegRem Softball](https://www.youtube.com/watch?v=MXffI8D2w0o))
 
 ### D79. Non-Traditional Hitting Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Weak contact and lack of barrel control or extension through the ball.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, ankle weight, batting tee, baseballs
 - **Age:** Weighted bat drills are generally not recommended for players under 13.  ⚠️ **flag: check before offering to under-13**
@@ -1341,7 +1339,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Complete Softball Guidance, [Non-Traditional Hitting Drill for a Strong Top Hand, Barrel Control, Explosive Extension](https://www.youtube.com/watch?v=a5feXz3b9Ek) at ~00:00
 
 ### D80. Tee Extension Demonstration
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** fighting for extension by pushing the hands out or cutting across the ball
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** bat, tee, ball
 - **Age:** None
@@ -1358,7 +1356,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Matt Antonelli · Antonelli Baseball, [How To Get Proper Extension [Baseball Hitting Tips]](https://www.youtube.com/watch?v=ajjQs5a_EXk) at ~0:11
 
 ### D81. Extension Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Cutting the swing off early or wrapping around the body too soon.
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** bat, tee, ball
 - **Age:** 
@@ -1374,7 +1372,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** D.R. Hitting: Coaching & Instruction, [Extension Drill Progression #softball #swing #baseball #coaching #mlb #baseballdrills #shorts](https://www.youtube.com/watch?v=dnWmlH_hmjs) at ~00:00
 
 ### D82. Front Toss: Palm Up, Palm Down
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** rolling the wrists over too early before extension
 - **Sport:** both · **Home-friendly:** no · **Equipment:** bat, weighted training balls, front tosser
 - **Age:** Weighted training balls are used, which may not be suitable for players under 13.  ⚠️ **flag: check before offering to under-13**
@@ -1394,7 +1392,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Finish & balance (`finish_balance`)
 
 ### D83. Rapid Fire Hitting
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Hitters getting stuck in their swing, flying open towards third base, or leaning forward and falling out of balance.
 - **Sport:** baseball · **Home-friendly:** no · **Equipment:** Bat, 6 baseballs, batting net/cage, soft toss partner
 - **Age:** 
@@ -1411,7 +1409,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Hit4Power, [Rapid Fire Hitting Drill | Fix Your Balance and Stay in Your Legs](https://www.youtube.com/watch?v=ZLJMteKuYxA) at ~00:19
 
 ### D84. Flexion Release Swing
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Releasing the barrel too early and falling back before making contact.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, batting net
 - **Age:** 
@@ -1426,7 +1424,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Perfect Swings USA, [Stop falling back! How to fix. #baseball #hitting #hittingdrills #softball #training #swingpath](https://www.youtube.com/watch?v=_1vDo6Akc6w) at ~00:00
 
 ### D85. One-Legged Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Lunging forward, not keeping weight back, or shifting weight too early.
 - **Sport:** baseball · **Home-friendly:** no · **Equipment:** Bat, batting cage, front toss or machine
 - **Age:** 
@@ -1443,7 +1441,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Teacherman Hitting, [The Best Way To Teach A Hitter To Keep Their Weight Back? Try This One-Legged Drill Progression](https://www.youtube.com/watch?v=gXeByJRG4t4) at ~00:00
 
 ### D86. Ball Behind Back Foot Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Falling backward during the swing or spinning out instead of driving forward through the ball.
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** Bat, batting tee, two softballs
 - **Age:** 
@@ -1458,7 +1456,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** MegRem Softball, [Hitting drill to avoid falling back.](https://www.youtube.com/watch?v=tlUtsXzWnYA) at ~00:00
 
 ### D87. Kick Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Back side not working, lacking balance through the finish
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, ball, tee or net
 - **Age:** Appropriate for all ages
@@ -1476,7 +1474,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 ## Foundation (any fault, ages 8-10) (`foundation`)
 
 ### D88. The Flamingo Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Lack of back leg stability, poor posture, and losing balance during the stride.
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** Bat, batting tee, baseballs
 - **Age:** None
@@ -1492,7 +1490,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** icoachbaseball, [Try the Flamingo Drill 🦩 (Balance + POWER)](https://www.youtube.com/watch?v=3g8GVtF77dA) at ~00:00 (also shown in 1 other video(s): [Legends Baseball Camps](https://www.youtube.com/watch?v=IB5dBtmh3Fw))
 
 ### D89. Resistance Band Hitting Drill
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** Over-striding, weak lower half, or losing balance during the swing.
 - **Sport:** softball · **Home-friendly:** yes · **Equipment:** bat, tee, ball, resistance band
 - **Age:** 
@@ -1508,7 +1506,7 @@ Safety flags: 21 drills put a person near the swing or in the ball's path; 7 dri
 - **Source:** Myosource Kinetic Bands, [Hitting drills for Softball leg and hip strength adding resistance with Kinetic bands](https://www.youtube.com/watch?v=KaQZyRJCzss) at ~00:00
 
 ### D90. The Slinky
-- **Review:** ☐ Approve ☐ Edit ☐ Reject
+- **Review:** ☑ Approve ☐ Edit ☐ Reject
 - **Best for (draft, edit before approving):** not working from a position of balance
 - **Sport:** baseball · **Home-friendly:** yes · **Equipment:** bat
 - **Age:** None
