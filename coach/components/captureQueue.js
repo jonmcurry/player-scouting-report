@@ -41,10 +41,11 @@ export async function queuedCaptures(userId) {
   return rows.filter((row) => row.userId === userId).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
-export async function enqueueCapture({ userId, playerId, kind, result, file }) {
+export async function enqueueCapture({ userId, playerId, kind, result, file, captureProfile = "unknown_imported" }) {
   if (!userId || !playerId || !["game", "practice"].includes(kind) || !(file instanceof File)) throw new Error("Invalid capture");
+  if (!["game_backstop", "open_side_practice", "unknown_imported"].includes(captureProfile)) throw new Error("Invalid camera view");
   const record = { id: crypto.randomUUID(), clipSlug: crypto.randomUUID(), userId, playerId,
-    kind, result: result || null, file, createdAt: new Date().toISOString(), entryId: null,
+    kind, result: result || null, captureProfile, file, createdAt: new Date().toISOString(), entryId: null,
     uploadedGcsPath: null, error: null };
   await operation("readwrite", "put", record);
   return record.id;
@@ -68,6 +69,13 @@ async function sendOne(record, asGuardian, onChange) {
         await operation("readwrite", "put", record);
       },
     });
+    if (record.captureProfile && record.captureProfile !== "unknown_imported") {
+      // Optional metadata must never strand a successfully registered video.
+      const { error } = await supabase.rpc("record_clip_capture_profile", {
+        p_clip_id: clipId, p_profile_slug: record.captureProfile, p_kind: "declared",
+      });
+      if (error) console.warn("Capture view could not be saved; video remains queued for analysis.");
+    }
     await operation("readwrite", "delete", record.id);
     onChange?.({ id: record.id, state: "sent", clipId });
   } catch (error) {

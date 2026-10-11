@@ -12,6 +12,31 @@ const coach = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PAGES = ["development", "review", "compare", "atbat", "session", "queue"];
 const read = (rel) => fs.readFileSync(path.join(coach, rel), "utf8");
 
+test("coach analysis is a separate cached route with a gated summary action", () => {
+  const page = read("analysis.html");
+  const app = read("components/simpleApp.js");
+  const sw = read("sw.js");
+  assert.match(page, /viewport-fit=cover/);
+  assert.match(page, /components\/coachAnalysis\.js/);
+  assert.match(sw, /"\.\/analysis\.html"/);
+  assert.match(sw, /"\.\/components\/coachAnalysis\.js"/);
+  assert.match(app, /coach_analysis_available/);
+  assert.match(app, /state\.role === "coach"/);
+  assert.match(app, /analysis\.html\?clip=/);
+  const analysis = read("components/coachAnalysis.js");
+  assert.match(analysis, /list_comparison_definitions/);
+  assert.match(analysis, /build_comparison_set/);
+  assert.match(analysis, /get_comparison_set/);
+  assert.match(analysis, /Trend unavailable/);
+});
+
+test("controlled practice is wired into the existing session and cached", () => {
+  assert.match(read("session.html"), /id="challengeProtocols"/);
+  assert.match(read("components/practicePage.js"), /mountChallengeProtocols/);
+  assert.match(read("sw.js"), /"\.\/components\/challengeProtocols\.js"/);
+  assert.match(read("sw.js"), /"\.\/components\/challengeModel\.js"/);
+});
+
 function exportsOf(src) {
   const names = new Set();
   for (const m of src.matchAll(/^export\s+(?:async\s+)?(?:function\*?|const|let|class)\s+([A-Za-z0-9_$]+)/gm)) names.add(m[1]);
@@ -595,4 +620,19 @@ test("Family page: Unlink me asks about the guardian's own videos, deletes them 
 
 test("guardian admin module is precached", () => {
   assert.ok(read("sw.js").includes('"./components/guardianAdmin.js"'));
+});
+
+test("performance lab is private, gated from analysis, and precached", () => {
+  const sw = read("sw.js");
+  const analysis = fs.readFileSync(path.join(coach, "components", "coachAnalysis.js"), "utf8");
+  const lab = fs.readFileSync(path.join(coach, "components", "performanceLab.js"), "utf8");
+  const bump = fs.readFileSync(path.join(coach, "..", "scripts", "bump-coach-cache.mjs"), "utf8");
+  for (const file of ["lab.html", "components/performanceLab.js", "components/performanceLabModel.js"])
+    assert.ok(sw.includes(`"./${file}"`));
+  assert.ok(bump.includes('"lab.html"'));
+  assert.match(read("lab.html"), /coach\.css\?v=[0-9a-f]{10}/);
+  assert.match(analysis, /performance_analysis_available/);
+  assert.match(lab, /get_performance_analysis/);
+  assert.match(lab, /export_performance_analysis/);
+  assert.match(lab, /isDemoMode\(\)/);
 });

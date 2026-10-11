@@ -4,13 +4,15 @@ import { enqueueCapture, queuedCaptures, drainCaptureQueue } from "./captureQueu
 import { acceptedVideoUpload, VIDEO_UPLOAD_HELP } from "./uploadPolicy.js";
 import { deleteClip } from "./clipDeletion.js";
 import { demoShowcase } from "./demoShowcase.js";
+import { captureModeHtml, captureSummaryHtml } from "./captureGuide.js";
 
 const root = document.getElementById("simpleRoot");
 const message = document.getElementById("simpleMessage");
 const dialog = document.getElementById("captureDialog");
 const sheet = document.getElementById("captureSheet");
 const params = new URLSearchParams(location.search);
-const state = { userId: null, role: null, teamId: null, teamSlug: null, players: [], selected: null, home: null,
+const state = { userId: null, role: null, teamId: null, teamSlug: null, sport: null, guideSport: null,
+  guideMode: "game_backstop", captureProfile: "unknown_imported", players: [], selected: null, home: null,
   report: null, tab: "home", files: [], kind: "game", result: null, shared: false, demo: isDemoMode(), pushToken: null, pushReady: false };
 
 const esc = (value) => escapeHtml(String(value ?? ""));
@@ -176,16 +178,20 @@ async function showReport(clipId, token = null, preloaded = null) {
     root.innerHTML = `<span class="simple-eyebrow">At-bat report</span><h1>No swing to analyze in this at-bat.</h1>
       ${data.videoUrl ? `<video class="simple-video" src="${esc(data.videoUrl)}" controls playsinline></video>` : ""}
       <div class="simple-card"><p>This at-bat stays in the feed. The result choice did not decide whether a swing happened.</p></div>
+      <div id="captureSummaryHost"></div>
       ${state.shared || state.demo ? "" : `<div class="simple-actions"><button class="simple-action secondary" data-action="share-report" type="button">Share</button>
       <button class="simple-action secondary" data-action="delete" type="button">Delete at-bat</button></div>`}`;
+    loadCaptureSummary(clipId).catch(() => {});
     return;
   }
   if (report.state !== "ready") {
     const pending = !["ready", "failed"].includes(data.status);
     root.innerHTML = `<span class="simple-eyebrow">At-bat report</span><h1>${pending ? "Analyzing…" : "We couldn't analyze this video"}</h1>
       <div class="simple-card"><p>${pending ? "Usually ready in a few minutes." : esc(report.reason)}</p>${pending ? "" : `<button class="simple-action link" data-action="guide" type="button">How to film next time</button>`}</div>
+      <div id="captureSummaryHost"></div>
       ${data.videoUrl ? `<video class="simple-video" src="${esc(data.videoUrl)}" controls playsinline></video>` : ""}
       ${state.shared || state.demo ? "" : `<button class="simple-action secondary" data-action="home" type="button">Back to Home</button>`}`;
+    loadCaptureSummary(clipId).catch(() => {});
     return;
   }
   root.innerHTML = `<span class="simple-eyebrow">At-bat report</span><h1>${esc(data.playerName)}</h1>
@@ -202,7 +208,7 @@ async function showReport(clipId, token = null, preloaded = null) {
         <p class="simple-cue">“${esc(report.fix.coachingCue)}”</p><p><strong>Next time, watch for:</strong> ${esc(report.fix.lookForNext)}</p>`
       : `<p>Nothing clear to fix from this at-bat. Keep filming. Patterns show up over 3+ at-bats.</p>`}</section>
     ${report.fix ? `<section><h2>Drills that can help</h2>${report.drills.length ? report.drills.map(drillCard).join("") : `<p>No drill for this yet.</p>`}</section>` : ""}
-    ${state.shared || state.demo ? "" : `<div class="simple-actions"><button class="simple-action secondary" data-action="share-report" type="button">Share</button>
+    ${state.shared || state.demo ? "" : `<div id="captureSummaryHost"></div>${state.role === "coach" ? '<div id="coachAnalysisHost"></div>' : ""}<div class="simple-actions"><button class="simple-action secondary" data-action="share-report" type="button">Share</button>
       ${report.fix ? `<button class="simple-action secondary" data-action="hide-fix" type="button">Doesn't look right</button>` : ""}
       <button class="simple-action secondary" data-action="delete" type="button">Delete at-bat</button></div>`}`;
   const video = document.getElementById("reportVideo");
@@ -210,6 +216,33 @@ async function showReport(clipId, token = null, preloaded = null) {
     prepareContactMarker(video, data.contactTime);
     seekTo(video, Math.max(0, data.contactTime - 0.5)).catch(() => {});
   }
+  loadCaptureSummary(clipId).catch(() => {});
+  loadCoachAnalysisAction(clipId).catch(() => {});
+}
+
+async function loadCoachAnalysisAction(clipId) {
+  if (state.role !== "coach" || state.demo || state.shared || !clipId) return;
+  const { data, error } = await supabase.rpc("coach_analysis_available", { p_clip_id: clipId });
+  const host = document.getElementById("coachAnalysisHost");
+  if (!error && data === true && host && state.report?.clipId === clipId)
+    host.innerHTML = `<a class="simple-action secondary" href="./analysis.html?clip=${encodeURIComponent(clipId)}">Coach analysis</a>`;
+}
+
+async function loadCaptureSummary(clipId) {
+  if (state.shared || state.demo || !clipId) return;
+  const { data, error } = await supabase.rpc("get_clip_capture_summary", { p_clip_id: clipId });
+  const host = document.getElementById("captureSummaryHost");
+  if (!error && data && state.report?.clipId === clipId && host)
+    host.innerHTML = captureSummaryHtml(data, { canCorrect: state.role === "coach" });
+}
+
+function correctCaptureSheet() {
+  sheet.innerHTML = `<h2 id="simpleSheetTitle">Correct camera view</h2><p>Choose the view actually used for this video. This saves a new correction; it does not change the original upload choice.</p>
+    <div class="simple-actions"><button class="simple-action secondary" data-correct-profile="game_backstop" type="button">Game / backstop</button>
+    <button class="simple-action secondary" data-correct-profile="open_side_practice" type="button">Open-side practice</button>
+    <button class="simple-action secondary" data-correct-profile="unknown_imported" type="button">Not sure</button></div>
+    <button class="simple-action link" data-action="close-sheet" type="button">Cancel</button>`;
+  dialog.showModal();
 }
 
 function progressSentence(progress) {
@@ -282,13 +315,16 @@ function choiceSheet() {
 }
 
 function guideSheet() {
-  sheet.innerHTML = `<h2 id="simpleSheetTitle">How to film</h2><div class="simple-guide">
-    <div class="simple-guide-step"><svg viewBox="0 0 80 64" aria-hidden="true"><path d="M40 8 65 32 40 56 15 32Z"/><circle cx="40" cy="25" r="4"/><path d="M40 29v12M30 57h20M40 57V46"/></svg><p><strong>Behind home plate</strong><br>Film as straight on as you can. Through the fence is fine; put the lens close to it.</p></div>
-    <div class="simple-guide-step"><svg viewBox="0 0 80 64" aria-hidden="true"><rect x="18" y="5" width="44" height="54" rx="4"/><circle cx="40" cy="18" r="5"/><path d="M40 23v18m0-13-14 9m14-9 14 9M40 41 31 53m9-12 9 12M52 22l12-13"/></svg><p><strong>Whole batter in frame</strong><br>Show head to feet, with room for the bat.</p></div>
-    <div class="simple-guide-step"><svg viewBox="0 0 80 64" aria-hidden="true"><path d="M10 39h60M16 31v16m24-16v16m24-16v16"/><circle cx="40" cy="20" r="8"/><path d="m37 16 9 4-9 4Z"/></svg><p><strong>Capture the full swing</strong><br>Start before the pitch and stop after the follow-through. A whole at-bat in one clip is fine.</p></div>
-    <div class="simple-guide-step"><svg viewBox="0 0 80 64" aria-hidden="true"><rect x="30" y="5" width="20" height="32" rx="3"/><path d="M40 37v9M27 58l13-12 13 12M40 46v12"/></svg><p><strong>Hold steady</strong><br>A fence mount or tripod helps.</p></div>
-    <p class="simple-guide-note">GameChanger clip? Save it to your phone, then tap <strong>Choose video</strong>.</p>
-  </div><button class="simple-action primary" data-action="close-sheet" type="button">Got it</button>`;
+  sheet.innerHTML = `<h2 id="simpleSheetTitle">How to film</h2>
+    <p>Sport</p><div class="simple-chip-row" role="group" aria-label="Guide sport">${["baseball", "softball"].map((sport) =>
+      `<button type="button" data-guide-sport="${sport}" aria-pressed="${state.guideSport === sport}">${sport === "baseball" ? "Baseball" : "Softball"}</button>`).join("")}</div>
+    <p>Camera view</p><div class="simple-chip-row" role="group" aria-label="Guide camera view">${[["game_backstop", "Game / backstop"], ["open_side_practice", "Open-side practice"]].map(([mode, label]) =>
+      `<button type="button" data-guide-mode="${mode}" aria-pressed="${state.guideMode === mode}">${label}</button>`).join("")}</div>
+    <div class="simple-guide">${captureModeHtml(state.guideMode, state.guideSport)}
+      <p class="simple-guide-note">Use even light and a steady mount. A regular high frame rate helps, but this guide does not calibrate the camera. You can skip it and choose an existing video.</p>
+      <p class="simple-guide-note"><strong>Catcher view is not enabled.</strong> Only film from a protected position. Never place a person or unsecured phone behind the plate in a live, unprotected path.</p>
+      <p class="simple-guide-note">GameChanger clip? Save it to your phone, then tap <strong>Choose video</strong>.</p>
+    </div><button class="simple-action primary" data-action="close-sheet" type="button">Got it</button>`;
   if (!dialog.open) dialog.showModal();
 }
 
@@ -312,15 +348,22 @@ async function settingsSheet() {
 
 function confirmSheet(files) {
   state.files = files;
-  state.kind = "game"; state.result = null;
+  state.kind = "game"; state.result = null; state.captureProfile = "unknown_imported";
   sheet.innerHTML = `<h2 id="simpleSheetTitle">Send ${files.length} video${files.length === 1 ? "" : "s"}</h2>
     <label>Player<select id="capturePlayer">${state.players.map((player) =>
       `<option value="${esc(player.id)}" ${player.id === state.selected ? "selected" : ""}>${esc(player.name)}</option>`).join("")}</select></label>
     <p>Game or practice?</p><div class="simple-chip-row"><button type="button" data-kind="game" aria-pressed="true">Game</button><button type="button" data-kind="practice" aria-pressed="false">Practice</button></div>
+    <p>Camera view (optional)</p><div id="captureProfileChoices" class="simple-chip-row">${profileChoices("game")}</div>
     <p>Result (optional)</p><div class="simple-chip-row">${["Hit", "Out", "Walk", "Strikeout", "Skip"].map((label) =>
       `<button type="button" data-result="${label.toLowerCase()}" aria-pressed="${label === "Skip"}">${label}</button>`).join("")}</div>
     <button class="simple-action primary" data-action="send" type="button">Send</button>
     <button class="simple-action link" data-action="close-sheet" type="button">Cancel</button>`;
+}
+
+function profileChoices(kind) {
+  const known = kind === "game" ? ["game_backstop", "Game / backstop"] : ["open_side_practice", "Open-side practice"];
+  return [["unknown_imported", "Not sure"], known].map(([slug, label]) =>
+    `<button type="button" data-capture-profile="${slug}" aria-pressed="${state.captureProfile === slug}">${label}</button>`).join("");
 }
 
 async function validVideo(file) {
@@ -347,7 +390,8 @@ async function sendCaptures(button) {
     const waiting = await queuedCaptures(state.userId);
     if (state.files.length + waiting.length > 10) throw new Error("Send at most 10 videos at a time, including videos already waiting to upload.");
     for (const file of state.files) await validVideo(file);
-    for (const file of state.files) await enqueueCapture({ userId: state.userId, playerId, kind: state.kind, result: state.result, file });
+    for (const file of state.files) await enqueueCapture({ userId: state.userId, playerId, kind: state.kind,
+      result: state.result, captureProfile: state.captureProfile, file });
     state.selected = playerId;
     dialog.close();
     say("Video queued. Usually ready in a few minutes.");
@@ -395,6 +439,7 @@ root.addEventListener("click", async (event) => {
     switch (target.dataset.action) {
       case "record": choiceSheet(); break;
       case "guide": guideSheet(); break;
+      case "correct-capture-view": if (state.role === "coach" && state.report?.clipId) correctCaptureSheet(); break;
       case "home": await showHome(); break;
       case "refresh-video": await showReport(state.report.clipId, state.shared ? params.get("share") : null); break;
       case "jump-contact": {
@@ -470,11 +515,27 @@ root.addEventListener("click", async (event) => {
 });
 
 sheet.addEventListener("click", async (event) => {
-  const target = event.target.closest("[data-action],[data-kind],[data-result]");
+  const target = event.target.closest("[data-action],[data-kind],[data-result],[data-guide-mode],[data-guide-sport],[data-capture-profile],[data-correct-profile]");
   if (!target) return;
-  if (target.dataset.kind) { state.kind = target.dataset.kind; sheet.querySelectorAll("[data-kind]").forEach((button) => button.setAttribute("aria-pressed", button === target ? "true" : "false")); }
+  if (target.dataset.kind) { state.kind = target.dataset.kind; state.captureProfile = "unknown_imported";
+    sheet.querySelectorAll("[data-kind]").forEach((button) => button.setAttribute("aria-pressed", button === target ? "true" : "false"));
+    sheet.querySelector("#captureProfileChoices").innerHTML = profileChoices(state.kind); }
   if (target.dataset.result) { state.result = target.dataset.result === "skip" ? null : target.dataset.result;
     sheet.querySelectorAll("[data-result]").forEach((button) => button.setAttribute("aria-pressed", button === target ? "true" : "false")); }
+  if (target.dataset.captureProfile) { state.captureProfile = target.dataset.captureProfile;
+    sheet.querySelectorAll("[data-capture-profile]").forEach((button) => button.setAttribute("aria-pressed", button === target ? "true" : "false")); }
+  if (target.dataset.guideMode) { state.guideMode = target.dataset.guideMode; guideSheet();
+    sheet.querySelector(`[data-guide-mode="${state.guideMode}"]`)?.focus(); }
+  if (target.dataset.guideSport) { state.guideSport = target.dataset.guideSport; guideSheet();
+    sheet.querySelector(`[data-guide-sport="${state.guideSport}"]`)?.focus(); }
+  if (target.dataset.correctProfile && state.role === "coach" && state.report?.clipId) {
+    const { error } = await supabase.rpc("record_clip_capture_profile", {
+      p_clip_id: state.report.clipId, p_profile_slug: target.dataset.correctProfile, p_kind: "coach_correction",
+    });
+    if (error) { say("Camera view could not be corrected."); return; }
+    dialog.close(); say("Camera view correction saved.");
+    loadCaptureSummary(state.report.clipId).catch(() => {});
+  }
   if (target.dataset.action === "close-sheet") dialog.close();
   if (target.dataset.action === "sign-out") {
     if (state.pushToken) await supabase.rpc("unregister_notification_push_token", { p_token: state.pushToken });
@@ -543,12 +604,13 @@ async function start() {
       const selectedDemoTeam = (demoTeams ?? []).find((item) => item.slug === params.get("team")) ?? demoTeams?.[0];
       team = selectedDemoTeam ? { team_id: selectedDemoTeam.id, teams: selectedDemoTeam } : null;
     } else {
-      const { data: access, error: accessError } = await supabase.from("coach_team_access").select("team_id, teams(slug, name)");
+      const { data: access, error: accessError } = await supabase.from("coach_team_access").select("team_id, teams(slug, name, sport)");
       if (accessError) throw accessError;
       team = (access ?? []).find((item) => item.teams?.slug === params.get("team")) ?? access?.[0];
     }
     if (team) {
       state.role = "coach"; state.teamId = team.team_id; state.teamSlug = team.teams?.slug ?? null;
+      state.sport = team.teams?.sport ?? null; state.guideSport = state.sport;
       const { data: players, error } = await supabase.from("players").select("id,name").eq("team_id", team.team_id).order("name");
       if (error) throw error;
       state.players = players ?? [];
@@ -576,6 +638,10 @@ async function start() {
       state.players.forEach((player, i) => { player.name = summaries[i]?.playerName ?? "Child"; });
     }
     await loadHome();
+    if (state.role === "coach" && params.get("clip")) {
+      const clip = state.home?.feed?.find((item) => item.id === params.get("clip"));
+      if (clip) await showReport(clip.id);
+    }
     if (!state.demo) {
       const { data: notificationSetting } = await supabase.from("user_settings").select("notify_reports")
         .eq("user_id", state.userId).maybeSingle();

@@ -1,6 +1,6 @@
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>HitterLoop — Family</title>
-<link rel="stylesheet" href="./coach.css?v=454946089b"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
+<link rel="stylesheet" href="./coach.css?v=93ef0237ed"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#121418">
 <style>
   .hl-family-section { margin-top:var(--space-6); }
   .hl-family-section > .bt-card + .bt-card { margin-top:var(--space-3); }
@@ -9,6 +9,10 @@
   .hl-family .bt-card p { margin:var(--space-1) 0; }
   .hl-switcher { display:flex; flex-wrap:wrap; gap:var(--space-2); margin-top:var(--space-2); }
   .hl-capture-list { margin:0; padding-left:1.25rem; display:grid; gap:var(--space-2); }
+  .hl-capture-mode { display:grid; grid-template-columns:96px minmax(0,1fr); gap:var(--space-3); padding:var(--space-3) 0; border-bottom:1px solid var(--border); }
+  .hl-capture-mode > div { min-width:0; }
+  .hl-capture-mode svg { width:96px; height:64px; fill:none; stroke:var(--brand-text); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .hl-capture-mode p { margin:var(--space-2) 0 0; }
   .hl-send { display:grid; gap:var(--space-3); margin-top:var(--space-3); }
   .hl-send fieldset { border:0; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; }
   .hl-send legend { padding:0; margin-bottom:var(--space-2); color:var(--text-2); font-size:.875rem; }
@@ -240,7 +244,7 @@ function render() {
     ${switcherHtml()}
     ${focusSection(report)}
     <section class="hl-family-section" aria-labelledby="hlSend"><h2 class="hl-family-heading" id="hlSend">Send a swing</h2>
-      ${captureGuideHtml({ open: guideOpen })}
+      ${captureGuideHtml({ open: guideOpen, sport: report.sport ?? null })}
       <div class="hl-send">
         <fieldset><legend>Where was it filmed?</legend>${filterChip("Game", { selected: kind === "game", value: "game" }).replace("bt-filter-chip", "bt-filter-chip hl-kind")}${filterChip("Practice", { selected: kind === "practice", value: "practice" }).replace("bt-filter-chip", "bt-filter-chip hl-kind")}</fieldset>
         <label>Day filmed <input type="date" id="swingDate" value="${today}" max="${today}"></label>

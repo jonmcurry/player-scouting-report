@@ -315,6 +315,7 @@ Deno.serve(async (request) => {
       const fullProgress = { ...progress, practice, focusDrill, thenVideo,
         nowVideo: nowVideo ?? (progress.nowClipId === progress.thenClipId ? thenVideo : null) };
       return reply({ ...(shared ? {} : { playerId }), playerName: identity,
+        sport: team.sport === "baseball" || team.sport === "softball" ? team.sport : null,
         progress: shared ? sharedProgressPayload(fullProgress, sharedText) : fullProgress,
         feed: shareScope === "progress" ? [] : feed });
     }
@@ -400,6 +401,7 @@ Deno.serve(async (request) => {
     }
     return reply({ ...(shared ? {} : { playerId, clipId, entryId: clip.game_log_entry_id,
       entryClipIds: (entryClips ?? []).map((row) => row.id) }), playerName: identity,
+      sport: team.sport === "baseball" || team.sport === "softball" ? team.sport : null,
       report: shared ? sharedReportPayload(report, sharedText) : report, status: clip.status,
       videoUrl, mediaPath, contactTime, ...(shared ? {} : { progress }) });
   } catch (error) {

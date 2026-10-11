@@ -68,7 +68,11 @@ import { purgeDeletedClips, supabasePurgeDb, retryUnfinishedDeletions, supabaseR
 import { getSupabaseClient } from "../services/db/supabaseClient.js";
 import { swingDetectionState } from "../services/development/swingDetection.js";
 import { uploadDurationRejection } from "../services/development/uploadLimits.js";
-import { probe } from "../services/demoExport/media.js";
+import { probe, sha256File } from "../services/demoExport/media.js";
+import { probeCaptureMedia, sampleCaptureVisuals } from "../services/analysisDepth/captureMedia.js";
+import type { CaptureAssessment, CaptureMediaFacts, CaptureVisualSignals } from "../services/analysisDepth/captureAssessment.js";
+import { persistCaptureAssessment } from "../services/db/captureAssessmentStore.js";
+import { recordAttemptSnapshot } from "../services/db/attemptSnapshot.js";
 import { enqueueAnalysisFailed } from "../services/notifications/outbox.js";
 
 const POLL_INTERVAL_MS = 10_000;
@@ -188,15 +192,30 @@ export async function processOnePendingClip(): Promise<boolean> {
     console.log(`[process-upload-queue] Downloading ${clip.rawGcsPath} -> ${localRawPath}`);
     await downloadFile(clip.rawGcsPath, localRawPath);
 
-    const media = await probe(localRawPath);
-    const durationRejection = uploadDurationRejection(media.durationS);
+    // Keep the established duration check independent of the new, deeper
+    // capture probe. A capture-only decode failure must not reject a clip.
+    const durationProbe = await probe(localRawPath);
+    const durationRejection = uploadDurationRejection(durationProbe.durationS);
     if (durationRejection) {
       console.error(`[process-upload-queue] Clip "${clip.clipSlug}" rejected: ${durationRejection}`);
       await markClipPermanentlyFailed(clip.videoClipId, durationRejection);
       await queueFailureNotification();
       return true;
     }
-
+    // Capture assessment is additive. Missing migration, unavailable ffmpeg
+    // signals, or a failed check never discards a valid family upload.
+    let captureHash: string | null = null;
+    let visualSignals: CaptureVisualSignals | null = null;
+    let media: CaptureMediaFacts | null = null;
+    try {
+      media = await probeCaptureMedia(localRawPath);
+      captureHash = await sha256File(localRawPath);
+      visualSignals = await sampleCaptureVisuals(localRawPath).catch(() => null);
+      await persistCaptureAssessment({ clipId: clip.videoClipId, sourceHash: captureHash,
+        media, visual: visualSignals });
+    } catch (captureError) {
+      console.warn(`[process-upload-queue] Capture media assessment unavailable: ${captureError instanceof Error ? captureError.message : captureError}`);
+    }
     console.log(`[process-upload-queue] Running pose3d pipeline -> ${outDir}`);
     fs.mkdirSync(outDir, { recursive: true });
     await runPipeline(localRawPath, outDir);
@@ -220,7 +239,20 @@ export async function processOnePendingClip(): Promise<boolean> {
       phases?: Record<string, { frame: number | null; time_s: number | null }>;
       swing_detection?: { status?: string | null; confidence?: string | null } | null;
       pipeline_version?: string;
+      detector_version?: string;
     };
+    let fullCapture: CaptureAssessment | null = null;
+    if (captureHash && media) {
+      try {
+        const pose2d = JSON.parse(fs.readFileSync(path.join(outDir, "pose_2d.json"), "utf-8"));
+        const batFile = path.join(outDir, "bat_path.json");
+        const batFrames = fs.existsSync(batFile) ? JSON.parse(fs.readFileSync(batFile, "utf-8")).frames ?? [] : [];
+        fullCapture = await persistCaptureAssessment({ clipId: clip.videoClipId, sourceHash: captureHash,
+          media, visual: visualSignals, pose2d, batFrames, phases: metrics.phases });
+      } catch (captureError) {
+        console.warn(`[process-upload-queue] Capture phase assessment unavailable: ${captureError instanceof Error ? captureError.message : captureError}`);
+      }
+    }
     const trackedFrames = extractLongestTrackedRun(pose3d.frames);
     if (trackedFrames.length < MIN_TRACKED_FRAMES) {
       console.log(
@@ -243,6 +275,14 @@ export async function processOnePendingClip(): Promise<boolean> {
 
     const detectionState = swingDetectionState(metrics);
     await markClipReady(clip.videoClipId, detectionState);
+    try {
+      await recordAttemptSnapshot({ clipId: clip.videoClipId, detectionState,
+        phases: metrics.phases, pipelineVersion: metrics.pipeline_version ?? null,
+        detectorVersion: metrics.detector_version ?? null,
+        phaseVisibility: fullCapture?.phaseVisibility ?? null });
+    } catch (attemptError) {
+      console.warn(`[process-upload-queue] Attempt snapshot unavailable: ${attemptError instanceof Error ? attemptError.message : attemptError}`);
+    }
     console.log(`[process-upload-queue] Clip "${clip.clipSlug}" ready (${detectionState}).`);
 
     // AI diagnosis (checklist draft + issues + comps + drills) - own try/

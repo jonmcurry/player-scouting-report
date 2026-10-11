@@ -1273,6 +1273,18 @@ button.bt-pitch-main { min-height:48px; padding:0; border:0; background:transpar
 .p2a-practice-stepper button > small { font-size:.75rem; }
 .p2a-practice-stepper button.done { color:var(--success); }
 .p2a-practice-stepper button.current { color:var(--brand-text); border-bottom-color:var(--brand-text); }
+.cp-card { display:flex; flex-direction:column; gap:var(--space-3); }
+.cp-card h2 { color:var(--text-1); font:600 1.125rem/1.4 var(--font-body); margin:0; }
+.cp-card p { margin:0; }
+.cp-card label { font-size:.8125rem; font-weight:600; color:var(--text-2); }
+.cp-card select { min-height:48px; width:100%; padding:var(--space-2) var(--space-3); border:1px solid var(--border-strong); border-radius:var(--radius-small); background:var(--surface-2); color:var(--text-1); font:inherit; }
+.cp-card .bt-button { min-height:48px; }
+.cp-rule,.cp-state,.cp-tasks { padding:var(--space-3); border:1px solid var(--border); border-radius:var(--radius-small); background:var(--surface-2); }
+.cp-rule { display:grid; gap:var(--space-2); }
+.cp-tasks { display:grid; gap:var(--space-1); }
+.cp-slot { gap:var(--space-2); }
+.cp-slot .bt-list-row-copy { min-width:0; }
+.cp-slot small { color:var(--text-2); }
 .p2a-rep-section { margin-bottom:var(--gap-section); }
 .p2a-rep-section .p2a-section-head h2 { margin:0; color:var(--text-1); font:600 1rem/1.375rem var(--font-body); }
 .p2a-rep-row { display:grid; grid-template-columns:32px minmax(0,1fr) auto auto 48px; padding:var(--space-1) var(--space-2); }

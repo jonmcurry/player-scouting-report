@@ -1,5 +1,67 @@
 # Changelog
 
+## [0.49.0] - 2026-10-11
+
+### Added
+
+- Added private, consent-gated external instrument staging with original readings, file hashes, warnings, exact-version reviewed mappings, and manual attempt links.
+- Added a separate staff performance lab with source and version details, minimum-sample distributions, and audited JSON export.
+
+### Changed
+
+- Kept device measurements separate from video findings and family reports; no provider mapping or automatic synchronization was released without pilot validation.
+
+## [0.48.0] - 2026-10-11
+
+### Added
+
+- Added private, versioned controlled-practice templates, coach setup, ordered repetition logging, actual task and environment context, and missed/failed attempt states.
+- Added a same-task eligibility gate before advanced challenge sets, separate visual game evidence, and coach-only session status with explicit change versus improvement wording.
+
+### Changed
+
+- Kept protocol conclusions gated behind two independently qualified coach reviews and complete readable evidence; no template was released by this version.
+
+## [0.47.0] - 2026-10-11
+
+### Added
+
+- Added coach-only, versioned comparison baselines with an inclusion and exclusion ledger, minimum-sample descriptive statistics, separate game and practice series, and an explicit independent release gate.
+- Added an individual-attempt and distribution view in Coach analysis, with coach narrowing and stale-baseline handling after reprocessing or deletion.
+
+### Changed
+
+- Kept trend and family progress claims unavailable until a validated definition supplies approved comparison and change rules.
+
+## [0.46.0] - 2026-10-10
+
+### Added
+
+- Added a separate, coach-enabled phase analysis view with original-video navigation, phase cards, evidence disclosures, and compatible side-by-side playback.
+- Added coach-scoped, allowlisted analysis reads and an audited text-note history. Guardian-visible notes are supported; staff-private notes remain disabled pending privacy approval.
+
+## [0.45.0] - 2026-10-10
+
+### Added
+
+- Added a private canonical legacy-attempt model with idempotent backfill, versioned phase snapshots, append-only context and phase corrections, and strict sport/intent methodology routing.
+- Added optional worker dual-write and feature-flagged parity checks without moving family reports, focus, shares, or demo reads off their existing clip path.
+
+## [0.44.0] - 2026-10-10
+
+### Added
+
+- Added private, append-only capture profiles, coach corrections, and clip assessments with media facts, conservative visibility and filming checks, and scoped capture summaries.
+- Added game/backstop and open-side practice framing guides, optional camera-view selection, and protected-position catcher-view safety guidance.
+- Added per-definition capture availability checks that keep unvalidated or uncertain measurements unavailable without a universal quality score.
+
+## [0.43.2] - 2026-10-10
+
+### Added
+
+- Added a local, service-only foundation for versioned measurement definitions, human validation decisions, immutable evidence packages and items, and technical results linked to existing analysis runs.
+- Documented the proposed Phase 0 applicability and validation plan, with human approvals and thresholds still pending.
+
 ## [0.43.1] - 2026-10-09
 
 ### Removed

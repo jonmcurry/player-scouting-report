@@ -9,6 +9,7 @@ import { deleteClipsForEntry } from "./clipDeletion.js";
 import { renderDrillInAppBar } from "./appShell.js";
 import { icon, openOverflowMenu } from "./ui.js";
 import { getDemoConfig } from "../demoConfig.js";
+import { mountChallengeProtocols } from "./challengeProtocols.js";
 import {
   existingSessionForDate, practicePrimaryAction, practiceProgression,
   practiceStartDefaults, repPrimaryAction,
@@ -179,6 +180,7 @@ async function reloadSession() {
   }
   assessmentChoice = session.outcome ?? assessmentChoice;
   render();
+  mountChallengeProtocols(ctx, session, reps);
 }
 
 const focusPriority = () => priorities.find((priority) => priority.id === session.focus_priority_id) ?? null;
