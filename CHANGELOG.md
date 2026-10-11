@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.50.2] - 2026-10-11
+
+### Fixed
+
+- AI analyses were rejected outright ("strengths[1].phase has no supplied still") when the model credited a strength to a swing phase the pipeline had no still for. The prompt now says strength and issue phases must come from `phases_supplied`, matching the validator (prompt `render-2.1`). A real failed clip re-run under the new prompt produced a validated report.
+
+### Changed
+
+- The local `agy-cli` analyzer now sends 1280px JPEG copies of the frame stills instead of the full-resolution PNGs (~10 MB each), cutting AI diagnosis on real clips from about 160-175s to about 95-130s with the same finding (model choice made no measurable difference). Originals are untouched; the copies go in a per-run folder that is deleted on every path, including a failed resize.
+
 ## [0.50.1] - 2026-10-11
 
 ### Fixed

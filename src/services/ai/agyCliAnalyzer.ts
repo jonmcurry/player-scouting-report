@@ -19,9 +19,11 @@
  * same strict validator as every other backend, so malformed output writes
  * nothing.
  */
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
 import type { DraftSource } from "../../types/scouting.js";
 import type { AnalysisInput } from "./analysisContext.js";
 import { extractJson } from "./claudeCliAnalyzer.js";
@@ -38,6 +40,36 @@ const TIMEOUT_S = 300;
 // agy.exe is a real executable (no .cmd shim), so the prompt can go in argv
 // without shell quoting - but Windows caps a whole command line at 32,767 chars.
 const MAX_PROMPT_CHARS = 30_000;
+// agy loads each still through its own view_file tool call, so upload size
+// dominates its run time: the full-resolution phase stills are ~10 MB each.
+// Measured on a real 34-frame clip: 161-174s at full size vs 94s at 1280px
+// JPEG (84 MB -> 8 MB), with the same finding; the model choice barely mattered.
+const AGY_MAX_WIDTH = 1280;
+
+interface AgyFrame { copy: string; original: string }
+
+/** Writes ≤1280px JPEG copies into outDir (the caller owns and removes it); the
+ * originals are untouched. Copy names keep the original extension, so
+ * phase_x.png and phase_x.jpg can never collide. */
+async function resizeForAgy(framesDir: string, files: string[], outDir: string): Promise<AgyFrame[]> {
+  fs.mkdirSync(outDir, { recursive: true });
+  const run = promisify(execFile);
+  const frames: AgyFrame[] = [];
+  for (const file of files) {
+    const copy = path.join(outDir, `${file.replaceAll(".", "_")}.jpg`);
+    try {
+      await run("ffmpeg", ["-y", "-loglevel", "error", "-i", path.join(framesDir, file),
+        "-vf", `scale='min(${AGY_MAX_WIDTH},iw)':-2`, "-q:v", "3", copy]);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      throw new Error(code === "ENOENT"
+        ? "Failed to run ffmpeg to resize stills for agy - is ffmpeg installed and on PATH?"
+        : `Resizing ${file} for agy failed: ${err instanceof Error ? err.message : err}`);
+    }
+    frames.push({ copy, original: file });
+  }
+  return frames;
+}
 
 export function getConfiguredAgyModel(env: NodeJS.ProcessEnv = process.env): string {
   const model = env.AGY_ANALYZER_MODEL?.trim();
@@ -131,8 +163,27 @@ export async function analyzeSwingViaAgy(
     .sort();
   if (files.length === 0) throw new Error(`No image files found in ${framesDir}`);
 
+  // Unique per run and removed on every path, including a failed resize.
+  const resizedDir = path.join(framesDir, `agy_resized_${randomUUID()}`);
+  try {
+    const frames = await resizeForAgy(framesDir, files, resizedDir);
+    return await analyzeFrames(frames, input, model, source, opts);
+  } finally {
+    fs.rmSync(resizedDir, { recursive: true, force: true });
+  }
+}
+
+async function analyzeFrames(
+  frames: AgyFrame[],
+  input: AnalysisInput,
+  model: string,
+  source: DraftSource,
+  opts: { evidenceAddendum?: string },
+): Promise<SwingAnalysisResult> {
   const repoRoot = process.cwd();
-  const relPaths = files.map((f) => path.relative(repoRoot, path.join(framesDir, f)).replaceAll("\\", "/"));
+  // Label each copy with its original name - the evidence list above uses those names.
+  const relPaths = frames.map((f) =>
+    `${path.relative(repoRoot, f.copy).replaceAll("\\", "/")} (resized copy of ${f.original})`);
   const prompt = [
     "You are analyzing a youth swing for a coaching report. Do not modify any files and do not run commands.",
     "",

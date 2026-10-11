@@ -82,6 +82,7 @@ The JSON below describes supplied evidence. The attached original stills are the
 ${jsonData(evidence)}
 
 Write a 2–3 sentence summary of this swing in plain words. Give 0–2 visible strengths, each with the phase and specific image evidence. If nothing solid is visible, return no strengths rather than inventing one.
+Every strength phase, and any issue phase, must be one listed in phases_supplied. If something you noticed has no supplied still for its phase (for example a finish seen only in the swing_seq frames), leave that strength out, or give the issue no phase.
 Issue format: observation, concrete evidence, why it may matter, one short cue, one thing to look for next time, controlled concept, evidence basis, context flags, cited knowledge claim IDs, priority suggestion, confidence, and optional phase. Return at most two issues. The app shows at most one after validation.
 If no meaningful mechanical issue is supported, return noActionNeeded=true, noActionReason="No meaningful mechanical issue is supported by this swing.", and issues=[].`;
 }
@@ -249,7 +250,7 @@ export const SWING_ANALYSIS_JSON_SHAPE_INSTRUCTIONS = `Respond with ONLY one raw
   "noActionNeeded": boolean,
   "noActionReason": string|null,
   "summary": string,
-  "strengths": [0 to 2 objects: {"text": string, "evidence": string, "phase": one of ${ISSUE_PHASES.join(", ")}}],
-  "issues": [0 to 2 objects: {"issue": string, "seenInAtBats": string, "likelyCause": string, "effect": string, "evidence": string, "coachingCue": string, "lookForNext": string, "confidence": "medium"|"low", "phase": one of ${ISSUE_PHASES.join(", ")} optional, "concept": one of ${CONCEPTS.join(", ")}, "basis": "video"|"metric"|"reconstruction", "contextExplainsIt": boolean, "emergencySwingSuspected": boolean, "knowledgeClaimIds": [string], "suggestPriority": boolean}]
+  "strengths": [0 to 2 objects: {"text": string, "evidence": string, "phase": one of ${ISSUE_PHASES.join(", ")} that is also listed in phases_supplied}],
+  "issues": [0 to 2 objects: {"issue": string, "seenInAtBats": string, "likelyCause": string, "effect": string, "evidence": string, "coachingCue": string, "lookForNext": string, "confidence": "medium"|"low", "phase": one of ${ISSUE_PHASES.join(", ")} listed in phases_supplied, optional, "concept": one of ${CONCEPTS.join(", ")}, "basis": "video"|"metric"|"reconstruction", "contextExplainsIt": boolean, "emergencySwingSuspected": boolean, "knowledgeClaimIds": [string], "suggestPriority": boolean}]
 }
 Arrays may be empty. Never add filler. When noActionNeeded is true, issues must be empty.`;

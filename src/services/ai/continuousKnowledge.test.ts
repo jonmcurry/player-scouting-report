@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildInputManifest, type AnalysisInput } from "./analysisContext.js";
-import { ANALYSIS_POLICY, findingIdentity, renderSwingAnalysisPrompt, validateSwingAnalysisResult, validationContext } from "./swingAnalysisShared.js";
+import { ANALYSIS_POLICY, SWING_ANALYSIS_JSON_SHAPE_INSTRUCTIONS, findingIdentity, renderSwingAnalysisPrompt, validateSwingAnalysisResult, validationContext } from "./swingAnalysisShared.js";
 import { SemanticValidationError } from "./semanticValidation.js";
 import { renderKnowledgePack, validateKnowledgeClaims, type KnowledgeClaim } from "../knowledge/knowledgePack.js";
 
@@ -42,6 +42,14 @@ test("player and structured pitch context reach the separated prompt", () => {
   assert.match(prompt, /"age_band": "8-10"/);
   assert.match(prompt, /"balls": 0/);
   assert.match(prompt, /"pitch_type": "changeup"/);
+});
+
+test("prompt limits strength and issue phases to the stills actually supplied", () => {
+  const prompt = renderSwingAnalysisPrompt(input({ swing: { ...input().swing, frameNames: ["phase_load.png", "phase_contact.png", "swing_seq_01.png"] } }));
+  assert.match(prompt, /"phases_supplied": \[\s*"contact",\s*"load"\s*\]/);
+  // The validator rejects the whole run for a strength phase with no still, so the prompt must say so.
+  assert.match(prompt, /Every strength phase, and any issue phase, must be one listed in phases_supplied/);
+  assert.match(SWING_ANALYSIS_JSON_SHAPE_INSTRUCTIONS, /that is also listed in phases_supplied/);
 });
 
 test("unknown context remains explicitly unknown in prompt and manifest", () => {
