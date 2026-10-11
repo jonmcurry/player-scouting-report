@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.50.1] - 2026-10-11
+
+### Fixed
+
+- A new upload no longer shows "Couldn't read this one" while its AI summary is still being written. The worker marks the clip ready at 99% and finishes at 100% once diagnosis succeeds, fails, or is skipped; until then the app shows it as analyzing and keeps refreshing. A worker that dies mid-diagnosis releases the clip after 15 minutes.
+
 ## [0.50.0] - 2026-10-11
 
 ### Added

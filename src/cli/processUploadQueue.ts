@@ -54,7 +54,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { claimNextPendingClip, markClipFailed, markClipPermanentlyFailed, markClipProgress, markClipReady } from "../services/db/uploadQueue.js";
+import { claimNextPendingClip, markClipAnalysisFinished, markClipFailed, markClipPermanentlyFailed, markClipProgress, markClipReady } from "../services/db/uploadQueue.js";
 import { upsertPose3dFrames, deletePose3dFrames } from "../services/db/videoClipUpsert.js";
 import { downloadFile, deleteObjectIfExists } from "../services/storage/gcs.js";
 import { smoothJoints, SMOOTHING_METHOD_LABEL, type Pose3dFrame } from "../services/pose3d/smoothJoints.js";
@@ -307,7 +307,7 @@ export async function processOnePendingClip(): Promise<boolean> {
     await markClipProgress(clip.videoClipId, 98);
 
     const detectionState = swingDetectionState(metrics);
-    await markClipReady(clip.videoClipId, detectionState);
+    await markClipReady(clip.videoClipId, detectionState, { analysisPending: true });
     try {
       await recordAttemptSnapshot({ clipId: clip.videoClipId, detectionState,
         phases: metrics.phases, pipelineVersion: metrics.pipeline_version ?? null,
@@ -378,6 +378,13 @@ export async function processOnePendingClip(): Promise<boolean> {
       const message = diagErr instanceof Error ? diagErr.message : String(diagErr);
       console.error(`[process-upload-queue] AI diagnosis for "${clip.clipSlug}" failed (clip itself is still ready): ${message}`);
       await queueFailureNotification();
+    } finally {
+      try {
+        await markClipAnalysisFinished(clip.videoClipId);
+      } catch (finishErr) {
+        // The app stops treating it as processing after the stale window anyway.
+        console.error(`[process-upload-queue] ${finishErr instanceof Error ? finishErr.message : finishErr}`);
+      }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

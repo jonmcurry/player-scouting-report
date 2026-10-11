@@ -22,7 +22,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { getSupabaseClient } from "./supabaseClient.js";
-import { claimNextPendingClip, markClipFailed, markClipPermanentlyFailed, markClipProgress, markClipReady } from "./uploadQueue.js";
+import { claimNextPendingClip, markClipAnalysisFinished, markClipFailed, markClipPermanentlyFailed, markClipProgress, markClipReady } from "./uploadQueue.js";
 
 let gameLogEntryId: string;
 const insertedClipIds: string[] = [];
@@ -170,5 +170,13 @@ test("processing_progress only moves forward while processing, resets on retry, 
   const { error: reclaimError } = await supabase.from("video_clips").update({ status: "processing", processing_progress: 5 }).eq("id", id);
   assert.equal(reclaimError, null, reclaimError?.message);
   await markClipReady(id, "readable");
+  assert.deepEqual(await progress(), { status: "ready", processing_progress: 100 });
+
+  // Ready while AI diagnosis still runs: held at 99 until diagnosis finishes either way.
+  await markClipReady(id, "readable", { analysisPending: true });
+  assert.deepEqual(await progress(), { status: "ready", processing_progress: 99 });
+  await markClipProgress(id, 98); // worker milestones never touch a ready clip
+  assert.deepEqual(await progress(), { status: "ready", processing_progress: 99 });
+  await markClipAnalysisFinished(id);
   assert.deepEqual(await progress(), { status: "ready", processing_progress: 100 });
 });

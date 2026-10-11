@@ -18,6 +18,13 @@ const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 const notFound = () => reply({ error: "Report not found." }, 404);
+// The worker marks a clip ready at 99% and finishes at 100% once AI diagnosis is
+// done. Until then it is still processing, not an unreadable result - unless the
+// worker went quiet past the stale-claim window, so a crash can't pin it here.
+const ANALYSIS_HOLD_MS = 15 * 60_000;
+const analysisPending = (clip: { status: string; processing_progress: number | null; claimed_at: string | null }) =>
+  clip.status === "ready" && (clip.processing_progress ?? 100) < 100 && !!clip.claimed_at
+  && Date.now() - Date.parse(clip.claimed_at) < ANALYSIS_HOLD_MS;
 const demoReadableRun = <T extends { summary?: string | null; strengths?: unknown }>(run: T | null | undefined, demo: boolean) =>
   demo && run && !hasReportEvidence(run)
     ? { ...run, summary: "Video was clear enough to review.", strengths: [] }
@@ -156,7 +163,7 @@ Deno.serve(async (request) => {
     });
     const storedCurrent = (focusRows ?? []).find((row) => row.ended_at === null) ?? null;
     const { data: allClips, error: clipsError } = await service.from("video_clips")
-      .select("id, status, processing_progress, swing_detection_state, error_message, created_at, readable_game_serial, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id, date, session_type, result_simple)")
+      .select("id, status, processing_progress, claimed_at, swing_detection_state, error_message, created_at, readable_game_serial, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id, date, session_type, result_simple)")
       .eq("game_log_entries.player_id", playerId).order("created_at", { ascending: false }).limit(100);
     if (clipsError) throw clipsError;
     const { data: allRecent, error: recentError } = await service.from("video_clips")
@@ -297,8 +304,8 @@ Deno.serve(async (request) => {
       const entry = clip.game_log_entries as unknown as { date: string; session_type: string; result_simple: string | null };
       const newest = newestRuns.get(clip.id);
       const summary = hasReportEvidence(newest) && !invalidFeedClips.has(clip.id) ? newest!.summary : null;
-      const presentation = invalidFeedClips.has(clip.id)
-        ? { status: "unreadable", headline: null }
+      const presentation = analysisPending(clip) ? { status: "processing", headline: null }
+        : invalidFeedClips.has(clip.id) ? { status: "unreadable", headline: null }
         : feedAnalysisPresentation(clip.status, clip.swing_detection_state, summary ?? null);
       return { id: clip.id, entryId: clip.game_log_entry_id, date: entry.date, kind: entry.session_type, result: entry.result_simple,
         status: deletingIds.has(clip.id) ? "deletion_pending" : presentation.status,
@@ -322,8 +329,8 @@ Deno.serve(async (request) => {
     }
     const { data: clip, error: clipError } = await service.from("video_clips")
       .select(demo
-        ? "id, status, processing_progress, swing_detection_state, error_message, demo_media_path, demo_media_offset_s, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)"
-        : "id, status, processing_progress, swing_detection_state, error_message, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)")
+        ? "id, status, processing_progress, claimed_at, swing_detection_state, error_message, demo_media_path, demo_media_offset_s, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)"
+        : "id, status, processing_progress, claimed_at, swing_detection_state, error_message, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)")
       .eq("id", clipId).eq("game_log_entries.player_id", playerId).maybeSingle();
     if (clipError || !clip) return notFound();
     const { data: entryClips, error: entryClipsError } = shared
@@ -403,7 +410,8 @@ Deno.serve(async (request) => {
     return reply({ ...(shared ? {} : { playerId, clipId, entryId: clip.game_log_entry_id,
       entryClipIds: (entryClips ?? []).map((row) => row.id) }), playerName: identity,
       sport: team.sport === "baseball" || team.sport === "softball" ? team.sport : null,
-      report: shared ? sharedReportPayload(report, sharedText) : report, status: clip.status,
+      report: shared ? sharedReportPayload(report, sharedText) : report,
+      status: analysisPending(clip) ? "processing" : clip.status,
       processingProgress: clip.processing_progress, videoUrl, mediaPath, contactTime,
       ...(shared ? {} : { progress }) });
   } catch (error) {

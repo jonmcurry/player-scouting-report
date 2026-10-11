@@ -140,13 +140,32 @@ async function findClipContext(
   };
 }
 
-export async function markClipReady(videoClipId: string, swingDetectionState: SwingDetectionState): Promise<void> {
+/** With analysisPending the clip is ready (its video result is kept) but holds at
+ * 99% with a fresh claimed_at until markClipAnalysisFinished, so the app keeps
+ * showing it as processing instead of an unreadable result with no summary yet. */
+export async function markClipReady(
+  videoClipId: string,
+  swingDetectionState: SwingDetectionState,
+  { analysisPending = false }: { analysisPending?: boolean } = {},
+): Promise<void> {
   const supabase = getSupabaseClient();
   const { error } = await supabase
     .from("video_clips")
-    .update({ status: "ready", processing_progress: 100, swing_detection_state: swingDetectionState, error_message: null, retry_count: 0, next_retry_at: null })
+    .update({ status: "ready", processing_progress: analysisPending ? 99 : 100,
+      ...(analysisPending ? { claimed_at: new Date().toISOString() } : {}),
+      swing_detection_state: swingDetectionState, error_message: null, retry_count: 0, next_retry_at: null })
     .eq("id", videoClipId);
   if (error) throw new Error(`Marking clip ${videoClipId} ready: ${error.message}`);
+}
+
+/** Ends the post-ready AI diagnosis hold, whether diagnosis succeeded, failed, or was skipped. */
+export async function markClipAnalysisFinished(videoClipId: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from("video_clips")
+    .update({ processing_progress: 100 })
+    .eq("id", videoClipId)
+    .eq("status", "ready");
+  if (error) throw new Error(`Finishing clip ${videoClipId} analysis: ${error.message}`);
 }
 
 /** A deterministic input-policy failure must not consume automatic retries. */
