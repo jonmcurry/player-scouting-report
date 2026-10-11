@@ -7,6 +7,34 @@ entries below retain the evidence and history behind these tasks. Jon's manual v
 the earlier Android build passed. The simplified public demo has also passed a local rendered
 mobile-width review of Home and an at-bat report; authenticated family/device review remains open.
 
+### 2026-10-11 — automatic local upload processing
+
+- [x] Keep the upload worker standing with the rest of the local development stack via
+  `npm run dev:local`, and label a completed transfer waiting on the worker as `Processing…`
+  instead of `Uploading…`. The real emulator upload reached local GCS, completed the Pose3D
+  pipeline, and advanced to `ready`. Optional AI diagnosis remains locally misconfigured while
+  `AI_ANALYZER=claude-cli` has no explicit `CLAUDE_CLI_MODEL`; the deterministic video result is
+  preserved when diagnosis fails.
+- [x] Replace the duplicate right-side processing label with a persisted stage percentage. The
+  value is milestone completion, not an estimated remaining time. Home and processing reports
+  refresh every three seconds while work remains active, then stop at a terminal state.
+- [x] Allow an at-bat to be deleted while analysis is still running, preserving the audited
+  media-cleanup-first deletion order.
+- [x] The "stuck processing" second upload had actually finished; the page just never refreshed.
+  The worker noise seen afterward came from `npm run test:guardians`: its `after()` team delete
+  was silently blocked by `prevent_entry_delete_with_clips`, leaving a `guardians-*` test team
+  with 17 fake pending clips. Cleanup now deletes clips first and fails loudly; the one leaked
+  team (`guardians-a-9ec688b0`, 42 test clips) was removed from local Supabase.
+- [x] Re-applied `supabase/seed.sql` locally; `uploadQueue.test.ts` now runs against the real
+  database, including a new test that `processing_progress` only moves forward while processing,
+  resets to 0 on retry, and is 100 when ready. Full `npm test`: 272 pass, 0 fail.
+- [x] Local `AI_ANALYZER=agy-cli` backend (Antigravity CLI, `gemini-3.1-pro-high`). Verified with
+  unit tests, a synthetic-image `view_file` smoke test, and a real prompt size check (~9.1k of a
+  30k-char budget). Gemini review: no blocking findings.
+- [ ] Jon to decide whether the Antigravity account's data terms are acceptable for real player
+  footage, then set `AGY_ANALYZER_DATA_CONFIRMED=true` in `.env`; a full analysis of a real
+  clip through `agy` has not run yet.
+
 ### Planned — youth-first analysis depth expansion
 
 - [x] Phase 7 local performance lab foundation: consent-gated original instrument imports, exact-version independent mappings, manual attempt links, separate staff-only reads, descriptive distributions, and audited bounded export. No pilot partner, mapping, real athlete consent, or automatic synchronization was supplied or enabled. Local migration and fixture validation performed; hosted access and live visual review remain open.

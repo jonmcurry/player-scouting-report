@@ -12,6 +12,42 @@ const coach = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PAGES = ["development", "review", "compare", "atbat", "session", "queue"];
 const read = (rel) => fs.readFileSync(path.join(coach, rel), "utf8");
 
+test("simplified feed does not call a completed upload pending", () => {
+  const app = read("components/simpleApp.js");
+  assert.match(app, /pending: "Processing…"/);
+  assert.doesNotMatch(app, /pending: "Uploading…"/);
+  assert.match(app, /processingProgressText/);
+  // The right side never repeats a title that is already the status.
+  assert.match(app, /isProcessing\(item\.status\) \|\| !item\.headline \? "" : statusText\(item\.status\)/);
+  // The visible percent is the accessible text; a static aria-label would hide it.
+  assert.doesNotMatch(app, /simple-progress-percent" aria-label/);
+  // No stored value means no number and no "complete" claim.
+  assert.match(app, /\$\{percent \? `\$\{percent\} complete · ` : ""\}Usually ready in a few minutes\./);
+  assert.match(app, /scheduleHomeRefresh/);
+  assert.match(app, /}, 3000\);/);
+  assert.match(app, /scheduleReportRefresh/);
+});
+
+test("background refreshes never override navigation or restart a playing video", () => {
+  const app = read("components/simpleApp.js");
+  const home = app.slice(app.indexOf("async function refreshHome"), app.indexOf("function drillCard"));
+  assert.match(home, /if \(state\.tab !== "home" \|\| state\.selected !== playerId\) return;/);
+  const report = app.slice(app.indexOf("function scheduleReportRefresh"), app.indexOf("async function loadCoachAnalysisAction"));
+  assert.match(report, /if \(!current\(\)\) return;/);
+  assert.match(report, /progressNode\.textContent =/);
+  const del = app.slice(app.indexOf('case "delete":'), app.indexOf("delete_simple_at_bat", app.indexOf('case "delete":')));
+  assert.match(del, /stopReportRefresh\(\);/);
+});
+
+test("simplified in-progress reports can delete the whole at-bat", () => {
+  const app = read("components/simpleApp.js");
+  const pending = app.slice(app.indexOf('if (report.state !== "ready")'), app.indexOf('root.innerHTML = `<span class="simple-eyebrow">At-bat report</span><h1>${esc(data.playerName)}'));
+  assert.match(pending, /data-action="delete"/);
+  assert.match(app, /Delete this at-bat and all its videos\?/);
+  assert.match(app, /state\.report\.entryClipIds/);
+  assert.match(app, /delete_simple_at_bat/);
+});
+
 test("coach analysis is a separate cached route with a gated summary action", () => {
   const page = read("analysis.html");
   const app = read("components/simpleApp.js");

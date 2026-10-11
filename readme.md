@@ -329,6 +329,10 @@ context (location and result).
   - `claude-cli`: local testing only. It shells out to the `claude` CLI and reuses the developer's
     own login, with the prompt piped over stdin. Enable with `AI_ANALYZER=claude-cli`. Never set it
     in a real deployment.
+  - `agy-cli`: local testing only. It shells out to the Antigravity CLI (`agy`) on the developer's
+    own login with `AGY_ANALYZER_MODEL` (e.g. `gemini-3.1-pro-high`). It refuses to run until
+    `AGY_ANALYZER_DATA_CONFIRMED=true`, because it sends player images under that account's terms,
+    which the paid-Gemini-API confirmation does not cover. Never set it in a real deployment.
 - **Outputs:** scores for all 11 checkpoints, drafted issues, drill recommendations, and reference
   comps (only when genuinely apt).
 - **Each issue is structured:** observation, evidence (which frame or phase), why it may matter,
@@ -444,11 +448,10 @@ Notable behaviors:
 - `ffmpeg` on `PATH`
 - For the Android build: the Android SDK and an emulator or device
 
-> **Platform caveat.** The worker was built and run on Windows. `processUploadQueue.ts` hardcodes
-> the venv interpreter at `.venv_pose3d/Scripts/python.exe` (Windows layout), several scripts are
-> PowerShell, and the emulator flow assumes `gradlew.bat` and `C:\Android`. On macOS or Linux the
-> interpreter path (`.venv_pose3d/bin/python`) needs adapting before the worker will run. That has
-> not been done or tested.
+> **Platform note.** The worker resolves `.venv_pose3d/Scripts/python.exe` on Windows and
+> `.venv_pose3d/bin/python` on macOS/Linux. The Android emulator commands below remain
+> platform-specific: use `gradlew.bat` and the configured SDK on Windows, or `./gradlew` and an
+> SDK resolved from `adb`, `ANDROID_HOME`, or `ANDROID_SDK_ROOT` on macOS/Linux.
 
 ### Local setup
 
@@ -460,6 +463,14 @@ npx supabase db reset               # applies supabase/migrations/ + seed.sql
 docker compose up -d gcs-cors-proxy # GCS emulator + CORS proxy (starts gcs-emulator too)
 npm run process-upload-queue        # leave running: polls for pending clips
 npm run dispatch-notifications      # optional locally; needs Firebase and/or Resend configuration
+```
+
+For normal local app work, start Supabase, the GCS emulator, and the standing upload worker
+together instead. The command stays open for worker logs; once it is running, uploads move into
+processing without a per-video command:
+
+```bash
+npm run dev:local
 ```
 
 Serve `coach/` with any static server and open it in a browser. Locally, `coach/config.js` finds
@@ -481,7 +492,7 @@ Bring `gcs-cors-proxy` up, not `gcs-emulator` directly.
 | `GCP_PROJECT_ID`, `GCS_BUCKET_NAME` | Storage bucket (`softball-scouting-media` by default) |
 | `GCS_EMULATOR_HOST` | Set for local dev to use fake-gcs-server |
 | `GEMINI_API_KEY` | AI Studio key for the Gemini backend |
-| `AI_ANALYZER` | `gemini` (default) or `claude-cli` (local testing only) |
+| `AI_ANALYZER` | `gemini` (default), or `claude-cli` / `agy-cli` (local testing only) |
 | `UPLOAD_QUEUE_STALE_CLAIM_MINUTES` | Optional, default 15 |
 
 ### Accounts and teams
@@ -516,6 +527,7 @@ Gradle and `adb` directly. Distribution is by APK. It is not on the Play Store.
 
 | Command | What it does |
 |---|---|
+| `npm run dev:local` | Start/check local Supabase and GCS, then keep the automatic upload worker running |
 | `npm run process-upload-queue` | The worker: claim, download, pipeline, ingest, AI diagnosis. Ctrl-C to stop |
 | `npm run dispatch-notifications` | Lease and deliver report/failure/focus notices through FCM with Resend fallback. Ctrl-C to stop; `-- --once` runs one batch |
 | `npm run reconcile-uploads` | Report GCS objects with no `video_clips` row. Add `-- --delete-older-than-days 7` to clean up |

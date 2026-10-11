@@ -500,6 +500,7 @@ export function buildFixture(snapshot: SourceSnapshot, manifest: CurationManifes
       clip_slug: `${manifest.player.publicSlug}-clip-${String(index + 1).padStart(3, "0")}`,
       demo_media_path: publicFilename, demo_media_offset_s: offset,
       raw_gcs_path: null, error_message: null, claimed_at: null, retry_count: 0, next_retry_at: null,
+      processing_progress: 100,
       uploaded_by: null, uploaded_by_role: clip.uploaded_by_role === "guardian" ? "guardian" : "coach",
       readable_game_serial: null, swing_detection_state: "readable",
     }));

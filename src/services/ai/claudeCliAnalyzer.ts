@@ -64,7 +64,7 @@ const TIMEOUT_MS = 5 * 60_000;
  * the first brace-balanced) JSON object anywhere in the text and returns
  * anything after it separately, so the caller can log it instead of losing
  * it - see analyzeSwingViaClaudeCli's use below. */
-function extractJson(text: string): { json: string; trailingNote: string | null } {
+export function extractJson(text: string): { json: string; trailingNote: string | null } {
   const trimmed = text.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   if (fenced) {

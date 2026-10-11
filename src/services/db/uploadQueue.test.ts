@@ -22,7 +22,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { getSupabaseClient } from "./supabaseClient.js";
-import { claimNextPendingClip, markClipPermanentlyFailed } from "./uploadQueue.js";
+import { claimNextPendingClip, markClipFailed, markClipPermanentlyFailed, markClipProgress, markClipReady } from "./uploadQueue.js";
 
 let gameLogEntryId: string;
 const insertedClipIds: string[] = [];
@@ -130,4 +130,45 @@ test("markClipPermanentlyFailed: deterministic policy failures do not consume a 
     retry_count: 2,
     next_retry_at: null,
   });
+});
+
+test("processing_progress only moves forward while processing, resets on retry, and is 100 when ready", async () => {
+  const supabase = getSupabaseClient();
+  const clipSlug = randomUUID();
+  const { data: clip, error } = await supabase
+    .from("video_clips")
+    .insert({
+      game_log_entry_id: gameLogEntryId,
+      clip_slug: clipSlug,
+      status: "processing",
+      claimed_at: new Date().toISOString(),
+      processing_progress: 5,
+      raw_gcs_path: `gs://test-bucket/${gameLogEntryId}/raw/${clipSlug}.mp4`,
+      created_at: "1900-01-04T00:00:00Z",
+    })
+    .select("id")
+    .single();
+  assert.equal(error, null, error?.message);
+  const id = clip!.id as string;
+  insertedClipIds.push(id);
+  const progress = async () => {
+    const { data, error: readError } = await supabase.from("video_clips").select("status, processing_progress").eq("id", id).single();
+    assert.equal(readError, null, readError?.message);
+    return data as { status: string; processing_progress: number };
+  };
+
+  await markClipProgress(id, 45);
+  await markClipProgress(id, 30); // a late, lower milestone never moves it backwards
+  assert.deepEqual(await progress(), { status: "processing", processing_progress: 45 });
+  await assert.rejects(markClipProgress(id, 100), /expected an integer from 1 to 99/);
+
+  await markClipFailed(id, "transient test failure");
+  assert.deepEqual(await progress(), { status: "pending", processing_progress: 0 });
+  await markClipProgress(id, 65); // not processing any more, so nothing changes
+  assert.deepEqual(await progress(), { status: "pending", processing_progress: 0 });
+
+  const { error: reclaimError } = await supabase.from("video_clips").update({ status: "processing", processing_progress: 5 }).eq("id", id);
+  assert.equal(reclaimError, null, reclaimError?.message);
+  await markClipReady(id, "readable");
+  assert.deepEqual(await progress(), { status: "ready", processing_progress: 100 });
 });

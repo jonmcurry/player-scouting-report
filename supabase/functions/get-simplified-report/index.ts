@@ -156,7 +156,7 @@ Deno.serve(async (request) => {
     });
     const storedCurrent = (focusRows ?? []).find((row) => row.ended_at === null) ?? null;
     const { data: allClips, error: clipsError } = await service.from("video_clips")
-      .select("id, status, swing_detection_state, error_message, created_at, readable_game_serial, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id, date, session_type, result_simple)")
+      .select("id, status, processing_progress, swing_detection_state, error_message, created_at, readable_game_serial, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id, date, session_type, result_simple)")
       .eq("game_log_entries.player_id", playerId).order("created_at", { ascending: false }).limit(100);
     if (clipsError) throw clipsError;
     const { data: allRecent, error: recentError } = await service.from("video_clips")
@@ -302,6 +302,7 @@ Deno.serve(async (request) => {
         : feedAnalysisPresentation(clip.status, clip.swing_detection_state, summary ?? null);
       return { id: clip.id, entryId: clip.game_log_entry_id, date: entry.date, kind: entry.session_type, result: entry.result_simple,
         status: deletingIds.has(clip.id) ? "deletion_pending" : presentation.status,
+        processingProgress: clip.processing_progress,
         headline: deletingIds.has(clip.id) ? "Video deletion needs another try."
           : disputedClipIds.has(clip.id) ? "An observation was hidden after feedback."
           : presentation.headline ? sharedText(presentation.headline) : null };
@@ -321,8 +322,8 @@ Deno.serve(async (request) => {
     }
     const { data: clip, error: clipError } = await service.from("video_clips")
       .select(demo
-        ? "id, status, swing_detection_state, error_message, demo_media_path, demo_media_offset_s, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)"
-        : "id, status, swing_detection_state, error_message, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)")
+        ? "id, status, processing_progress, swing_detection_state, error_message, demo_media_path, demo_media_offset_s, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)"
+        : "id, status, processing_progress, swing_detection_state, error_message, raw_gcs_path, game_log_entry_id, clip_slug, game_log_entries!inner(player_id)")
       .eq("id", clipId).eq("game_log_entries.player_id", playerId).maybeSingle();
     if (clipError || !clip) return notFound();
     const { data: entryClips, error: entryClipsError } = shared
@@ -403,7 +404,8 @@ Deno.serve(async (request) => {
       entryClipIds: (entryClips ?? []).map((row) => row.id) }), playerName: identity,
       sport: team.sport === "baseball" || team.sport === "softball" ? team.sport : null,
       report: shared ? sharedReportPayload(report, sharedText) : report, status: clip.status,
-      videoUrl, mediaPath, contactTime, ...(shared ? {} : { progress }) });
+      processingProgress: clip.processing_progress, videoUrl, mediaPath, contactTime,
+      ...(shared ? {} : { progress }) });
   } catch (error) {
     console.error("get-simplified-report:", error);
     return reply({ error: "Couldn't load the report. Please try again." }, 500);

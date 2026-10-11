@@ -76,7 +76,7 @@ export async function claimNextPendingClip(): Promise<ClipContext | null> {
   const candidateId = candidates[0]!.id as string;
   const { data: claimed, error: claimErr } = await supabase
     .from("video_clips")
-    .update({ status: "processing", claimed_at: new Date().toISOString() })
+    .update({ status: "processing", claimed_at: new Date().toISOString(), processing_progress: 5 })
     .eq("id", candidateId)
     .or(claimableFilter) // the actual race guard - only succeeds if still claimable
     .select("id, clip_slug, raw_gcs_path")
@@ -85,6 +85,20 @@ export async function claimNextPendingClip(): Promise<ClipContext | null> {
   if (!claimed) return null; // another run claimed it first
 
   return findClipContext(claimed.id as string, claimed.clip_slug as string, claimed.raw_gcs_path as string);
+}
+
+/** Records completed work, never an elapsed-time estimate or a regression. */
+export async function markClipProgress(videoClipId: string, progress: number): Promise<void> {
+  if (!Number.isInteger(progress) || progress < 1 || progress > 99) {
+    throw new Error(`Invalid processing progress ${progress}; expected an integer from 1 to 99`);
+  }
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from("video_clips")
+    .update({ processing_progress: progress })
+    .eq("id", videoClipId)
+    .eq("status", "processing")
+    .lt("processing_progress", progress);
+  if (error) throw new Error(`Updating clip ${videoClipId} progress: ${error.message}`);
 }
 
 async function findClipContext(
@@ -130,7 +144,7 @@ export async function markClipReady(videoClipId: string, swingDetectionState: Sw
   const supabase = getSupabaseClient();
   const { error } = await supabase
     .from("video_clips")
-    .update({ status: "ready", swing_detection_state: swingDetectionState, error_message: null, retry_count: 0, next_retry_at: null })
+    .update({ status: "ready", processing_progress: 100, swing_detection_state: swingDetectionState, error_message: null, retry_count: 0, next_retry_at: null })
     .eq("id", videoClipId);
   if (error) throw new Error(`Marking clip ${videoClipId} ready: ${error.message}`);
 }
@@ -167,6 +181,7 @@ export async function markClipFailed(videoClipId: string, message: string): Prom
           // the existing manual Retry button (coach/player.html) remains
           // available the whole time too, it just won't be needed yet.
           status: "pending",
+          processing_progress: 0,
           error_message: truncated,
           retry_count: retryCount + 1,
           next_retry_at: new Date(Date.now() + RETRY_BACKOFF_MINUTES[retryCount]! * 60_000).toISOString(),

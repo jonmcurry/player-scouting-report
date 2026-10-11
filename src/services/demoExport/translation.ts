@@ -174,15 +174,17 @@ export const ENTITY_SPECS: Readonly<Record<FixtureTable, EntitySpec>> = {
       uploaded_by: AUTH_UUID, readable_game_serial: "runtime progress sequence; historical fixtures start without one",
       error_message: "worker diagnostics (may contain local paths)",
       claimed_at: "worker queue bookkeeping", retry_count: "worker queue bookkeeping", next_retry_at: "worker queue bookkeeping",
+      processing_progress: "worker queue bookkeeping",
     },
     defaulted: {
       raw_gcs_path: "null (no private media reference in the demo)",
       error_message: "null", claimed_at: "null", retry_count: "0", next_retry_at: "null",
+      processing_progress: "100 (published clips are fully processed)",
       uploaded_by: "null (never a real auth identity in a fixture; demo.upgrade_fixture_payload refuses one)",
       readable_game_serial: "null for the frozen legacy demo",
     },
     fk: { game_log_entry_id: "game_log_entries", at_bat_pitch_id: "at_bat_pitches", practice_repetition_id: "practice_repetitions" },
-    required: ["id", "game_log_entry_id", "clip_slug", "position", "status", "retry_count", "created_at"],
+    required: ["id", "game_log_entry_id", "clip_slug", "position", "status", "processing_progress", "retry_count", "created_at"],
   },
   video_clip_metrics: {
     source: "public.video_clip_metrics", target: "video_clip_metrics",

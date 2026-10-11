@@ -20,10 +20,24 @@ const eurl = (value) => {
   try { const url = new URL(value); return ["https:", "http:"].includes(url.protocol) ? esc(url.href) : null; }
   catch { return null; }
 };
-const statusText = (status) => ({ pending: "Uploading…", processing: "Analyzing…", ready: "Ready",
+const statusText = (status) => ({ pending: "Processing…", processing: "Analyzing…", ready: "Ready",
   unreadable: "Couldn't read this one", failed: "Couldn't read this one", no_swing: "No swing", deletion_pending: "Retry delete" })[status] ?? "Analyzing…";
+const isProcessing = (status) => ["pending", "processing"].includes(status);
+const progressPercent = (item) => isProcessing(item.status) && Number.isInteger(item.processingProgress)
+  ? `${Math.max(0, Math.min(100, item.processingProgress))}%` : null;
+// Without a real stored value a processing row shows no number at all, never a guess.
+// When the row has no headline its title already is the status, so don't repeat it.
+const processingProgressText = (item) => progressPercent(item)
+  ?? (isProcessing(item.status) || !item.headline ? "" : statusText(item.status));
+const pendingReportText = (data) => {
+  const percent = progressPercent({ status: data.status, processingProgress: data.processingProgress });
+  return `${percent ? `${percent} complete · ` : ""}Usually ready in a few minutes.`;
+};
 const shortDate = (value) => value ? new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
 function say(text) { message.textContent = text; }
+let homeRefreshTimer = null;
+let reportRefreshTimer = null;
+let reportRefreshGeneration = 0;
 
 async function setupNativePush(requestPermission = true) {
   const capacitor = window.Capacitor;
@@ -113,8 +127,31 @@ async function showHome() {
     ${await queueBanner()}
     ${home.progress?.current ? `<button class="simple-row simple-card" data-action="progress" type="button"><span><strong>Working on ${esc(home.progress.current.title ?? home.progress.current.concept.replaceAll("_", " "))}</strong><small>See progress</small></span><span aria-hidden="true">›</span></button>` : ""}
     <section class="simple-card"><h2>Recent at-bats</h2>${home.feed?.length ? home.feed.map((item) =>
-      `<button class="simple-row" ${item.status === "deletion_pending" ? `data-retry-delete="${esc(item.id)}" data-entry-id="${esc(item.entryId)}"` : `data-clip="${esc(item.id)}"`} type="button"><span><strong>${esc(item.headline ?? statusText(item.status))}</strong><small>${esc(shortDate(item.date))} · ${item.kind === "practice" ? "Practice" : "Game"}</small></span><span>${esc(statusText(item.status))}</span></button>`).join("")
+      `<button class="simple-row" ${item.status === "deletion_pending" ? `data-retry-delete="${esc(item.id)}" data-entry-id="${esc(item.entryId)}"` : `data-clip="${esc(item.id)}"`} type="button"><span><strong>${esc(item.headline ?? statusText(item.status))}</strong><small>${esc(shortDate(item.date))} · ${item.kind === "practice" ? "Practice" : "Game"}</small></span><span class="simple-progress-percent">${esc(processingProgressText(item))}</span></button>`).join("")
       : `<p>Film an at-bat to get your first report.</p><button class="simple-action link" data-action="guide" type="button">How to film</button>`}</section>`;
+  scheduleHomeRefresh();
+}
+
+function scheduleHomeRefresh() {
+  if (homeRefreshTimer !== null) clearTimeout(homeRefreshTimer);
+  homeRefreshTimer = null;
+  const active = state.home?.feed?.some((item) => ["pending", "processing"].includes(item.status));
+  if (!active || state.tab !== "home" || document.visibilityState === "hidden") return;
+  homeRefreshTimer = setTimeout(() => {
+    homeRefreshTimer = null;
+    refreshHome().catch((error) => { say(error.message); scheduleHomeRefresh(); });
+  }, 3000);
+}
+
+// A background refresh must not pull the person back to Home if they opened a
+// report or switched child while the request was in flight.
+async function refreshHome() {
+  if (state.tab !== "home" || document.visibilityState === "hidden" || !state.selected) return;
+  const playerId = state.selected;
+  const home = await reportApi(playerId);
+  if (state.tab !== "home" || state.selected !== playerId) return;
+  state.home = home;
+  await showHome();
 }
 
 function drillCard(drill) {
@@ -169,6 +206,7 @@ function seekTo(video, time) {
 }
 
 async function showReport(clipId, token = null, preloaded = null) {
+  stopReportRefresh();
   say("");
   const data = preloaded ?? await reportApi(state.selected, clipId, token);
   state.report = { ...data, clipId };
@@ -187,11 +225,13 @@ async function showReport(clipId, token = null, preloaded = null) {
   if (report.state !== "ready") {
     const pending = !["ready", "failed"].includes(data.status);
     root.innerHTML = `<span class="simple-eyebrow">At-bat report</span><h1>${pending ? "Analyzing…" : "We couldn't analyze this video"}</h1>
-      <div class="simple-card"><p>${pending ? "Usually ready in a few minutes." : esc(report.reason)}</p>${pending ? "" : `<button class="simple-action link" data-action="guide" type="button">How to film next time</button>`}</div>
+      <div class="simple-card"><p id="processingProgress">${pending ? esc(pendingReportText(data)) : esc(report.reason)}</p>${pending ? "" : `<button class="simple-action link" data-action="guide" type="button">How to film next time</button>`}</div>
       <div id="captureSummaryHost"></div>
       ${data.videoUrl ? `<video class="simple-video" src="${esc(data.videoUrl)}" controls playsinline></video>` : ""}
-      ${state.shared || state.demo ? "" : `<button class="simple-action secondary" data-action="home" type="button">Back to Home</button>`}`;
+      ${state.shared || state.demo ? "" : `<div class="simple-actions"><button class="simple-action secondary" data-action="home" type="button">Back to Home</button>
+      <button class="simple-action secondary" data-action="delete" type="button">Delete at-bat</button></div>`}`;
     loadCaptureSummary(clipId).catch(() => {});
+    if (pending) scheduleReportRefresh(clipId, token);
     return;
   }
   root.innerHTML = `<span class="simple-eyebrow">At-bat report</span><h1>${esc(data.playerName)}</h1>
@@ -218,6 +258,37 @@ async function showReport(clipId, token = null, preloaded = null) {
   }
   loadCaptureSummary(clipId).catch(() => {});
   loadCoachAnalysisAction(clipId).catch(() => {});
+}
+
+function stopReportRefresh() {
+  if (reportRefreshTimer !== null) clearTimeout(reportRefreshTimer);
+  reportRefreshTimer = null;
+  reportRefreshGeneration += 1;
+}
+
+// While analysis runs, only the percentage text changes in place so a video the
+// person is already watching keeps playing; any other change re-renders once.
+function scheduleReportRefresh(clipId, token) {
+  const generation = reportRefreshGeneration;
+  const current = () => generation === reportRefreshGeneration && state.tab === "report" && state.report?.clipId === clipId;
+  reportRefreshTimer = setTimeout(async () => {
+    reportRefreshTimer = null;
+    if (!current() || document.visibilityState === "hidden") return;
+    try {
+      const data = await reportApi(state.selected, clipId, token);
+      if (!current()) return;
+      const progressNode = document.getElementById("processingProgress");
+      const stillPending = !["ready", "no_swing"].includes(data.report.state) && !["ready", "failed"].includes(data.status);
+      if (!stillPending || !progressNode) { await showReport(clipId, token, data); return; }
+      state.report = { ...data, clipId };
+      progressNode.textContent = pendingReportText(data);
+      scheduleReportRefresh(clipId, token);
+    } catch (error) {
+      if (!current()) return;
+      say(error.message);
+      scheduleReportRefresh(clipId, token);
+    }
+  }, 3000);
 }
 
 async function loadCoachAnalysisAction(clipId) {
@@ -500,8 +571,9 @@ root.addEventListener("click", async (event) => {
       case "share-progress": await share("progress"); break;
       case "delete": {
         if (!confirm("Delete this at-bat and all its videos?")) break;
+        stopReportRefresh();
         try {
-          for (const clipId of state.report.entryClipIds ?? [state.report.clipId]) await deleteClip(clipId);
+          for (const clipId of state.report.entryClipIds?.length ? state.report.entryClipIds : [state.report.clipId]) await deleteClip(clipId);
           const { error } = await supabase.rpc("delete_simple_at_bat", { p_entry_id: state.report.entryId });
           if (error) throw error;
           say("At-bat deleted.");
@@ -576,6 +648,13 @@ document.getElementById("accountBtn").addEventListener("click", async () => {
   try { await settingsSheet(); } catch (error) { say(error.message); }
 });
 window.addEventListener("online", () => { if (state.userId) drainCaptureQueue(state.userId, state.role === "parent", () => loadHome()); });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && state.tab === "home" && state.userId) refreshHome().catch((error) => say(error.message));
+  // Only a still-processing report refreshes on return; a finished one keeps its video's place.
+  else if (document.visibilityState === "visible" && state.tab === "report" && state.report?.clipId && isProcessing(state.report.status))
+    showReport(state.report.clipId, state.shared ? params.get("share") : null).catch((error) => say(error.message));
+  else scheduleHomeRefresh();
+});
 
 async function start() {
   try {

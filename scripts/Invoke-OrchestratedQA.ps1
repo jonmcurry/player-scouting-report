@@ -2,7 +2,9 @@
     [Parameter(Mandatory = $true)]
     [string]$ReviewPrompt,
     [switch]$SkipTests,
-    [string]$GeminiModel = "gemini-3.1-pro-high"
+    [string]$GeminiModel = "gemini-3.1-pro-high",
+    [int]$TimeoutSeconds = 600,
+    [string[]]$Paths = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,8 +49,8 @@ if (-not $SkipTests) {
 Write-Host ""
 Write-Host "Running Gemini review..." -ForegroundColor Cyan
 $reviewScript = Join-Path $PSScriptRoot "Invoke-GeminiReview.ps1"
-& $reviewScript -Prompt $ReviewPrompt -Model $GeminiModel
-if ($LASTEXITCODE -ne 0) { throw "Gemini review failed or was unavailable." }
+& $reviewScript -Prompt $ReviewPrompt -Model $GeminiModel -TimeoutSeconds $TimeoutSeconds -Paths $Paths
+if ($LASTEXITCODE -ne 0) { throw "Gemini review did not complete (timed out, failed, or unavailable)." }
 
 Write-Host ""
 Write-Host "Orchestrated QA finished." -ForegroundColor Green

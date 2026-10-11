@@ -54,7 +54,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { claimNextPendingClip, markClipFailed, markClipPermanentlyFailed, markClipReady } from "../services/db/uploadQueue.js";
+import { claimNextPendingClip, markClipFailed, markClipPermanentlyFailed, markClipProgress, markClipReady } from "../services/db/uploadQueue.js";
 import { upsertPose3dFrames, deletePose3dFrames } from "../services/db/videoClipUpsert.js";
 import { downloadFile, deleteObjectIfExists } from "../services/storage/gcs.js";
 import { smoothJoints, SMOOTHING_METHOD_LABEL, type Pose3dFrame } from "../services/pose3d/smoothJoints.js";
@@ -76,10 +76,23 @@ import { recordAttemptSnapshot } from "../services/db/attemptSnapshot.js";
 import { enqueueAnalysisFailed } from "../services/notifications/outbox.js";
 
 const POLL_INTERVAL_MS = 10_000;
-const VENV_PYTHON = path.join(".venv_pose3d", "Scripts", "python.exe");
+const VENV_PYTHON = process.env.POSE3D_PYTHON ?? (process.platform === "win32"
+  ? path.join(".venv_pose3d", "Scripts", "python.exe")
+  : path.join(".venv_pose3d", "bin", "python"));
 const PIPELINE_SCRIPT = path.join("scripts", "pose3d", "run_pipeline.py");
 
-function runPipeline(videoPath: string, outDir: string): Promise<void> {
+const PIPELINE_STAGE_PROGRESS = new Map([
+  ["Stage 0/4", 30], ["Stage 0.5/4", 35], ["Stage 1/4", 45],
+  ["Stage 2/4", 65], ["Stage 3/4", 75], ["Stage 3.5/4", 82], ["Stage 4/4", 88],
+]);
+
+export function pipelineProgressFromOutput(output: string): number[] {
+  return [...PIPELINE_STAGE_PROGRESS.entries()]
+    .filter(([label]) => output.includes(label))
+    .map(([, progress]) => progress);
+}
+
+function runPipeline(videoPath: string, outDir: string, onProgress: (progress: number) => Promise<void>): Promise<void> {
   return new Promise((resolve, reject) => {
     // Array args, NOT a shell string - real clip names contain spaces and
     // parentheses (e.g. "Emily_C_AB1 (4).mp4"), which a shell-interpreted
@@ -99,19 +112,34 @@ function runPipeline(videoPath: string, outDir: string): Promise<void> {
       env: { ...process.env, PYTHONUNBUFFERED: "1" },
     });
     let stderr = "";
+    let progressOutputBuffer = "";
     // Forward the pipeline's own [locate_swing]/[detect_2d]/[metrics]/
     // [overlay]-tagged progress prints live to this worker's console -
     // previously only stderr was captured (and only surfaced on failure),
     // so none of that stage-by-stage output was ever visible to anyone
     // tailing this process, success or failure.
     child.stdout.on("data", (chunk) => {
-      process.stdout.write(chunk);
+      const output = chunk.toString();
+      process.stdout.write(output);
+      progressOutputBuffer += output;
+      const lines = progressOutputBuffer.split(/\r?\n/);
+      progressOutputBuffer = lines.pop() ?? "";
+      for (const progress of pipelineProgressFromOutput(lines.join("\n"))) {
+        void onProgress(progress).catch((error) => {
+          console.warn(`[process-upload-queue] Couldn't store ${progress}% progress: ${error instanceof Error ? error.message : error}`);
+        });
+      }
     });
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
     child.on("error", (err) => reject(err));
     child.on("close", (code) => {
+      for (const progress of pipelineProgressFromOutput(progressOutputBuffer)) {
+        void onProgress(progress).catch((error) => {
+          console.warn(`[process-upload-queue] Couldn't store ${progress}% progress: ${error instanceof Error ? error.message : error}`);
+        });
+      }
       // Trust run_pipeline.py's own pipeline_status.json over the raw exit
       // code - it's an explicit contract (see run_pipeline.py's write_status
       // docstring) rather than inference, added after some Windows/CUDA-
@@ -202,6 +230,7 @@ export async function processOnePendingClip(): Promise<boolean> {
       await queueFailureNotification();
       return true;
     }
+    await markClipProgress(clip.videoClipId, 15);
     // Capture assessment is additive. Missing migration, unavailable ffmpeg
     // signals, or a failed check never discards a valid family upload.
     let captureHash: string | null = null;
@@ -216,12 +245,15 @@ export async function processOnePendingClip(): Promise<boolean> {
     } catch (captureError) {
       console.warn(`[process-upload-queue] Capture media assessment unavailable: ${captureError instanceof Error ? captureError.message : captureError}`);
     }
+    await markClipProgress(clip.videoClipId, 25);
     console.log(`[process-upload-queue] Running pose3d pipeline -> ${outDir}`);
     fs.mkdirSync(outDir, { recursive: true });
-    await runPipeline(localRawPath, outDir);
+    await runPipeline(localRawPath, outDir, (progress) => markClipProgress(clip.videoClipId, progress));
+    await markClipProgress(clip.videoClipId, 90);
 
     console.log("[process-upload-queue] Ingesting phases");
     await ingestPhases(clip.teamSlug, clip.playerSlug, clip.date, clip.opponent, clip.ab, outDir);
+    await markClipProgress(clip.videoClipId, 94);
 
     console.log("[process-upload-queue] Smoothing + storing 3D joint trajectory");
     const pose3d = JSON.parse(fs.readFileSync(path.join(outDir, "pose_3d.json"), "utf-8")) as {
@@ -272,6 +304,7 @@ export async function processOnePendingClip(): Promise<boolean> {
         frames: rigidFrames,
       });
     }
+    await markClipProgress(clip.videoClipId, 98);
 
     const detectionState = swingDetectionState(metrics);
     await markClipReady(clip.videoClipId, detectionState);
@@ -331,11 +364,14 @@ export async function processOnePendingClip(): Promise<boolean> {
         // subscription login isn't a real server-side credential, so
         // production must keep defaulting to Gemini even if this env var is
         // simply unset there.
-        const useClaudeCli = process.env.AI_ANALYZER === "claude-cli";
-        console.log(`[process-upload-queue] Running AI diagnosis for "${clip.clipSlug}" via ${useClaudeCli ? "claude CLI" : "Gemini"}`);
+        // "agy-cli" is the same kind of local-only backend via the Antigravity CLI.
+        const localCli = process.env.AI_ANALYZER === "claude-cli" ? "claude"
+          : process.env.AI_ANALYZER === "agy-cli" ? "agy" : false;
+        console.log(`[process-upload-queue] Running AI diagnosis for "${clip.clipSlug}" via ${
+          localCli === "claude" ? "claude CLI" : localCli === "agy" ? "agy CLI" : "Gemini"}`);
         await analyzeAndSync(
           clip.teamSlug, clip.playerSlug, stillsDir, pitchContext, false, null,
-          useClaudeCli, clip.videoClipId, metrics.pipeline_version ?? null,
+          localCli, clip.videoClipId, metrics.pipeline_version ?? null,
         );
       }
     } catch (diagErr) {

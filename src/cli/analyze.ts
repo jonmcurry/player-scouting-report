@@ -5,6 +5,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { analyzeSwing, type FrameImage } from "../services/ai/geminiAnalyzer.js";
 import { analyzeSwingViaClaudeCli } from "../services/ai/claudeCliAnalyzer.js";
+import { analyzeSwingViaAgy } from "../services/ai/agyCliAnalyzer.js";
 import { buildInputManifest, type AnalysisInput, type PitchContext, type SwingContext } from "../services/ai/analysisContext.js";
 import { ANALYSIS_POLICY_VERSION, PROMPT_VERSION } from "../services/ai/analysisVersions.js";
 import { findingIdentity, validateSwingAnalysisResult, validationContext, type SwingAnalysisResult } from "../services/ai/swingAnalysisShared.js";
@@ -152,7 +153,8 @@ export async function analyzeAndSync(
   pitchContext: string,
   force = false,
   claudeDraftPath: string | null = null,
-  useClaudeCli = false,
+  // Local-testing CLI backend: true/"claude" = claude CLI, "agy" = Antigravity CLI.
+  localCli: boolean | "claude" | "agy" = false,
   videoClipId: string | null = null,
   pipelineVersion: string | null = null,
   // Measurements/phase markers audited as unreliable for this clip. Recorded
@@ -168,7 +170,10 @@ export async function analyzeAndSync(
     result = validateSwingAnalysisResult(JSON.parse(fs.readFileSync(claudeDraftPath, "utf-8")), {
       source: "claude", aiModel: "claude-draft-file", ...validationContext(input), availableBases: ["video"],
     });
-  } else if (useClaudeCli) {
+  } else if (localCli === "agy") {
+    console.log(`Running analysis via the local agy CLI on ${framesDir} (Gemini API key not used)...`);
+    result = await analyzeSwingViaAgy(framesDir, input);
+  } else if (localCli) {
     console.log(`Running analysis via the local claude CLI on ${framesDir} (Gemini not called)...`);
     result = await analyzeSwingViaClaudeCli(framesDir, input);
   } else {
@@ -262,11 +267,11 @@ async function main() {
   program.requiredOption("--team <slug>").requiredOption("--player <slug>")
     .option("--framesDir <path>").option("--pitchContext <text>")
     .option("--force", "Overwrite checkpoints a coach has already reviewed", false)
-    .option("--claudeDraft <path>").option("--claudeCli", "Use local Claude CLI", false);
+    .option("--claudeDraft <path>").option("--claudeCli", "Use local Claude CLI", false).option("--agyCli", "Use local Antigravity CLI (AGY_ANALYZER_MODEL)", false);
   program.parse(process.argv);
-  const opts = program.opts<{ team: string; player: string; framesDir?: string; pitchContext?: string; force: boolean; claudeDraft?: string; claudeCli: boolean }>();
+  const opts = program.opts<{ team: string; player: string; framesDir?: string; pitchContext?: string; force: boolean; claudeDraft?: string; claudeCli: boolean; agyCli: boolean }>();
   if (!opts.claudeDraft && !opts.framesDir) throw new Error("--framesDir is required unless --claudeDraft is provided");
-  await analyzeAndSync(opts.team, opts.player, opts.framesDir ?? "", opts.pitchContext ?? "No pitch/result details provided.", opts.force, opts.claudeDraft ?? null, opts.claudeCli);
+  await analyzeAndSync(opts.team, opts.player, opts.framesDir ?? "", opts.pitchContext ?? "No pitch/result details provided.", opts.force, opts.claudeDraft ?? null, opts.agyCli ? "agy" : opts.claudeCli);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

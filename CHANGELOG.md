@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.50.0] - 2026-10-11
+
+### Added
+
+- Added automatic, database-backed video processing percentages that advance only when concrete worker stages begin or complete.
+- Added at-bat deletion while a video is still processing, using the existing audited media cleanup path.
+- Added a local-only `AI_ANALYZER=agy-cli` analysis backend that runs the swing analysis through the developer's Antigravity CLI (`AGY_ANALYZER_MODEL`, e.g. `gemini-3.1-pro-high`). It refuses to send player images until `AGY_ANALYZER_DATA_CONFIRMED=true`, and only a completed `agy` response that passes the standard validator is stored.
+
+### Changed
+
+- Automatically refresh active uploads on both the home feed and processing report until they reach a terminal state. Background refreshes never pull the viewer away from a screen they just opened, and the processing report updates its percentage in place so a playing video is not restarted.
+
+### Fixed
+
+- The guardian integration suite now deletes its test clips before its test team, so its cleanup no longer fails silently and leaves fake pending uploads for the local worker to retry.
+- Home feed rows no longer repeat their status on the right when the title already is that status (e.g. "Couldn't read this one" twice); a processing row with no stored percentage shows no number rather than a guess.
+- The Gemini review wrapper now hands the reviewer the diff as a file and bounds its file reads, so large working trees no longer time out, and treats an `agy` print timeout (which exits 0) or empty output as a failed review instead of a pass.
+
+## [0.49.1] - 2026-10-11
+
+### Changed
+
+- Added one local-development command that starts the database, video store, and standing analysis worker so uploaded videos begin processing without a per-video command.
+- Made the Pose3D worker resolve the repository virtual environment on Windows and macOS/Linux, with an explicit override available for custom layouts.
+
+### Fixed
+
+- Renamed the post-upload pending state from `Uploading…` to `Processing…` so the app no longer claims a completed transfer is still uploading.
+
 ## [0.49.0] - 2026-10-11
 
 ### Added

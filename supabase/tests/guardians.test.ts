@@ -115,7 +115,16 @@ before(async () => {
 after(async () => {
   // Teams first (cascades players -> guardian_invites / player_guardians),
   // then the users those rows referenced.
-  for (const id of teamIds) await admin.from("teams").delete().eq("id", id);
+  // prevent_entry_delete_with_clips blocks that cascade while any at-bat still
+  // has clips, which silently left fake pending clips for the upload worker.
+  for (const id of teamIds) {
+    const players = must(await admin.from("players").select("id").eq("team_id", id), "test players");
+    const entries = players.length
+      ? must(await admin.from("game_log_entries").select("id").in("player_id", players.map((p: { id: string }) => p.id)), "test at-bats")
+      : [];
+    if (entries.length) must(await admin.from("video_clips").delete().in("game_log_entry_id", entries.map((e: { id: string }) => e.id)), "test clips");
+    must(await admin.from("teams").delete().eq("id", id), "test team");
+  }
   for (const id of mutationDeletionIds) must(await admin.from("clip_deletions").delete().eq("clip_id", id), "mutation audit cleanup");
   for (const id of userIds) await admin.auth.admin.deleteUser(id);
 });
