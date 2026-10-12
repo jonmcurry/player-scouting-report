@@ -7,6 +7,13 @@ entries below retain the evidence and history behind these tasks. Jon's manual v
 the earlier Android build passed. The simplified public demo has also passed a local rendered
 mobile-width review of Home and an at-bat report; authenticated family/device review remains open.
 
+### HitterLoop v2 PR4 — privacy and data-handling safeguards
+
+- Added a Git-index media/result guard with exact static-asset hash approvals and evaluation storage isolation checks across production source. Force-added private artifacts fail; approved UI artwork and synthetic annotation fixtures remain allowed.
+- Claude CLI now requires literal `CLAUDE_CLI_DATA_CONFIRMED=true` before any image-directory access or process invocation. Its diagnostics suppress private paths/provider output; approved-call prompts, settings and validated results remain unchanged.
+- Logging/deletion review and pre-existing gaps are recorded in `docs/architecture/PRIVACY_SAFEGUARDS.md`. PR4 creates no per-clip files requiring extra cleanup. Broad logging redaction, local/backup retention and purge ancestor-symlink containment remain separate work.
+- Validation passes: 118 privacy/adapter/guard tests, 505 full npm test executions, seven Deno privacy tests, build and whitespace checks. Both Gemini reviews completed with no blockers; three initial notes were fixed and verified, and two minor follow-up limitations are documented. Version 0.52.2 / Android 74; no algorithm, annotation schema, report, migration, cloud storage or deployment change. H10 upload-size cap and PR5 remain deferred.
+
 ### HitterLoop v2 PR3 — evaluation annotation contract
 
 - Added standard JSON Schema v1, shared TypeScript structural validation, relational annotation validation and separate independent source-inventory comparison. All timing uses original presentation-order indices plus exact integer PTS/time base; no frame/fps estimates or decoder/benchmark runner were added.

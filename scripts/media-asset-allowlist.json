@@ -1,0 +1,267 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "18d5f232e7b96b861ee36cba9201555d379477d2",
+  "reviewBasis": "Existing static UI assets; approved fictional design samples (docs/SIMPLIFIED_APP_SPEC.md section 3.0); synthetic example manifests. No media directory or wildcard approvals.",
+  "assets": [
+    {
+      "path": "coach/assets/icons.svg",
+      "sha256": "03511a435f977a30a44b72a14bc784c7443a07e7fac5d2cfb93d5e9802fbf6a8",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "coach/icons/icon-192.svg",
+      "sha256": "ec301000d0e19746533417ad43c8828582385fa0aa934234991838dd58c7578c",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "coach/icons/icon-512.svg",
+      "sha256": "324342562113912ac74b6719700f33dbf3958300b1c591fc37c28a837605d67d",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "coach/illustrations/bat-path.svg",
+      "sha256": "e0c4793c625eb70bbec09d0b850343cabbae7c2beb82235af4dd38e892185e80",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "coach/illustrations/contact-point.svg",
+      "sha256": "29f157d90f085abecbec236fe79f3e38326d343bd87dfce8c1e7e439de1ba28e",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "coach/illustrations/extension.svg",
+      "sha256": "1e7c2a9356fa07923f1b3fb350b36e7df7a9ac3648b4d92e967c604472ebb62d",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "coach/illustrations/follow-through.svg",
+      "sha256": "53e2a5813e164cf8a7166acb6abe0893debf8891f0882df55d903458298d7f59",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "coach/illustrations/generic-swing.svg",
+      "sha256": "b11a2f683b7f6b8f1676cf869a1c93aad68b8eccee219756f8a485c297209879",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "coach/illustrations/hand-path.svg",
+      "sha256": "42ede005605bbf32594e7a47d76288c585b02322752e2666420075e52b5ad75b",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "coach/illustrations/head-eyes.svg",
+      "sha256": "f7d47725dfe986a1134e4de9bc07b84134a57d16cd23d72b0a280bd93cdf9725",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "coach/illustrations/hip-shoulder-separation.svg",
+      "sha256": "3862e026d9025e49872dd48aca434cfba96cb4553f44257a8ddda47197632285",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "coach/illustrations/load.svg",
+      "sha256": "0068be2fbff3ed44fc5779eab55ce5b0a60a54b0115f6658b9529ff69447f867",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "coach/illustrations/stance-setup.svg",
+      "sha256": "1993724fe8e2c07db5ac9891ee4f5ed9edb2e4f5809980b227655033e8fc49f4",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "coach/illustrations/stride.svg",
+      "sha256": "283d5ba1e5027b1b371d3b8643e382b26f07c9ffa8990ec4e8583f2ebbb38b4e",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "coach/illustrations/swing-decisions.svg",
+      "sha256": "590afe01c777dda6cd083c83efe796703d15a8ed70d3b1097f8915cad1a5910e",
+      "reason": "Existing static coach icon or drill illustration"
+    },
+    {
+      "path": "docs/design/simplified-app/1-home.png",
+      "sha256": "31c2b3305e15275acf72aba71fb592565713a4622adb9b8b842f14a345e62555",
+      "reason": "Approved fictional prototype screenshot, SIMPLIFIED_APP_SPEC section 3.0"
+    },
+    {
+      "path": "docs/design/simplified-app/2-record-upload.png",
+      "sha256": "23a7eb4ad6b541414324b979eb7001e88aab3ef4f9af31a28d3d4ec4a82fa19e",
+      "reason": "Approved fictional prototype screenshot, SIMPLIFIED_APP_SPEC section 3.0"
+    },
+    {
+      "path": "docs/design/simplified-app/3-report-full.png",
+      "sha256": "bafba762afb58ff1517fb15f0cb4eeb40d5c19bd0562bc0615fb9da3e17bfd15",
+      "reason": "Approved fictional prototype screenshot, SIMPLIFIED_APP_SPEC section 3.0"
+    },
+    {
+      "path": "docs/design/simplified-app/3-report.png",
+      "sha256": "a41c50163d154744b88e2be8207bc5e9ad74b279a147c12ee2d26838dd05b43f",
+      "reason": "Approved fictional prototype screenshot, SIMPLIFIED_APP_SPEC section 3.0"
+    },
+    {
+      "path": "docs/design/simplified-app/4-report-error.png",
+      "sha256": "581235507f3873077c1b963d0721af1acd3d532f9ee344ef61583b72cc618a22",
+      "reason": "Approved fictional prototype screenshot, SIMPLIFIED_APP_SPEC section 3.0"
+    },
+    {
+      "path": "docs/design/simplified-app/5-progress-full.png",
+      "sha256": "d4171a81ac032d858c4d605d856e3608a392826d82ef197d53712b9e6f60977b",
+      "reason": "Approved fictional prototype screenshot, SIMPLIFIED_APP_SPEC section 3.0"
+    },
+    {
+      "path": "docs/design/simplified-app/5-progress.png",
+      "sha256": "5abaa4bb13418bb63925993f1aa49746f6b9fd989cac322511f9c20a15407cd6",
+      "reason": "Approved fictional prototype screenshot, SIMPLIFIED_APP_SPEC section 3.0"
+    },
+    {
+      "path": "docs/design/simplified-app/6-coach-roster.png",
+      "sha256": "39f5ebb9c37da4f62da931c8c127894e5fdb6e3b3acf099f87c7dba0cfd1e50e",
+      "reason": "Approved fictional prototype screenshot, SIMPLIFIED_APP_SPEC section 3.0"
+    },
+    {
+      "path": "docs/design/simplified-app/7-share-sheet.png",
+      "sha256": "637929fbedae70a906b37c41144affa4d72ea262f3760f66dfeb63a31fa0a541",
+      "reason": "Approved fictional prototype screenshot, SIMPLIFIED_APP_SPEC section 3.0"
+    },
+    {
+      "path": "docs/research/demo-curation.example.json",
+      "sha256": "69d0d70e269c6ad561c3b10bf7dfaf92022f749dbc927d76cb0af140a87e93c0",
+      "reason": "Existing synthetic example manifest"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/drawable-land-hdpi/splash.png",
+      "sha256": "08cc34ad7713fe7ed58bceaa37b2387b670c53cd60264b4bd6442db3098e75dc",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/drawable-land-mdpi/splash.png",
+      "sha256": "5cf98b4451bd99b20df26f9e608a46946118be6b0ae90762f9ca1786a30c76ff",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/drawable-land-xhdpi/splash.png",
+      "sha256": "22f87e1e3bc89aa01a7dbc39c9a4db058cd0bf4ad3fe9f55712bf69eb997f4bf",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/drawable-land-xxhdpi/splash.png",
+      "sha256": "42aa26392546fcdee1b8d3ac6d4b41bfcceb41dc6a4f3a3c30c24a8a8f4db862",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/drawable-land-xxxhdpi/splash.png",
+      "sha256": "60393ce8636fd263e4e1fea3fd4ab2de948c6295e898fda9b50ac4e5283be809",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/drawable-port-hdpi/splash.png",
+      "sha256": "c5015f4ba3628392b538386c5e210f0b94f352a3160adab934fd0311972137ca",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/drawable-port-mdpi/splash.png",
+      "sha256": "07fa579e1c83e04ba7f9cbcbfcf41b68e15fe3638f2c44a04e58b809103e6b69",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/drawable-port-xhdpi/splash.png",
+      "sha256": "b73049cb37fe76d6c11b87a796766bf6af0c85483b31eb6a921657b0d764a4b9",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/drawable-port-xxhdpi/splash.png",
+      "sha256": "0c7f1212f25b7b90e9a6e1d320013e4ff3d3e03e634cbb07b7b7981cac51627f",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/drawable-port-xxxhdpi/splash.png",
+      "sha256": "3db071a03b2f8ffe0dfd4170fc59842d53cd15bba5e88af59401d58efabf7827",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/drawable/splash.png",
+      "sha256": "5cf98b4451bd99b20df26f9e608a46946118be6b0ae90762f9ca1786a30c76ff",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "sha256": "72b71c3581ca3b5a23b1c168d69b9d855b3f184fa079902a01f088eb4f0607d5",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png",
+      "sha256": "32baa10d2632a4417454a579f992bd640e0a3cec79321423559b2c9940de58a9",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+      "sha256": "bfcc1b0fa931b14bb241372c76ab4f04374b67d02363c98d9cb12edfdacdf5f3",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "sha256": "27ed3603010ebc278f64f8645741ab132ff517abb5308eb9df6c8e42a48956b2",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png",
+      "sha256": "58e78a618778926b1f6d9472a6468de878de8530970934e94aab5ba4ba08cc00",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+      "sha256": "0166fc333074c373fbd0ce6b5defd71552166165ac778121ca9c9dff6b83f0fc",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "sha256": "d35dbfff175b83c13ef59cf924abfc810f7b6a158595d7417c5498ea8c7c7ed1",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png",
+      "sha256": "6f88083b8166cc559102f7044688de7525287632ebe09ac45d001ac8bf4b3eae",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+      "sha256": "40911a00922868686854a4804b93fd6e56b503664696de03f450bff690affb6d",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "sha256": "ed346eb1e3f0280f15709393705899b3ff55c20b88f4e0308006b3c33cf5fe14",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png",
+      "sha256": "4a82bc1e9923576275869998925ce0ae021a79aa18b24a0dd87ad6b61ca85053",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+      "sha256": "1ee4cd9ff371dcb2e3938097e434f6fb8731688ed7165e61fc63693ad5b2f455",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "sha256": "87cb2f2ffe992652bb4fa768c73719a37b5852ab17fbf8e170e888f7a42b0761",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
+      "sha256": "bd24fd383253bf8d43f0a81f11c071d76d1d555114376dd647cd9fb38fa0a9da",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "mobile/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "sha256": "ab93096331e7cd8ec379f73f1e9adcaaa9ee1115c9f4ff10411a811fb9700174",
+      "reason": "Existing Android launcher/splash artwork"
+    },
+    {
+      "path": "validation/validation-manifest.example.json",
+      "sha256": "c74433fe001a4844ff526be8505c33de29bfc67d164a1ea43971f437837f4bfd",
+      "reason": "Existing synthetic example manifest"
+    }
+  ]
+}

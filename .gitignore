@@ -4,6 +4,14 @@ videos/*
 !videos/.gitkeep
 frames/*
 !frames/.gitkeep
+# Private evaluation inputs, per-clip results and baseline goldens (S0-12).
+# Case-insensitive spellings also match on case-sensitive filesystems.
+[Ee][Vv][Aa][Ll]-[Dd][Aa][Tt][Aa]/
+[Ee][Vv][Aa][Ll]-[Rr][Ee][Ss][Uu][Ll][Tt][Ss]/
+**/[Gg][Oo][Ll][Dd][Ee][Nn]/
+[Ee][Vv][Aa][Ll]/[Mm][Ee][Dd][Ii][Aa]/
+[Ee][Vv][Aa][Ll]/[Dd][Aa][Tt][Aa]/
+[Ee][Vv][Aa][Ll]/[Rr][Ee][Ss][Uu][Ll][Tt][Ss]/
 validation/*manifest*.json
 !validation/validation-manifest.example.json
 

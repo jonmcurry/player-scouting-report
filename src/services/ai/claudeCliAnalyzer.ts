@@ -30,7 +30,7 @@
  * before trusting its output the way geminiAnalyzer.ts's Gemini call still
  * needs its own first real run too.
  */
-import { spawn } from "node:child_process";
+import childProcess from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { AnalysisInput } from "./analysisContext.js";
@@ -43,6 +43,16 @@ import {
 } from "./swingAnalysisShared.js";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg"]);
+/** The Gemini API and Antigravity confirmations do not cover Claude's account terms. */
+export function requireClaudeDataConfirmation(env: NodeJS.ProcessEnv = process.env): void {
+  if (env.CLAUDE_CLI_DATA_CONFIRMED !== "true") {
+    throw new Error(
+      "Claude CLI child-data processing is disabled. Set CLAUDE_CLI_DATA_CONFIRMED=true only after " +
+      "confirming the logged-in account's data terms are acceptable for this footage.",
+    );
+  }
+}
+
 function getConfiguredClaudeModel(): string {
   const model = process.env.CLAUDE_CLI_MODEL?.trim();
   if (!model) throw new Error("CLAUDE_CLI_MODEL must be explicitly configured when AI_ANALYZER=claude-cli");
@@ -62,8 +72,8 @@ const TIMEOUT_MS = 5 * 60_000;
  * the entire response over that, throwing away a complete, valid JSON body
  * along with a real insight. Now finds the FIRST fenced (or, if unfenced,
  * the first brace-balanced) JSON object anywhere in the text and returns
- * anything after it separately, so the caller can log it instead of losing
- * it - see analyzeSwingViaClaudeCli's use below. */
+ * anything after it separately. Callers must not log that prose: provider
+ * output can contain private observations, names, paths or credentials. */
 export function extractJson(text: string): { json: string; trailingNote: string | null } {
   const trimmed = text.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
@@ -122,35 +132,39 @@ function runClaudeCli(prompt: string, cwd: string, model: string): Promise<Claud
     // context chatter instead of the actual analysis request. Only short,
     // shell-safe flag tokens go in the args array now; the prompt goes to
     // stdin instead, which needs no shell quoting at all.
-    const child = spawn(
+    const child = childProcess.spawn(
       "claude",
       ["-p", "--output-format", "json", "--allowedTools", "Read", "--model", model],
       { cwd, shell: process.platform === "win32" },
     );
     let stdout = "";
-    let stderr = "";
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error(`claude CLI timed out after ${TIMEOUT_MS}ms`));
     }, TIMEOUT_MS);
 
     child.stdout.on("data", (d) => (stdout += d.toString()));
-    child.stderr.on("data", (d) => (stderr += d.toString()));
-    child.on("error", (err) => {
+    child.stderr.resume(); // Drain without retaining or echoing provider diagnostics.
+    child.on("error", () => {
       clearTimeout(timer);
-      reject(new Error(`Failed to spawn claude CLI - is @anthropic-ai/claude-code installed globally? (${err.message})`));
+      reject(new Error("Failed to spawn Claude CLI. Check the local CLI installation and account configuration."));
+    });
+    child.stdin.on("error", () => {
+      clearTimeout(timer);
+      child.kill();
+      reject(new Error("Could not send the analysis request to Claude CLI."));
     });
     child.stdin.end(prompt);
     child.on("close", (code) => {
       clearTimeout(timer);
       if (code !== 0) {
-        reject(new Error(`claude CLI exited ${code}: ${stderr || stdout}`));
+        reject(new Error("Claude CLI did not complete the analysis. Provider diagnostics are suppressed for privacy."));
         return;
       }
       try {
         resolve(JSON.parse(stdout) as ClaudeCliEnvelope);
       } catch {
-        reject(new Error(`claude CLI's --output-format json wasn't valid JSON: ${stdout.slice(0, 500)}`));
+        reject(new Error("Claude CLI returned an invalid JSON envelope. Provider output is suppressed for privacy."));
       }
     });
   });
@@ -170,12 +184,16 @@ export async function analyzeSwingViaClaudeCli(
   // caller that sets it must record its own prompt version.
   opts: { evidenceAddendum?: string } = {},
 ): Promise<SwingAnalysisResult> {
-  const files = fs
-    .readdirSync(framesDir)
+  // First operation: reject before directory inspection, prompt rendering, or spawn.
+  requireClaudeDataConfirmation();
+  let entries: string[];
+  try { entries = fs.readdirSync(framesDir); }
+  catch { throw new Error("Could not read the local analysis frames directory. Check its availability and permissions."); }
+  const files = entries
     .filter((f) => IMAGE_EXTENSIONS.has(path.extname(f).toLowerCase()))
     .sort();
   if (files.length === 0) {
-    throw new Error(`No image files found in ${framesDir}`);
+    throw new Error("No image files found in the local analysis frames directory.");
   }
 
   const repoRoot = process.cwd();
@@ -191,32 +209,39 @@ export async function analyzeSwingViaClaudeCli(
     SWING_ANALYSIS_JSON_SHAPE_INSTRUCTIONS,
   ].join("\n");
 
-  const envelope = await runClaudeCli(prompt, repoRoot, model);
-  if (envelope.is_error || !envelope.result) {
-    throw new Error(`claude CLI reported an error: ${JSON.stringify(envelope).slice(0, 500)}`);
+  let envelope: ClaudeCliEnvelope;
+  try { envelope = await runClaudeCli(prompt, repoRoot, model); }
+  catch {
+    // Includes synchronous spawn failures; never forward argv, cwd, stderr or payloads.
+    throw new Error("Claude CLI analysis failed. Check local CLI availability, account configuration and timeout; provider diagnostics are suppressed for privacy.");
   }
-  if (envelope.permission_denials && envelope.permission_denials.length > 0) {
+  if (!envelope || envelope.is_error || typeof envelope.result !== "string" || !envelope.result) {
+    throw new Error("Claude CLI reported an incomplete or failed analysis. Provider output is suppressed for privacy.");
+  }
+  if (Array.isArray(envelope.permission_denials) && envelope.permission_denials.length > 0) {
     console.warn(
       `[claudeCliAnalyzer] claude CLI hit ${envelope.permission_denials.length} permission denial(s) - ` +
-        `analysis may be based on incomplete tool access: ${JSON.stringify(envelope.permission_denials).slice(0, 300)}`,
+        "analysis may be based on incomplete tool access. Details suppressed for privacy.",
     );
   }
 
   const { json: jsonText, trailingNote } = extractJson(envelope.result);
   if (trailingNote) {
-    console.warn(`[claudeCliAnalyzer] claude added prose alongside the JSON (not lost, just not structured data): ${trailingNote}`);
+    console.warn("[claudeCliAnalyzer] Claude returned extra prose alongside JSON. Prose suppressed for privacy.");
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(jsonText);
   } catch {
-    throw new Error(`claude CLI's response text wasn't valid JSON after extracting it: ${jsonText.slice(0, 500)}`);
+    throw new Error("Claude CLI response text was not valid JSON. Provider output is suppressed for privacy.");
   }
-  return validateSwingAnalysisResult(parsed, {
+  try { return validateSwingAnalysisResult(parsed, {
     source: "claude",
     aiModel: model,
     aiModelVersion: resolvedModelIds(envelope),
     requireSimplifiedReport: true,
     ...validationContext(input),
-  });
+  }); } catch {
+    throw new Error("Claude CLI response failed analysis validation. Provider output is suppressed for privacy.");
+  }
 }

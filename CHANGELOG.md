@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.52.2] - 2026-10-12
+
+### Added
+
+- Git index privacy guard with exact static-asset approvals and a production/evaluation storage isolation check.
+
+### Fixed
+
+- Require explicit Claude CLI data-terms confirmation before sending swing imagery or evidence; suppress private provider diagnostics and frame paths from adapter errors and logs.
+
 ## [0.52.1] - 2026-10-12
 
 ### Added
