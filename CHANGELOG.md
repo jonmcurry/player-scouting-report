@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.52.1] - 2026-10-12
+
+### Added
+
+- Evaluation-only v1 annotation contract, source-PTS and identity validators, reviewer guide, synthetic examples, and automated tests.
+- Pure legacy phase translation that preserves provenance, treats contact as an impact estimate, and keeps a load peak distinct from load onset. No live analysis behavior changes.
+
+## [0.52.0] - 2026-10-11
+
+### Added
+
+- Qualified reviewer allowlist, authenticated drill-review CLI, content-bound approval RPC, and append-only approval audit for public and demo drills.
+- Migration numbering guard and drill curation security tests.
+
+### Fixed
+
+- Renumber the drill candidates migration to `00063`, import all 90 as drafts, and preserve reviewed content on repeat imports. Migration `00064` restricts approval to authenticated reviewers and invalidates approval when content changes.
+- Exclude unapproved assigned drills from legacy family and demo reports.
+- Correct SQL escaping in candidate imports. The earlier 0.51.0 automated approval was not evidence of qualified human review.
+
 ## [0.51.0] - 2026-10-11
 
 ### Added

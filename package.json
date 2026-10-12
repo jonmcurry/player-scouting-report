@@ -1,6 +1,6 @@
 {
   "name": "hitterloop",
-  "version": "0.51.0",
+  "version": "0.52.1",
   "private": true,
   "description": "Node/TypeScript CLI layer for HitterLoop's swing-analysis pipeline: Supabase-backed coach editing, GCS media, Gemini-assisted drafts. Separate from and does not replace the existing Python pose3d pipeline (scripts/pose3d/).",
   "type": "module",
@@ -28,7 +28,9 @@
     "validate:swings": "node --experimental-strip-types scripts/process-validation-batch.ts",
     "provision-coach": "tsx src/cli/provisionCoach.ts",
     "provision-methodology-admin": "tsx src/cli/provisionMethodologyAdmin.ts",
-    "test": "npm run build && node --test dist/**/*.test.js dist/services/analysisDepth/evidence.test.js dist/services/analysisDepth/captureAssessment.test.js dist/services/analysisDepth/attemptModel.test.js dist/services/analysisDepth/fingerprint.test.js dist/services/instruments/envelope.test.js && node --test coach/components/uploadPolicy.test.mjs coach/components/developmentLogic.test.mjs coach/components/pages.test.mjs coach/components/ui.test.mjs coach/components/phase1bScreens.test.mjs coach/components/phase2aScreens.test.mjs coach/components/reviewQueue.test.mjs coach/components/pitchEntry.test.mjs coach/components/comparePairs.test.mjs coach/components/phase2bScreens.test.mjs coach/components/demoBanner.test.mjs coach/components/checklistReview.test.mjs coach/components/playerDevelopmentSummary.test.mjs coach/components/subjectZoom.test.mjs coach/components/clipReviewState.test.mjs coach/components/familyPage.test.mjs coach/components/guardianAdmin.test.mjs coach/components/captureGuide.test.mjs coach/components/coachAnalysisModel.test.mjs coach/components/challengeModel.test.mjs coach/components/performanceLabModel.test.mjs coach/components/rosterImport.test.mjs scripts/brand-consistency.test.mjs",
+    "test": "npm run test:baseline && npm run test:migrations && npm run test:drills && npm run test:eval-annotations && npm run build && node --test dist/**/*.test.js dist/services/analysisDepth/evidence.test.js dist/services/analysisDepth/captureAssessment.test.js dist/services/analysisDepth/attemptModel.test.js dist/services/analysisDepth/fingerprint.test.js dist/services/instruments/envelope.test.js && node --test coach/components/uploadPolicy.test.mjs coach/components/developmentLogic.test.mjs coach/components/pages.test.mjs coach/components/ui.test.mjs coach/components/phase1bScreens.test.mjs coach/components/phase2aScreens.test.mjs coach/components/reviewQueue.test.mjs coach/components/pitchEntry.test.mjs coach/components/comparePairs.test.mjs coach/components/phase2bScreens.test.mjs coach/components/demoBanner.test.mjs coach/components/checklistReview.test.mjs coach/components/playerDevelopmentSummary.test.mjs coach/components/subjectZoom.test.mjs coach/components/clipReviewState.test.mjs coach/components/familyPage.test.mjs coach/components/guardianAdmin.test.mjs coach/components/captureGuide.test.mjs coach/components/coachAnalysisModel.test.mjs coach/components/challengeModel.test.mjs coach/components/performanceLabModel.test.mjs coach/components/rosterImport.test.mjs scripts/brand-consistency.test.mjs",
+    "check:baseline": "node scripts/check-baseline-tree.mjs",
+    "test:baseline": "npm run check:baseline && node --test scripts/check-baseline-tree.test.mjs",
     "test:instruments": "node --import tsx --test src/services/instruments/envelope.test.ts coach/components/performanceLabModel.test.mjs",
     "test:guardians": "node --import tsx --test supabase/tests/guardians.test.ts",
     "test:analysis-evidence": "node --import tsx --test supabase/tests/analysisEvidence.test.ts",
@@ -40,7 +42,13 @@
     "test:contrast": "node scripts/verify-ux-contrast.mjs",
     "coach:bump-cache": "node scripts/bump-coach-cache.mjs",
     "db:migrate": "npx supabase db push",
-    "db:reset": "npx supabase db reset"
+    "db:reset": "npx supabase db reset",
+    "check:migrations": "node scripts/check-migration-versions.mjs",
+    "test:migrations": "npm run check:migrations && node --test scripts/check-migration-versions.test.mjs",
+    "test:drills": "node --import tsx --test src/cli/importCuratedDrills.test.ts src/services/development/drillCandidateParser.test.ts src/services/development/drillSelection.test.ts supabase/tests/drillReport.test.ts",
+    "test:drill-curation:sql": "node --import tsx --test supabase/tests/drillCuration.test.ts",
+    "review-drill": "tsx src/cli/reviewDrill.ts",
+    "test:eval-annotations": "node --import tsx --test src/eval/schema/annotation.test.ts src/eval/schema/legacyMapping.test.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^8.2.0",
@@ -56,6 +64,7 @@
     "@google/design.md": "^0.4.0",
     "@types/fluent-ffmpeg": "^2.1.28",
     "@types/node": "^22.10.0",
+    "ajv": "8.17.1",
     "tsx": "^4.23.1",
     "typescript": "^5.7.0"
   },

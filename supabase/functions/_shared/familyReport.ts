@@ -93,7 +93,7 @@ async function buildPlayerReport(supabase: Db, playerId: string, publicLink: boo
   const ids = (priorities ?? []).map((p: { id: string }) => p.id);
   const [{ data: drills }, { data: observations }] = ids.length
     ? await Promise.all([
-        supabase.from("player_priority_drills").select("player_priority_id, active, coach_note, assigned_at, drill_library(name, purpose, instructions, equipment)").in("player_priority_id", ids).order("assigned_at", { ascending: false }),
+        supabase.from("player_priority_drills").select("player_priority_id, active, coach_note, assigned_at, drill_library(name, purpose, instructions, equipment, curation_status)").in("player_priority_id", ids).order("assigned_at", { ascending: false }),
         supabase.from("player_priority_observations").select("player_priority_id, status, coach_note, observed_at, video_clip_id, phase").in("player_priority_id", ids),
       ])
     : [{ data: [] }, { data: [] }];

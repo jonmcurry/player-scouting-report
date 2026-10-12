@@ -103,8 +103,8 @@ test("player report shaping exposes only coach-confirmed content and no internal
       { id: "p3", title: "Fixed", description: "", status: "resolved", priority_order: 0, first_identified_at: "2026-07-01", resolved_at: "2026-08-01" },
     ],
     drills: [
-      { player_priority_id: "p1", active: true, coach_note: "slow", drill_library: { name: "Split stance", purpose: "p", instructions: "i", equipment: "tee" } },
-      { player_priority_id: "p1", active: false, coach_note: "", drill_library: { name: "Retired drill", purpose: "", instructions: "", equipment: "" } },
+      { player_priority_id: "p1", active: true, coach_note: "slow", drill_library: { curation_status: "approved", name: "Split stance", purpose: "p", instructions: "i", equipment: "tee" } },
+      { player_priority_id: "p1", active: false, coach_note: "", drill_library: { curation_status: "approved", name: "Retired drill", purpose: "", instructions: "", equipment: "" } },
     ],
     observations: [
       { player_priority_id: "p1", status: "improving", coach_note: "Much better", observed_at: "2026-09-19T10:00:00Z", video_clip_id: "clip-1", phase: "contact" },
@@ -140,7 +140,7 @@ test("public report: active outranks monitoring, drills and progress are determi
     shapePlayerReport: (i: unknown) => any;
   };
   const pri = (id: string, status: string, order: number) => ({ id, title: id, description: "", status, priority_order: order, first_identified_at: "2026-09-01", resolved_at: null });
-  const drill = (name: string, assigned_at: string | null) => ({ player_priority_id: "act", active: true, coach_note: "", assigned_at, drill_library: { name, purpose: "", instructions: "", equipment: "" } });
+  const drill = (name: string, assigned_at: string | null) => ({ player_priority_id: "act", active: true, coach_note: "", assigned_at, drill_library: { curation_status: "approved", name, purpose: "", instructions: "", equipment: "" } });
   const input = {
     player: { name: "P", jersey_number: "1", teamName: "T" },
     scores: [{ score: 3, reviewed_by: null, checkpoints: { label: "Draft only" } }],

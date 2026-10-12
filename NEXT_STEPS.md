@@ -7,6 +7,28 @@ entries below retain the evidence and history behind these tasks. Jon's manual v
 the earlier Android build passed. The simplified public demo has also passed a local rendered
 mobile-width review of Home and an at-bat report; authenticated family/device review remains open.
 
+### HitterLoop v2 PR3 — evaluation annotation contract
+
+- Added standard JSON Schema v1, shared TypeScript structural validation, relational annotation validation and separate independent source-inventory comparison. All timing uses original presentation-order indices plus exact integer PTS/time base; no frame/fps estimates or decoder/benchmark runner were added.
+- Core event vocabulary separates impact estimates from confirmed contact. Pure legacy translation retains original phase/source-field/time provenance, keeps load peaks auxiliary and leaves unsupported events `not_produced`. Production phase terminology and algorithms are untouched.
+- Ten synthetic-only fixtures and the reviewer guide cover batter identity, COCO-17, bat endpoints, camera conditions, missing/ambiguous observations, outcomes and independent review/adjudication. Added `contact_confirmed_unknown_direction` to avoid inventing fair/foul classification when contact is visible; the optional vocabulary clarification remains open to user steering.
+- Validation: 82 focused annotation/legacy tests and all 387 npm test executions pass. Both Gemini reviews completed without blockers. Four initial non-blocking findings and one review-attribution question were addressed and verified on follow-up; remaining cosmetic and vocabulary notes are reconciled in the guide. Full conformance requires portable structure plus relational rules; real media verification additionally needs an independently decoded/hashed inventory, not the annotation's own declarations.
+- App patch metadata is 0.52.1 / Android 73; no app/engine behavior change. Pre-existing PR1/PR2 and QA-wrapper edits remain preserved, unstaged and uncommitted. No real footage, model installation, migrations, production records, deployment, or PR4 work.
+
+### HitterLoop v2 PR2 — migration and drill-curation integrity
+
+- Implemented S0-02/S0-03 only: unique migration guard; progress remains 00062; 90 drill candidates become draft-only 00063; 00064 adds qualified reviewers, authenticated content-bound decisions, append-only audit and public/demo enforcement. Imports preserve reviewed content. Legacy reports now exclude unapproved assignments without rewriting records.
+- Existing local Supabase remains at 00035, inspected read-only. Corrected 00001–00064 applied to a disposable database. The original duplicate migration fails SQL escaping; a valid minimal duplicate pair proves CLI 2.117.0 attempts both and then fails migration-history uniqueness.
+- Validation: npm workflow 305 passing test executions; 19 real SQL security tests; signed-JWT/import API integration; six existing development-flow tests; existing simplified SQL smoke. Gemini/AGY review completed with zero blocking findings; three non-blocking notes and one product question were reconciled against the explicit approval rules and fail-closed tests. Runbook and file inventory: `docs/architecture/DRILL_CURATION.md`.
+- Version 0.52.0 / Android code 72; no engine, models, prompts, evidence gates, historical report/focus records, existing databases, or production data changed. No deployment, commit, staging or push. PR1 remains separate uncommitted work; PR3 has not begun.
+
+### HitterLoop v2 PR1 — original engine preservation
+
+- Local annotated `engine-baseline-1.0.0` preserves `f79b09e63092e87efd1250c3b263d29086d81a79`; the pose3d tree is `766f4fbc64620d428da428e59b144554ca2f2a7b`. `docs/architecture/ENGINE_BASELINE.md` records the freeze, reproduction procedure, independent version dimensions, and empty exact-hash exception registry.
+- `npm test` now checks baseline source preservation and adversarial guard tests. No engine, model, provider, migration, or application behavior was changed. Environment capture, private goldens, and instrumentation remain separate authorized work packages.
+- Validation: 288 tests pass (12 new guard tests and 276 existing tests); original application and pose3d source have no diff from the pinned commit. The scoped Gemini wrapper completed with no blocking findings. Empty-directory handling and tag availability are intentional; the unused ignored `scripts/pose3d/models/` path remains guarded because the engine actually reads `scripts/models/`.
+- Tag publication and merging this PR require separate authorization. The supplied implementation plan remains an unrelated untracked input; PR2 and later work have not begun.
+
 ### 2026-10-11 — automatic local upload processing
 
 - [x] Keep the upload worker standing with the rest of the local development stack via

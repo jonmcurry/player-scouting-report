@@ -21,7 +21,7 @@ export interface RawObservation {
 }
 export interface RawDrillAssignment {
   player_priority_id: string; active: boolean; coach_note: string | null; assigned_at?: string | null;
-  drill_library: { name: string; purpose: string | null; instructions: string | null; equipment: string | null } | null;
+  drill_library: { name: string; purpose: string | null; instructions: string | null; equipment: string | null; curation_status?: string | null } | null;
 }
 export interface RawScore { score: number | null; reviewed_by: string | null; review_status?: string | null; checkpoints: { label: string; sort_order?: number } }
 
@@ -72,7 +72,7 @@ export function shapePlayerReport(input: {
         statusLabel: p.status === "resolved" ? STATUS_LABELS.resolved : (STATUS_LABELS[obs[0]?.status ?? ""] ?? "Working on it"),
         nextCheck: nextCheckLabel(p),
         drills: drills
-          .filter((d) => d.player_priority_id === p.id && d.active && d.drill_library)
+          .filter((d) => d.player_priority_id === p.id && d.active && d.drill_library?.curation_status === "approved")
           // Newest assignment first, so the report's lead drill never depends on row order.
           .sort((a, b) => String(b.assigned_at ?? "").localeCompare(String(a.assigned_at ?? "")) || a.drill_library!.name.localeCompare(b.drill_library!.name))
           .map((d) => ({

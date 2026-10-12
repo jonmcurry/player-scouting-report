@@ -1,0 +1,618 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:hitterloop:eval:annotation:1.0.0",
+  "title": "HitterLoop evaluation annotation v1",
+  "description": "Tool-independent annotation structure. Full conformance also requires relational checks and independent source-media verification documented in ANNOTATION_GUIDE.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "eval_clip_id",
+    "sport",
+    "data_origin",
+    "coordinate_space",
+    "source",
+    "camera",
+    "athletes",
+    "tracks",
+    "frames",
+    "swings",
+    "annotators",
+    "annotation"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "eval_clip_id": {"type": "string", "pattern": "^eval_[a-f0-9]{16}$"},
+    "sport": {"enum": ["baseball", "softball", "unknown"]},
+    "data_origin": {"enum": ["synthetic", "private_consented"]},
+    "coordinate_space": {"const": "source_raster_normalized"},
+    "source": {"$ref": "#/definitions/source"},
+    "camera": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["viewpoint", "capture_profile", "obstructions"],
+      "properties": {
+        "viewpoint": {"enum": ["open_side", "closed_side", "behind_plate", "pitcher_view", "oblique", "unknown"]},
+        "capture_profile": {"enum": ["game_backstop", "open_side_practice", "unknown_imported", "other"]},
+        "obstructions": {
+          "type": "array",
+          "items": {"enum": ["none", "net", "fence", "person", "equipment", "other", "unknown"]},
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "allOf": [{"if": {"properties": {"obstructions": {"contains": {"const": "none"}}}}, "then": {"properties": {"obstructions": {"maxItems": 1}}}}]
+    },
+    "athletes": {"type": "array", "items": {"type": "string", "pattern": "^ath_[a-f0-9]{16}$"}, "minItems": 0, "uniqueItems": true},
+    "tracks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["track_id", "athlete_id"],
+        "properties": {
+          "track_id": {"type": "string", "pattern": "^trk_[a-f0-9]{16}$"},
+          "athlete_id": {"anyOf": [{"type": "string", "pattern": "^ath_[a-f0-9]{16}$"}, {"type": "null"}]}
+        }
+      },
+      "minItems": 0
+    },
+    "frames": {"type": "array", "items": {"$ref": "#/definitions/frame_annotation"}, "minItems": 0},
+    "swings": {"type": "array", "items": {"$ref": "#/definitions/swing"}, "minItems": 1},
+    "annotators": {"type": "array", "items": {"$ref": "#/definitions/annotator"}, "minItems": 1},
+    "annotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["annotator_id", "revision", "review"],
+      "properties": {
+        "annotator_id": {"type": "string", "pattern": "^ann_[a-f0-9]{16}$"},
+        "revision": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "review": {"$ref": "#/definitions/review"}
+      }
+    }
+  },
+  "definitions": {
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frame_index", "pts"],
+      "properties": {
+        "frame_index": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "pts": {"type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991}
+      }
+    },
+    "interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["earliest", "latest"],
+      "properties": {"earliest": {"$ref": "#/definitions/frame"}, "latest": {"$ref": "#/definitions/frame"}}
+    },
+    "point": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 1}, "minItems": 2, "maxItems": 2},
+    "box": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 1}, "minItems": 4, "maxItems": 4},
+    "landmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "coordinates", "uncertainty_radius", "reason", "visibility"],
+      "properties": {
+        "status": {"enum": ["observed", "ambiguous", "not_visible", "not_applicable"]},
+        "coordinates": {"anyOf": [{"$ref": "#/definitions/point"}, {"type": "null"}]},
+        "uncertainty_radius": {"anyOf": [{"type": "number", "minimum": 0, "maximum": 1}, {"type": "null"}]},
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "occluded",
+                "out_of_view",
+                "motion_blur",
+                "boundary_unclear",
+                "identity_uncertain",
+                "not_in_clip",
+                "no_swing",
+                "no_stride",
+                "not_reached",
+                "no_contact",
+                "not_reviewed",
+                "not_applicable"
+              ]
+            },
+            {"type": "null"}
+          ]
+        },
+        "visibility": {"enum": [0, 1, 2]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "observed"}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "coordinates": {"$ref": "#/definitions/point"},
+              "uncertainty_radius": {"type": "number", "minimum": 0, "maximum": 1},
+              "reason": {"type": "null"},
+              "visibility": {"enum": [2]}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "ambiguous"}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "coordinates": {"$ref": "#/definitions/point"},
+              "uncertainty_radius": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+              "reason": {"enum": ["occluded", "motion_blur", "boundary_unclear", "identity_uncertain"]},
+              "visibility": {"enum": [1, 2]}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "not_visible"}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "coordinates": {"type": "null"},
+              "uncertainty_radius": {"type": "null"},
+              "reason": {"enum": ["occluded", "out_of_view", "motion_blur", "not_in_clip"]},
+              "visibility": {"enum": [0]}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "not_applicable"}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "coordinates": {"type": "null"},
+              "uncertainty_radius": {"type": "null"},
+              "reason": {"const": "not_applicable"},
+              "visibility": {"enum": [0]}
+            }
+          }
+        }
+      ]
+    },
+    "bounding_box": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "coordinates", "uncertainty_radius", "reason"],
+      "properties": {
+        "status": {"enum": ["observed", "ambiguous", "not_visible", "not_applicable"]},
+        "coordinates": {"anyOf": [{"$ref": "#/definitions/box"}, {"type": "null"}]},
+        "uncertainty_radius": {"anyOf": [{"type": "number", "minimum": 0, "maximum": 1}, {"type": "null"}]},
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "occluded",
+                "out_of_view",
+                "motion_blur",
+                "boundary_unclear",
+                "identity_uncertain",
+                "not_in_clip",
+                "no_swing",
+                "no_stride",
+                "not_reached",
+                "no_contact",
+                "not_reviewed",
+                "not_applicable"
+              ]
+            },
+            {"type": "null"}
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "observed"}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "coordinates": {"$ref": "#/definitions/box"},
+              "uncertainty_radius": {"type": "number", "minimum": 0, "maximum": 1},
+              "reason": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "ambiguous"}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "coordinates": {"$ref": "#/definitions/box"},
+              "uncertainty_radius": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+              "reason": {"enum": ["occluded", "motion_blur", "boundary_unclear", "identity_uncertain"]}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "not_visible"}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "coordinates": {"type": "null"},
+              "uncertainty_radius": {"type": "null"},
+              "reason": {"enum": ["occluded", "out_of_view", "motion_blur", "not_in_clip"]}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "not_applicable"}}, "required": ["status"]},
+          "then": {"properties": {"coordinates": {"type": "null"}, "uncertainty_radius": {"type": "null"}, "reason": {"const": "not_applicable"}}}
+        }
+      ]
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "frame", "uncertainty", "reason"],
+      "properties": {
+        "status": {"enum": ["observed", "ambiguous", "not_visible", "not_applicable", "not_annotated"]},
+        "frame": {"anyOf": [{"$ref": "#/definitions/frame"}, {"type": "null"}]},
+        "uncertainty": {"anyOf": [{"$ref": "#/definitions/interval"}, {"type": "null"}]},
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "occluded",
+                "out_of_view",
+                "motion_blur",
+                "boundary_unclear",
+                "identity_uncertain",
+                "not_in_clip",
+                "no_swing",
+                "no_stride",
+                "not_reached",
+                "no_contact",
+                "not_reviewed",
+                "not_applicable",
+                "no_distinct_action"
+              ]
+            },
+            {"type": "null"}
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "observed"}}, "required": ["status"]},
+          "then": {
+            "properties": {"frame": {"$ref": "#/definitions/frame"}, "uncertainty": {"$ref": "#/definitions/interval"}, "reason": {"type": "null"}}
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "ambiguous"}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "frame": {"type": "null"},
+              "uncertainty": {"$ref": "#/definitions/interval"},
+              "reason": {"enum": ["boundary_unclear", "motion_blur", "occluded", "identity_uncertain"]}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "not_visible"}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "frame": {"type": "null"},
+              "uncertainty": {"type": "null"},
+              "reason": {"enum": ["occluded", "out_of_view", "motion_blur", "not_in_clip"]}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "not_applicable"}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "frame": {"type": "null"},
+              "uncertainty": {"type": "null"},
+              "reason": {"enum": ["no_swing", "no_stride", "not_reached", "no_contact", "no_distinct_action"]}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "not_annotated"}}, "required": ["status"]},
+          "then": {"properties": {"frame": {"type": "null"}, "uncertainty": {"type": "null"}, "reason": {"const": "not_reviewed"}}}
+        }
+      ]
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["track_id", "bounding_box", "keypoints", "bat", "motion_blur", "occlusion"],
+      "properties": {
+        "track_id": {"type": "string", "pattern": "^trk_[a-f0-9]{16}$"},
+        "bounding_box": {"$ref": "#/definitions/bounding_box"},
+        "keypoints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "nose",
+            "left_eye",
+            "right_eye",
+            "left_ear",
+            "right_ear",
+            "left_shoulder",
+            "right_shoulder",
+            "left_elbow",
+            "right_elbow",
+            "left_wrist",
+            "right_wrist",
+            "left_hip",
+            "right_hip",
+            "left_knee",
+            "right_knee",
+            "left_ankle",
+            "right_ankle"
+          ],
+          "properties": {
+            "nose": {"$ref": "#/definitions/landmark"},
+            "left_eye": {"$ref": "#/definitions/landmark"},
+            "right_eye": {"$ref": "#/definitions/landmark"},
+            "left_ear": {"$ref": "#/definitions/landmark"},
+            "right_ear": {"$ref": "#/definitions/landmark"},
+            "left_shoulder": {"$ref": "#/definitions/landmark"},
+            "right_shoulder": {"$ref": "#/definitions/landmark"},
+            "left_elbow": {"$ref": "#/definitions/landmark"},
+            "right_elbow": {"$ref": "#/definitions/landmark"},
+            "left_wrist": {"$ref": "#/definitions/landmark"},
+            "right_wrist": {"$ref": "#/definitions/landmark"},
+            "left_hip": {"$ref": "#/definitions/landmark"},
+            "right_hip": {"$ref": "#/definitions/landmark"},
+            "left_knee": {"$ref": "#/definitions/landmark"},
+            "right_knee": {"$ref": "#/definitions/landmark"},
+            "left_ankle": {"$ref": "#/definitions/landmark"},
+            "right_ankle": {"$ref": "#/definitions/landmark"}
+          }
+        },
+        "bat": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["knob", "barrel_end"],
+          "properties": {"knob": {"$ref": "#/definitions/landmark"}, "barrel_end": {"$ref": "#/definitions/landmark"}}
+        },
+        "motion_blur": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["body", "bat"],
+          "properties": {"body": {"enum": ["none", "mild", "severe", "unknown"]}, "bat": {"enum": ["none", "mild", "severe", "unknown"]}}
+        },
+        "occlusion": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["body", "bat"],
+          "properties": {"body": {"enum": ["none", "partial", "full", "unknown"]}, "bat": {"enum": ["none", "partial", "full", "unknown"]}}
+        }
+      }
+    },
+    "frame_annotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frame", "subjects"],
+      "properties": {"frame": {"$ref": "#/definitions/frame"}, "subjects": {"type": "array", "items": {"$ref": "#/definitions/subject"}, "minItems": 1}}
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha256",
+        "video_stream_index",
+        "width",
+        "height",
+        "rotation_degrees",
+        "mirrored",
+        "time_base",
+        "frame_count",
+        "presentation_timestamps"
+      ],
+      "properties": {
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "video_stream_index": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "width": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "height": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "rotation_degrees": {"enum": [0, 90, 180, 270]},
+        "mirrored": {"enum": [true, false, "unknown"]},
+        "time_base": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["numerator", "denominator"],
+          "properties": {
+            "numerator": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+            "denominator": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}
+          }
+        },
+        "frame_count": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "presentation_timestamps": {"type": "array", "items": {"type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991}, "minItems": 1}
+      }
+    },
+    "swing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "swing_id",
+        "athlete_id",
+        "batter_identity_status",
+        "batter_track_id",
+        "candidate_track_ids",
+        "window",
+        "intent",
+        "outcome",
+        "outcome_evidence",
+        "batting_side_observed",
+        "front_leg",
+        "hitting_zone",
+        "events"
+      ],
+      "properties": {
+        "swing_id": {"type": "string", "pattern": "^swg_[a-f0-9]{16}$"},
+        "athlete_id": {"anyOf": [{"type": "string", "pattern": "^ath_[a-f0-9]{16}$"}, {"type": "null"}]},
+        "batter_identity_status": {"enum": ["confirmed", "ambiguous", "not_visible"]},
+        "batter_track_id": {"anyOf": [{"type": "string", "pattern": "^trk_[a-f0-9]{16}$"}, {"type": "null"}]},
+        "candidate_track_ids": {"type": "array", "items": {"type": "string", "pattern": "^trk_[a-f0-9]{16}$"}, "minItems": 0, "uniqueItems": true},
+        "window": {"$ref": "#/definitions/interval"},
+        "intent": {"enum": ["conventional_full", "slap", "power_slap", "bunt", "drag_bunt", "checked_protective", "take", "unknown"]},
+        "outcome": {
+          "enum": [
+            "contact_confirmed_fair",
+            "contact_confirmed_foul",
+            "contact_confirmed_unknown_direction",
+            "contact_unconfirmed",
+            "swing_miss",
+            "checked_swing",
+            "no_swing_take",
+            "unknown"
+          ]
+        },
+        "outcome_evidence": {
+          "type": "array",
+          "items": {"enum": ["ball_visible_at_bat", "ball_deflection", "audio_crack", "fielder_reaction", "none"]},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "batting_side_observed": {"enum": ["L", "R", "unknown"]},
+        "front_leg": {"enum": ["left", "right", "unknown"]},
+        "hitting_zone": {"enum": ["reached", "not_reached", "unknown"]},
+        "events": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["stance_set", "load_start", "stride_foot_lift", "foot_plant", "swing_launch", "impact_estimate", "contact_confirmed", "finish"],
+          "properties": {
+            "stance_set": {"$ref": "#/definitions/event"},
+            "load_start": {"$ref": "#/definitions/event"},
+            "stride_foot_lift": {"$ref": "#/definitions/event"},
+            "foot_plant": {"$ref": "#/definitions/event"},
+            "swing_launch": {"$ref": "#/definitions/event"},
+            "impact_estimate": {"$ref": "#/definitions/event"},
+            "contact_confirmed": {"$ref": "#/definitions/event"},
+            "finish": {"$ref": "#/definitions/event"}
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"outcome": {"const": "no_swing_take"}}, "required": ["outcome"]},
+          "then": {
+            "properties": {
+              "intent": {"const": "take"},
+              "hitting_zone": {"const": "not_reached"},
+              "events": {
+                "properties": {
+                  "load_start": {"properties": {"status": {"const": "not_applicable"}, "reason": {"const": "no_swing"}}},
+                  "stride_foot_lift": {"properties": {"status": {"const": "not_applicable"}, "reason": {"const": "no_swing"}}},
+                  "foot_plant": {"properties": {"status": {"const": "not_applicable"}, "reason": {"const": "no_swing"}}},
+                  "swing_launch": {"properties": {"status": {"const": "not_applicable"}, "reason": {"const": "no_swing"}}},
+                  "impact_estimate": {"properties": {"status": {"const": "not_applicable"}, "reason": {"const": "no_swing"}}},
+                  "contact_confirmed": {"properties": {"status": {"const": "not_applicable"}, "reason": {"const": "no_swing"}}},
+                  "finish": {"properties": {"status": {"const": "not_applicable"}, "reason": {"const": "no_swing"}}}
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {"properties": {"outcome": {"enum": ["contact_confirmed_fair", "contact_confirmed_foul", "contact_confirmed_unknown_direction"]}}},
+          "then": {
+            "properties": {
+              "hitting_zone": {"const": "reached"},
+              "outcome_evidence": {"contains": {"enum": ["ball_visible_at_bat", "ball_deflection"]}},
+              "events": {"properties": {"contact_confirmed": {"properties": {"status": {"enum": ["observed", "ambiguous"]}}}}}
+            }
+          },
+          "else": {
+            "properties": {
+              "events": {
+                "properties": {"contact_confirmed": {"properties": {"status": {"enum": ["not_visible", "not_applicable", "not_annotated"]}}}}
+              }
+            }
+          }
+        },
+        {
+          "if": {"properties": {"outcome_evidence": {"contains": {"const": "none"}}}},
+          "then": {"properties": {"outcome_evidence": {"maxItems": 1}}}
+        },
+        {
+          "if": {"properties": {"outcome_evidence": {"contains": {"enum": ["ball_visible_at_bat", "ball_deflection"]}}}},
+          "then": {"properties": {"outcome": {"enum": ["contact_confirmed_fair", "contact_confirmed_foul", "contact_confirmed_unknown_direction"]}}}
+        },
+        {
+          "if": {"properties": {"hitting_zone": {"const": "not_reached"}}, "required": ["hitting_zone"]},
+          "then": {
+            "properties": {"events": {"properties": {"impact_estimate": {"properties": {"status": {"const": "not_applicable"}}}}}},
+            "allOf": [
+              {
+                "if": {"properties": {"outcome": {"const": "no_swing_take"}}},
+                "then": {"properties": {"events": {"properties": {"impact_estimate": {"properties": {"reason": {"const": "no_swing"}}}}}}},
+                "else": {"properties": {"events": {"properties": {"impact_estimate": {"properties": {"reason": {"const": "not_reached"}}}}}}}
+              }
+            ]
+          }
+        },
+        {
+          "if": {"properties": {"hitting_zone": {"const": "reached"}}, "required": ["hitting_zone"]},
+          "then": {
+            "properties": {
+              "events": {
+                "properties": {"impact_estimate": {"properties": {"status": {"enum": ["observed", "ambiguous", "not_visible", "not_annotated"]}}}}
+              }
+            }
+          }
+        },
+        {
+          "if": {"properties": {"batter_identity_status": {"const": "confirmed"}}, "required": ["batter_identity_status"]},
+          "then": {
+            "properties": {
+              "athlete_id": {"type": "string", "pattern": "^ath_[a-f0-9]{16}$"},
+              "batter_track_id": {"type": "string", "pattern": "^trk_[a-f0-9]{16}$"},
+              "candidate_track_ids": {"maxItems": 0}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"batter_identity_status": {"const": "ambiguous"}}, "required": ["batter_identity_status"]},
+          "then": {"properties": {"batter_track_id": {"type": "null"}, "candidate_track_ids": {"minItems": 1}}}
+        },
+        {
+          "if": {"properties": {"batter_identity_status": {"const": "not_visible"}}, "required": ["batter_identity_status"]},
+          "then": {"properties": {"batter_track_id": {"type": "null"}, "candidate_track_ids": {"maxItems": 0}}}
+        }
+      ]
+    },
+    "annotator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["annotator_id", "role", "qualification"],
+      "properties": {
+        "annotator_id": {"type": "string", "pattern": "^ann_[a-f0-9]{16}$"},
+        "role": {"enum": ["primary", "reviewer", "adjudicator"]},
+        "qualification": {"enum": ["trained_annotator", "baseball_coach", "softball_coach", "pose_specialist"]}
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reviewer_ids", "adjudicator_id", "disagreement"],
+      "properties": {
+        "status": {"enum": ["draft", "reviewed", "adjudicated"]},
+        "reviewer_ids": {"type": "array", "items": {"type": "string", "pattern": "^ann_[a-f0-9]{16}$"}, "minItems": 0, "uniqueItems": true},
+        "adjudicator_id": {"anyOf": [{"type": "string", "pattern": "^ann_[a-f0-9]{16}$"}, {"type": "null"}]},
+        "disagreement": {"enum": ["none", "unresolved", "resolved"]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "draft"}}, "required": ["status"]},
+          "then": {"properties": {"adjudicator_id": {"type": "null"}, "disagreement": {"enum": ["none", "unresolved"]}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "reviewed"}}, "required": ["status"]},
+          "then": {"properties": {"reviewer_ids": {"minItems": 1}, "adjudicator_id": {"type": "null"}, "disagreement": {"const": "none"}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "adjudicated"}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "reviewer_ids": {"minItems": 1},
+              "adjudicator_id": {"type": "string", "pattern": "^ann_[a-f0-9]{16}$"},
+              "disagreement": {"const": "resolved"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"disagreement": {"const": "unresolved"}}},
+          "then": {"properties": {"status": {"const": "draft"}, "reviewer_ids": {"minItems": 1}}}
+        }
+      ]
+    }
+  }
+}

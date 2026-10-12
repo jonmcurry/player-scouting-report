@@ -1,0 +1,473 @@
+{
+  "schema_version": "1.0.0",
+  "eval_clip_id": "eval_0000000000000002",
+  "sport": "baseball",
+  "data_origin": "synthetic",
+  "coordinate_space": "source_raster_normalized",
+  "source": {
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "video_stream_index": 0,
+    "width": 1280,
+    "height": 720,
+    "rotation_degrees": 0,
+    "mirrored": false,
+    "time_base": {
+      "numerator": 1,
+      "denominator": 1000
+    },
+    "frame_count": 12,
+    "presentation_timestamps": [
+      9000,
+      9030,
+      9060,
+      9090,
+      9120,
+      9150,
+      9180,
+      9210,
+      9240,
+      9270,
+      9300,
+      9330
+    ]
+  },
+  "camera": {
+    "viewpoint": "open_side",
+    "capture_profile": "open_side_practice",
+    "obstructions": [
+      "none"
+    ]
+  },
+  "athletes": [
+    "ath_0000000000000001"
+  ],
+  "tracks": [
+    {
+      "track_id": "trk_0000000000000001",
+      "athlete_id": "ath_0000000000000001"
+    }
+  ],
+  "frames": [
+    {
+      "frame": {
+        "frame_index": 6,
+        "pts": 9180
+      },
+      "subjects": [
+        {
+          "track_id": "trk_0000000000000001",
+          "bounding_box": {
+            "status": "observed",
+            "coordinates": [
+              0.2,
+              0.1,
+              0.9,
+              0.98
+            ],
+            "uncertainty_radius": 0.01,
+            "reason": null
+          },
+          "keypoints": {
+            "nose": {
+              "status": "observed",
+              "coordinates": [
+                0.5,
+                0.2
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "left_eye": {
+              "status": "observed",
+              "coordinates": [
+                0.52,
+                0.18
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "right_eye": {
+              "status": "observed",
+              "coordinates": [
+                0.48,
+                0.18
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "left_ear": {
+              "status": "observed",
+              "coordinates": [
+                0.55,
+                0.2
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "right_ear": {
+              "status": "observed",
+              "coordinates": [
+                0.44999999999999996,
+                0.2
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "left_shoulder": {
+              "status": "observed",
+              "coordinates": [
+                0.6,
+                0.3
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "right_shoulder": {
+              "status": "observed",
+              "coordinates": [
+                0.4,
+                0.3
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "left_elbow": {
+              "status": "observed",
+              "coordinates": [
+                0.65,
+                0.45
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "right_elbow": {
+              "status": "observed",
+              "coordinates": [
+                0.35,
+                0.45
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "left_wrist": {
+              "status": "observed",
+              "coordinates": [
+                0.44999999999999996,
+                0.5
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "right_wrist": {
+              "status": "observed",
+              "coordinates": [
+                0.4,
+                0.5
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "left_hip": {
+              "status": "observed",
+              "coordinates": [
+                0.5800000000000001,
+                0.55
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "right_hip": {
+              "status": "observed",
+              "coordinates": [
+                0.42000000000000004,
+                0.55
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "left_knee": {
+              "status": "observed",
+              "coordinates": [
+                0.6,
+                0.7
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "right_knee": {
+              "status": "observed",
+              "coordinates": [
+                0.4,
+                0.7
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "left_ankle": {
+              "status": "observed",
+              "coordinates": [
+                0.62,
+                0.9
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "right_ankle": {
+              "status": "observed",
+              "coordinates": [
+                0.38,
+                0.9
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            }
+          },
+          "bat": {
+            "knob": {
+              "status": "observed",
+              "coordinates": [
+                0.4,
+                0.5
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            },
+            "barrel_end": {
+              "status": "observed",
+              "coordinates": [
+                0.19999999999999996,
+                0.2
+              ],
+              "uncertainty_radius": 0.005,
+              "reason": null,
+              "visibility": 2
+            }
+          },
+          "motion_blur": {
+            "body": "none",
+            "bat": "none"
+          },
+          "occlusion": {
+            "body": "none",
+            "bat": "none"
+          }
+        }
+      ]
+    }
+  ],
+  "swings": [
+    {
+      "swing_id": "swg_0000000000000001",
+      "athlete_id": "ath_0000000000000001",
+      "batter_identity_status": "confirmed",
+      "batter_track_id": "trk_0000000000000001",
+      "candidate_track_ids": [],
+      "window": {
+        "earliest": {
+          "frame_index": 0,
+          "pts": 9000
+        },
+        "latest": {
+          "frame_index": 11,
+          "pts": 9330
+        }
+      },
+      "intent": "conventional_full",
+      "outcome": "contact_confirmed_fair",
+      "outcome_evidence": [
+        "ball_deflection"
+      ],
+      "batting_side_observed": "L",
+      "front_leg": "right",
+      "hitting_zone": "reached",
+      "events": {
+        "stance_set": {
+          "status": "observed",
+          "frame": {
+            "frame_index": 0,
+            "pts": 9000
+          },
+          "uncertainty": {
+            "earliest": {
+              "frame_index": 0,
+              "pts": 9000
+            },
+            "latest": {
+              "frame_index": 0,
+              "pts": 9000
+            }
+          },
+          "reason": null
+        },
+        "load_start": {
+          "status": "observed",
+          "frame": {
+            "frame_index": 1,
+            "pts": 9030
+          },
+          "uncertainty": {
+            "earliest": {
+              "frame_index": 1,
+              "pts": 9030
+            },
+            "latest": {
+              "frame_index": 1,
+              "pts": 9030
+            }
+          },
+          "reason": null
+        },
+        "stride_foot_lift": {
+          "status": "observed",
+          "frame": {
+            "frame_index": 2,
+            "pts": 9060
+          },
+          "uncertainty": {
+            "earliest": {
+              "frame_index": 2,
+              "pts": 9060
+            },
+            "latest": {
+              "frame_index": 2,
+              "pts": 9060
+            }
+          },
+          "reason": null
+        },
+        "foot_plant": {
+          "status": "observed",
+          "frame": {
+            "frame_index": 4,
+            "pts": 9120
+          },
+          "uncertainty": {
+            "earliest": {
+              "frame_index": 4,
+              "pts": 9120
+            },
+            "latest": {
+              "frame_index": 4,
+              "pts": 9120
+            }
+          },
+          "reason": null
+        },
+        "swing_launch": {
+          "status": "observed",
+          "frame": {
+            "frame_index": 5,
+            "pts": 9150
+          },
+          "uncertainty": {
+            "earliest": {
+              "frame_index": 5,
+              "pts": 9150
+            },
+            "latest": {
+              "frame_index": 5,
+              "pts": 9150
+            }
+          },
+          "reason": null
+        },
+        "impact_estimate": {
+          "status": "observed",
+          "frame": {
+            "frame_index": 6,
+            "pts": 9180
+          },
+          "uncertainty": {
+            "earliest": {
+              "frame_index": 6,
+              "pts": 9180
+            },
+            "latest": {
+              "frame_index": 6,
+              "pts": 9180
+            }
+          },
+          "reason": null
+        },
+        "contact_confirmed": {
+          "status": "observed",
+          "frame": {
+            "frame_index": 6,
+            "pts": 9180
+          },
+          "uncertainty": {
+            "earliest": {
+              "frame_index": 6,
+              "pts": 9180
+            },
+            "latest": {
+              "frame_index": 6,
+              "pts": 9180
+            }
+          },
+          "reason": null
+        },
+        "finish": {
+          "status": "observed",
+          "frame": {
+            "frame_index": 10,
+            "pts": 9300
+          },
+          "uncertainty": {
+            "earliest": {
+              "frame_index": 10,
+              "pts": 9300
+            },
+            "latest": {
+              "frame_index": 10,
+              "pts": 9300
+            }
+          },
+          "reason": null
+        }
+      }
+    }
+  ],
+  "annotators": [
+    {
+      "annotator_id": "ann_0000000000000001",
+      "role": "primary",
+      "qualification": "trained_annotator"
+    },
+    {
+      "annotator_id": "ann_0000000000000002",
+      "role": "reviewer",
+      "qualification": "softball_coach"
+    }
+  ],
+  "annotation": {
+    "annotator_id": "ann_0000000000000001",
+    "revision": 1,
+    "review": {
+      "status": "reviewed",
+      "reviewer_ids": [
+        "ann_0000000000000002"
+      ],
+      "adjudicator_id": null,
+      "disagreement": "none"
+    }
+  }
+}

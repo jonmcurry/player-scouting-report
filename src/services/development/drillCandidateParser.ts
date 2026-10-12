@@ -22,7 +22,7 @@ export interface CandidateDrillRecord {
   demoTimestamp: string;
   requiresScreen: boolean;
   weightedOrOverspeed: boolean;
-  curationStatus: "approved";
+  curationStatus: "draft";
 }
 
 export function slugify(str: string): string {
@@ -196,7 +196,7 @@ export function parseCandidateDrills(content: string): CandidateDrillRecord[] {
       demoTimestamp,
       requiresScreen: hasSafety,
       weightedOrOverspeed: hasAgeFlag,
-      curationStatus: "approved" as const,
+      curationStatus: "draft" as const,
     };
   });
 }

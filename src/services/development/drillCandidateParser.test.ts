@@ -29,7 +29,7 @@ test("loads and validates all 90 watch-verified candidate drills", () => {
     assert.ok(d.looksRightWhen.length > 0, `drill ${d.id} has looksRightWhen`);
     assert.ok(d.sourceCredit.length > 0, `drill ${d.id} has sourceCredit`);
     assert.ok(/^https:\/\/(www\.)?youtube\.com\/watch\?v=[a-zA-Z0-9_-]+/.test(d.demoUrl), `drill ${d.id} has valid YouTube URL: ${d.demoUrl}`);
-    assert.equal(d.curationStatus, "approved", `drill ${d.id} has curationStatus approved`);
+    assert.equal(d.curationStatus, "draft", `drill ${d.id} has curationStatus draft`);
     assert.ok(["softball", "baseball", "both"].includes(d.sport), `drill ${d.id} has valid sport: ${d.sport}`);
   }
 });
@@ -50,7 +50,8 @@ test("selectDrills integrates with parsed drills and respects safety filters", (
     age: 10,
   };
 
-  const selected = selectDrills(adapted, homeYouthContext);
+  assert.deepEqual(selectDrills(adapted, homeYouthContext), [], "unreviewed candidates never appear");
+  const selected = selectDrills(adapted.map(d => ({ ...d, curationStatus: "approved" })), homeYouthContext);
   assert.ok(selected.length > 0, "selects drills for load");
   assert.ok(selected.length <= 3, "caps selection at 3");
 
