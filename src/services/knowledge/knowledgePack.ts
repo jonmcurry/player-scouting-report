@@ -3,12 +3,8 @@ import path from "node:path";
 import type { AgeBand, Sport } from "../ai/analysisContext.js";
 import { KNOWLEDGE_VERSION } from "../ai/analysisVersions.js";
 
-export const CONCEPTS = [
-  "stance_setup", "load", "stride_plant", "hip_shoulder_sequencing", "hand_path", "barrel_path",
-  "contact", "extension", "head_visual_stability", "finish_balance", "swing_decision", "timing",
-  "front_side_stability", "posture", "barrel_depth", "pitch_location_adjustment", "game_approach",
-] as const;
-export type Concept = (typeof CONCEPTS)[number];
+import { CONCEPTS, type Concept } from "../../domain/concepts.ts";
+export { CONCEPTS, type Concept } from "../../domain/concepts.ts";
 export const CLAIM_CLASSIFICATIONS = [
   "candidate_unclassified", "shared_principle", "optional_interpretation", "disputed",
   "source_specific", "unsupported", "unsupported_numeric_claim", "rejected",

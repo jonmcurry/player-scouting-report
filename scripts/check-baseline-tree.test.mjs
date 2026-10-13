@@ -10,7 +10,13 @@ import { BASELINE, checkBaseline, readBaselinePolicy } from "./check-baseline-tr
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const policyPath = "docs/architecture/ENGINE_BASELINE.md";
-const doc = fs.readFileSync(path.join(root, policyPath), "utf8");
+// Adversarial fixtures start at the original, exception-free policy. The real
+// checkout test below still validates the current cumulative registration.
+const doc = `<!-- baseline-policy:start -->\n\x60\x60\x60json\n${JSON.stringify({
+  schemaVersion: 1, baseline: BASELINE, engineCodeVersion: BASELINE.tag,
+  pipelineVersion: BASELINE.pipelineVersion, instrumentationVersion: "none",
+  environmentVersion: "uncaptured", exceptions: [],
+}, null, 2)}\n\x60\x60\x60\n<!-- baseline-policy:end -->\n`;
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const write = (cwd, rel, value) => {
   fs.mkdirSync(path.dirname(path.join(cwd, rel)), { recursive: true });
@@ -69,6 +75,28 @@ test("recorded original commit, annotated tag and tree match the real repository
   assert.equal(result.commit, BASELINE.commit);
   assert.equal(result.tree, BASELINE.tree);
   assert.equal(git(root, "cat-file", "-t", `refs/tags/${BASELINE.tag}`), "tag");
+});
+
+test("real inst-1 exact registration rejects an algorithm edit in an instrumented file", (t) => {
+  const dir = fixture(t);
+  const current = fs.readFileSync(path.join(root, policyPath), "utf8");
+  const registered = readBaselinePolicy(current);
+  assert.equal(registered.instrumentationVersion, "inst-1");
+  assert.match(git(root, "check-attr", "eol", "--", "docs/architecture/engine-approvals/inst-1.md"), /eol: lf$/);
+  write(dir, policyPath, current);
+  for (const entry of registered.exceptions) {
+    write(dir, entry.approval.document, fs.readFileSync(path.join(root, entry.approval.document)));
+    for (const file of entry.files) {
+      assert.notEqual(file.after, null);
+      write(dir, file.path, fs.readFileSync(path.join(root, file.path)));
+    }
+  }
+  assert.equal(checkBaseline(dir).instrumentationVersion, "inst-1");
+  const rel = "scripts/pose3d/detect_2d.py";
+  const source = fs.readFileSync(path.join(dir, rel), "utf8");
+  assert.ok(source.includes("BATCH_SIZE = 16"));
+  write(dir, rel, source.replace("BATCH_SIZE = 16", "BATCH_SIZE = 17"));
+  assert.throws(() => checkBaseline(dir), /unauthorized engine content/);
 });
 test("unchanged source passes, including Windows CRLF-only checkout", (t) => {
   const dir = fixture(t);

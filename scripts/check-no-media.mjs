@@ -14,6 +14,8 @@ const isMedia = name => MEDIA.test(name);
 const PRIVATE_DIR = /(?:^|\/)(?:videos|frames|eval-data|eval-results|golden|demo-export|pose_out)(?:\/|$)|(?:^|\/)eval\/(?:media|data|results)(?:\/|$)|^coach\/media(?:\/|$)/i;
 const PRIVATE_RESULT = /(?:^|\/)(?:analysis_result[^/]*|pose_[23]d|metrics|engine_manifest|frame_map|privacy_summary|[^/]+\.(?:summary|validation))\.(?:json|jsonl|csv|npy|npz|html)(?:\.[^/]*)?$|(?:^|\/)demo-curation[^/]*\.json$|^validation\/.*manifest.*\.json$/i;
 const KEEP = new Set(['frames/.gitkeep', 'videos/.gitkeep']);
+// PR5 source files only; the surrounding golden directory remains private.
+const GOLDEN_SOURCE = new Set(['src/eval/golden/compareEngineOutputs.ts', 'src/eval/golden/compareEngineOutputs.test.ts']);
 
 function git(root, args) {
   try { return execFileSync('git', ['--no-replace-objects', '-C', root, ...args], { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 }); }
@@ -71,6 +73,7 @@ export function checkNoMedia(root = REPO_ROOT, assets = readAssetAllowlist()) {
         if (!same) reject('ASSET_CONTENT_CHANGED_ON_DISK');
       } catch { reject('ASSET_UNREADABLE_ON_DISK'); }
     } else if (mode === '160000') reject('UNINSPECTED_SUBMODULE');
+    else if (GOLDEN_SOURCE.has(name) && ['100644', '100755'].includes(mode)) { /* reviewed source path */ }
     else if (PRIVATE_DIR.test(name)) reject('PRIVATE_DIRECTORY');
     else if (isMedia(name)) reject('UNAPPROVED_MEDIA');
     else if (PRIVATE_RESULT.test(name)) reject('PRIVATE_RESULT');

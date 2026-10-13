@@ -6,13 +6,39 @@ import { loadCandidateDrills } from "../services/development/drillCandidateParse
 import { requirePublicKey } from "./reviewDrill.js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-test("migration is exactly the generated draft-only import for all 90 candidates", () => {
+// Git may check the SQL out with CRLF on Windows. Preserve every other
+// character: this is generated-content equality, not a raw-file checksum.
+function assertGeneratedSqlEqual(generated: string, checkedIn: string) {
+  assert.equal(generated.replaceAll("\r\n", "\n"), checkedIn.replaceAll("\r\n", "\n"));
+}
+
+test("migration matches the generated draft-only import for all 90 candidates after newline normalization", () => {
   const drills = loadCandidateDrills();
   assert.equal(drills.length, 90);
-  assert.equal(generateDrillSql(drills), readFileSync("supabase/migrations/00063_drill_library_candidates.sql", "utf8"));
+  assertGeneratedSqlEqual(generateDrillSql(drills), readFileSync("supabase/migrations/00063_drill_library_candidates.sql", "utf8"));
   for (const d of drills) {
     const p = candidatePayload(d);
     assert.equal(p.curation_status, "draft"); assert.equal(p.curated_by, null); assert.equal(p.curated_at, null);
+  }
+});
+
+for (const eol of ["\n", "\r\n"]) {
+  test(`generated migration equality accepts ${eol === "\n" ? "LF" : "CRLF"} checkout lines`, () => {
+    const generated = generateDrillSql(loadCandidateDrills());
+    assertGeneratedSqlEqual(generated, generated.replaceAll("\n", eol));
+  });
+}
+
+test("newline normalization still rejects SQL/security content and other whitespace changes", () => {
+  const generated = generateDrillSql(loadCandidateDrills());
+  for (const changed of [
+    generated.replace("E'draft'", "E'approved'"),
+    generated.replace("INSERT INTO", "DELETE FROM"),
+    generated + " ",
+    generated.replace("\n", "\r"),
+  ]) {
+    assert.notEqual(changed, generated);
+    assert.throws(() => assertGeneratedSqlEqual(generated, changed), assert.AssertionError);
   }
 });
 test("SQL escapes content including quotes and backslashes", () => {

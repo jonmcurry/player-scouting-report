@@ -10,7 +10,7 @@ import argparse, json, math, pathlib
 import cv2
 import numpy as np
 
-MODEL = pathlib.Path(__file__).resolve().parents[1] / "pose3d" / "models" / "yolo11m-pose.pt"
+MODEL = pathlib.Path(__file__).resolve().parents[1] / "models" / "pr5-baseline-recovery" / "yolo11m-pose.pt"
 TORSO = (5, 6, 11, 12)          # shoulders, hips
 
 

@@ -8,6 +8,11 @@
     "node": ">=20"
   },
   "scripts": {
+    "pretest": "npm run test:eval-baseline && npm run test:instrumentation && npm run test:analysis-flags && npm run test:evidence-dimensions",
+    "test:evidence-dimensions": "node --import tsx --test src/services/development/evidence/evidence.test.ts src/services/development/evidence/strictBaseline.test.ts",
+    "test:analysis-flags": "node --import tsx --test src/services/config/analysisFlags.test.ts src/services/development/evidenceRegistry.test.ts",
+    "test:instrumentation": "node scripts/run-instrumentation-tests.mjs",
+    "test:eval-baseline": "node scripts/run-eval-baseline-tests.mjs && node --import tsx --test src/eval/golden/compareEngineOutputs.test.ts",
     "build": "tsc -p tsconfig.json",
     "extract": "tsx src/cli/extract.ts",
     "ingest-phases": "tsx src/cli/ingestPhases.ts",

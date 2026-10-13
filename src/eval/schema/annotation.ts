@@ -3,11 +3,10 @@ import { readFileSync } from "node:fs";
 import { Ajv } from "ajv";
 
 export const SCHEMA_VERSION = "1.0.0" as const;
-export const SWING_EVENTS = ["stance_set", "load_start", "stride_foot_lift", "foot_plant", "swing_launch", "impact_estimate", "contact_confirmed", "finish"] as const;
-export type SwingEventSlug = typeof SWING_EVENTS[number];
+import { SWING_EVENTS, type SwingEventSlug, type FrameIdentity } from "../../domain/swingEvents.ts";
+export { SWING_EVENTS, type SwingEventSlug, type FrameIdentity } from "../../domain/swingEvents.ts";
 export const COCO_17 = ["nose", "left_eye", "right_eye", "left_ear", "right_ear", "left_shoulder", "right_shoulder", "left_elbow", "right_elbow", "left_wrist", "right_wrist", "left_hip", "right_hip", "left_knee", "right_knee", "left_ankle", "right_ankle"] as const;
 export type Joint = typeof COCO_17[number];
-export interface FrameIdentity { frame_index: number; pts: number }
 export interface FrameInterval { earliest: FrameIdentity; latest: FrameIdentity }
 export interface SourceMedia {
   sha256: string; video_stream_index: number; width: number; height: number;

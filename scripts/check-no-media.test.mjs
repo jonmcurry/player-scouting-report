@@ -27,6 +27,16 @@ test('repository contains only explicitly approved static media and synthetic fi
   assert.deepEqual(result.violations, []);
 });
 
+test('PR5 exact source paths do not permit neighboring golden artifacts', t => {
+  const r = repository(t);
+  r.stage('src/eval/golden/compareEngineOutputs.ts', 'export const synthetic = true;');
+  r.stage('src/eval/golden/compareEngineOutputs.test.ts', 'export const synthetic = true;');
+  assert.deepEqual(checkNoMedia(r.root, new Map()).violations, []);
+  r.stage('src/eval/golden/pose_2d.json', '{}');
+  r.stage('src/eval/golden/arbitrary.ts', 'private data');
+  assert.equal(checkNoMedia(r.root, new Map()).violations.length, 2);
+});
+
 for (const name of [
   'videos/recording.txt', 'FRAMES/player/pose.json', 'Eval-Data/labels.JSON', 'nested/EVAL-RESULTS/result.csv',
   'nested/GoLdEn/output.json', 'eval/results/opaque.bin', 'DEMO-EXPORT/fixture.json', 'scripts/POSE_OUT/output.dat',

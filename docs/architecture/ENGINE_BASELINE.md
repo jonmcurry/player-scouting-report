@@ -57,14 +57,96 @@ Run `npm run check:baseline` directly, or `npm test` (which runs the guard and i
   },
   "engineCodeVersion": "engine-baseline-1.0.0",
   "pipelineVersion": "pose3d-live-1.0.0",
-  "instrumentationVersion": "none",
-  "environmentVersion": "uncaptured",
-  "exceptions": []
+  "instrumentationVersion": "inst-1",
+  "environmentVersion": "env-f4ad5b330d0c",
+  "exceptions": [
+    {
+      "id": "pr6-inst-1",
+      "kind": "instrumentation",
+      "instrumentationVersion": "inst-1",
+      "reason": "Observer-only frame identity/provenance artifacts; preserve original analysis behavior.",
+      "validation": "Exact observer removal restores original AST; synthetic burned-in identity and model-double output tests. Real-video goldens remain unverified; see docs/evaluation/pipeline-instrumentation.md.",
+      "approval": {
+        "approvedBy": "Repository owner/user (explicit PR6 task authorization)",
+        "document": "docs/architecture/engine-approvals/inst-1.md",
+        "sha256": "4ce02cffd8628605b71eafe71ed509b961fff2a20c550e2380ff4636c4ebc5a1"
+      },
+      "files": [
+        {
+          "path": "scripts/pose3d/run_pipeline.py",
+          "before": {
+            "blob": "75beda65d8e4cc70a4e2e21a647ea3e2f075a075",
+            "mode": "100644"
+          },
+          "after": {
+            "blob": "df5f952c7d049fd2c03b09880924a633023fa649",
+            "mode": "100644"
+          }
+        },
+        {
+          "path": "scripts/pose3d/detect_2d.py",
+          "before": {
+            "blob": "7d0970de22b61ed2d3737bf267200d846bcbb33c",
+            "mode": "100644"
+          },
+          "after": {
+            "blob": "86547d9c261ccef8eae7f81ec79c2e1a6dfdbfb5",
+            "mode": "100644"
+          }
+        },
+        {
+          "path": "scripts/pose3d/instrumentation/inst1.py",
+          "before": null,
+          "after": {
+            "blob": "3c2babc4cffa21e2b3619a4355792599bf9844bf",
+            "mode": "100644"
+          }
+        },
+        {
+          "path": "scripts/pose3d/instrumentation/provenance_v1.py",
+          "before": null,
+          "after": {
+            "blob": "1e4e438ca2735e35b0669282d6d5c91985eb15f9",
+            "mode": "100644"
+          }
+        },
+        {
+          "path": "scripts/pose3d/instrumentation/capture_environment_v1.py",
+          "before": null,
+          "after": {
+            "blob": "76ff45ee4b5121111ce7a2c1bce8bac36a89f536",
+            "mode": "100644"
+          }
+        },
+        {
+          "path": "scripts/pose3d/instrumentation/models.lock.json",
+          "before": null,
+          "after": {
+            "blob": "7c5c0dcd57524f3fd84d64665657a7010f05c07b",
+            "mode": "100644"
+          }
+        },
+        {
+          "path": "scripts/pose3d/instrumentation/requirements.lock.txt",
+          "before": null,
+          "after": {
+            "blob": "df317c634ae67f217cf6f1aef26c673a80f42d33",
+            "mode": "100644"
+          }
+        }
+      ]
+    }
+  ]
 }
 ```
 <!-- baseline-policy:end -->
 
-This empty `exceptions` array is the instrumentation allowlist and maintenance registry. No wildcard or directory entry is accepted. Future entries are ordered, cumulative transitions and must include:
+The `exceptions` array is the instrumentation allowlist and maintenance registry.
+PR1 initialized it empty; PR6 registers the exact `inst-1` observer-only revision.
+Its environment reference is the PR5 capture, not a guarantee every runtime matches
+that capture. See `docs/evaluation/pipeline-instrumentation.md` for the outstanding
+real-video equivalence gate. No wildcard or directory entry is accepted. Entries
+are ordered, cumulative transitions and must include:
 
 | Field | Requirement |
 | --- | --- |

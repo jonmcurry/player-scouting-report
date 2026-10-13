@@ -1,0 +1,26 @@
+{
+  "description": "Synthetic only. No athlete, footage, measurements, or approvals.",
+  "subject": {
+    "usedFallback": false, "batEvidenceFrames": 5, "trackFrames": 12,
+    "trackedFraction": 1, "identityJumpFraction": 0,
+    "batterCropAvailable": true, "windowAvailable": true
+  },
+  "metrics": {
+    "phases": {
+      "stance": { "frame": 0, "time_s": 0, "method": "synthetic stance heuristic", "confidence": "low" },
+      "load": { "frame": 1, "time_s": 0.1, "method": "synthetic wrist extremum", "confidence": "low" },
+      "stride": { "frame": 2, "time_s": 0.2, "method": "synthetic stride heuristic", "confidence": "low" },
+      "contact": { "frame": 5, "time_s": 0.5, "method": "synthetic triple product", "confidence": "high" },
+      "extension": { "frame": 8, "time_s": 0.8, "method": "synthetic extension heuristic", "confidence": "high" },
+      "follow_through": { "frame": 11, "time_s": 1.1, "method": "synthetic finish heuristic", "confidence": "low" }
+    }
+  },
+  "sourceFrames": [
+    {"frame_index":100,"pts":1000}, {"frame_index":101,"pts":1100},
+    {"frame_index":102,"pts":1200}, {"frame_index":103,"pts":1300},
+    {"frame_index":104,"pts":1400}, {"frame_index":105,"pts":1500},
+    {"frame_index":106,"pts":1600}, {"frame_index":107,"pts":1700},
+    {"frame_index":108,"pts":1800}, {"frame_index":109,"pts":1900},
+    {"frame_index":110,"pts":2000}, {"frame_index":111,"pts":2100}
+  ]
+}

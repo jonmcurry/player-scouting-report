@@ -62,6 +62,7 @@ import lift_3d
 import metrics as metrics_mod
 import refine_bat_speed
 import overlay
+from instrumentation import inst1
 
 # Version of the LIVE orchestrator and metric contract. This is deliberately
 # owned here, not borrowed from the currently unwired reconstruction module.
@@ -113,6 +114,7 @@ def write_status(out_dir, status, detail=None):
 # handler) - best-effort: a cleanup failure must never mask the real
 # pipeline outcome that was already written to pipeline_status.json.
 def _cleanup_temp_files(out_dir):
+    inst1.call("finish")  # observe intermediates before unchanged cleanup removes them
     out_dir = pathlib.Path(out_dir)
     for p in out_dir.glob("_*"):
         if p.is_file():
@@ -126,6 +128,7 @@ def run(video_path, out_dir):
     video_path = pathlib.Path(video_path)
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    inst1.call("begin", video_path, out_dir)
 
     t0 = time.time()
     print(f"=== pose3d pipeline: {video_path} -> {out_dir} ===")
@@ -165,11 +168,14 @@ def run(video_path, out_dir):
         # 3.5's full-rate bat-speed refinement below.
         stage0_5 = decimate.run(analysis_video_path, out_dir)
         analysis_video_path = pathlib.Path(stage0_5["video_path_for_pipeline"])
+        inst1.call("start_attempt", stage0_5["original_video_path"], analysis_video_path,
+                   candidate, stage0_5, attempt_i + 1)
 
         print(f"--- Stage 1/4: person + bat detection (detect_2d){attempt_label} ---")
         try:
             detect_2d.run(analysis_video_path, out_dir)
         except detect_2d.LowQualityFootageError as exc:
+            inst1.call("end_attempt")
             low_quality_exc = exc
             print(f"[detect_2d] {exc}")
             continue  # try the next candidate rather than giving up on the whole clip
@@ -179,6 +185,7 @@ def run(video_path, out_dir):
 
         print(f"--- Stage 3/4: contact detection + summary metrics (metrics){attempt_label} ---")
         metrics_result = stamp_metrics(out_dir, metrics_mod.run(out_dir))
+        inst1.call("end_attempt")
         if metrics_result.get("phases"):
             if len(candidates) > 1:
                 print(f"[run_pipeline] candidate {attempt_i + 1} found real phases - stopping here")

@@ -9,6 +9,10 @@ frames/*
 [Ee][Vv][Aa][Ll]-[Dd][Aa][Tt][Aa]/
 [Ee][Vv][Aa][Ll]-[Rr][Ee][Ss][Uu][Ll][Tt][Ss]/
 **/[Gg][Oo][Ll][Dd][Ee][Nn]/
+!src/eval/golden/
+src/eval/golden/*
+!src/eval/golden/compareEngineOutputs.ts
+!src/eval/golden/compareEngineOutputs.test.ts
 [Ee][Vv][Aa][Ll]/[Mm][Ee][Dd][Ii][Aa]/
 [Ee][Vv][Aa][Ll]/[Dd][Aa][Tt][Aa]/
 [Ee][Vv][Aa][Ll]/[Rr][Ee][Ss][Uu][Ll][Tt][Ss]/
@@ -21,11 +25,9 @@ validation/*manifest*.json
 scripts/pose_out/
 scripts/models/
 
-# pose3d pipeline's own YOLO weights (yolo11m-pose.pt, yolov8m.pt) - same
-# large-binary-fetched-on-demand policy as scripts/models/ above (see
-# scripts/pose3d/README.md's own setup instructions) - scripts/models/ above
-# does NOT cover this separate path, confirmed missing here rather than
-# assumed covered.
+# Legacy offline privacy checkpoint location: keep ignored defensively.
+# Privacy checkpoints now live in scripts/models/pr5-baseline-recovery/,
+# covered by scripts/models/ above; production weights remain in scripts/models/.
 scripts/pose3d/models/
 
 # Isolated venv + cloned model repos + checkpoints for the pose3d pipeline -

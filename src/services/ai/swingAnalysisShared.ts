@@ -7,7 +7,8 @@ import { CONCEPTS, type Concept } from "../knowledge/knowledgePack.js";
 import { assertSemanticallyValid, pitchLocationKnown, suppliedPhases, wholeSwingSupplied, type ValidationEvidence } from "./semanticValidation.js";
 
 export const SOFTBALL_COMP_BANK = ["Alo", "Chamberlain", "Chidester", "Romero", "Watley", "McCleney"];
-export const ISSUE_PHASES = ["stance", "load", "stride", "contact", "extension", "follow_through"] as const;
+import { ISSUE_PHASES } from "../../domain/swingPhases.ts";
+export { ISSUE_PHASES } from "../../domain/swingPhases.ts";
 export const ISSUE_BASES = ["video", "metric", "reconstruction"] as const;
 export type DraftConfidence = "high" | "medium" | "low";
 

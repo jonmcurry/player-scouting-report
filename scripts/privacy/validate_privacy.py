@@ -22,7 +22,7 @@ import argparse, json, math, pathlib, subprocess, sys
 import cv2
 import numpy as np
 
-HERE = pathlib.Path(__file__).resolve().parents[1] / "pose3d" / "models"
+HERE = pathlib.Path(__file__).resolve().parents[1] / "models" / "pr5-baseline-recovery"
 DETAIL_RATIO_MAX = 0.20        # output keeps <= 20% of a person's original detail
 HEAD_DETAIL_RATIO_MAX = 0.12
 UNCHANGED_MAX = 0.15           # pixelation leaves ~5-8% of textured pixels within +-6 by coincidence; >15% = real

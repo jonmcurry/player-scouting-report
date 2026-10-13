@@ -1,7 +1,7 @@
 """Regression tests for scripts/privacy/anonymize_clip.py.
 
 Run: .venv_pose3d/Scripts/python.exe -m unittest scripts/privacy/test_privacy.py
-(needs the pose3d venv: cv2, numpy, ultralytics + scripts/pose3d/models/*.pt).
+(needs the pose3d venv: cv2, numpy, ultralytics + scripts/models/pr5-baseline-recovery/*.pt).
 Uses only synthetic video - never real footage.
 """
 import json, math, pathlib, subprocess, sys, tempfile, unittest
@@ -11,6 +11,30 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import anonymize_clip as ac  # noqa: E402
+import audit_subject
+import compare_torso_pose
+import validate_privacy
+
+
+class CheckpointPaths(unittest.TestCase):
+    def test_all_offline_loaders_use_relocated_checkpoints(self):
+        root = pathlib.Path(__file__).resolve().parents[1] / "models" / "pr5-baseline-recovery"
+        for actual, name in ((ac.MODEL, "yolo11m-pose.pt"),
+                             (ac.MODEL2, "yolov8m.pt"),
+                             (ac.SEG_MODEL, "yolo11m-seg.pt"),
+                             (audit_subject.MODEL, "yolo11m-pose.pt"),
+                             (compare_torso_pose.MODEL, "yolo11m-pose.pt"),
+                             (validate_privacy.HERE / "yolov8m.pt", "yolov8m.pt"),
+                             (validate_privacy.HERE / "yolo11m-pose.pt", "yolo11m-pose.pt")):
+            with self.subTest(loader=str(actual), checkpoint=name):
+                self.assertEqual(actual, root / name)
+
+    def test_relocated_checkpoints_are_git_ignored(self):
+        repo = pathlib.Path(__file__).resolve().parents[2]
+        for name in ("yolo11m-pose.pt", "yolo11m-seg.pt", "yolov8m.pt"):
+            path = "scripts/models/pr5-baseline-recovery/" + name
+            result = subprocess.run(["git", "check-ignore", "--quiet", "--", path], cwd=repo)
+            self.assertEqual(result.returncode, 0, path)
 
 
 def person(cx, cy, h, conf=0.9):

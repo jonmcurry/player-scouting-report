@@ -50,6 +50,7 @@ from ultralytics import YOLO
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from one_euro_filter import PointFilter2D
+from instrumentation import inst1
 
 MODELS_DIR = pathlib.Path(__file__).parent.parent / "models"
 POSE_MODEL = MODELS_DIR / "yolo11m-pose.pt"
@@ -407,6 +408,7 @@ def run(video_path, out_dir):
 
     cap = cv2.VideoCapture(str(video_path))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    inst1.call("fps", fps)
     frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     n_frames_hint = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -452,6 +454,7 @@ def run(video_path, out_dir):
         batch=BATCH_SIZE if _cuda_available() else 1,
     )
     for r in pose_results:
+        inst1.call("observe", "pose", getattr(r, "orig_img", None))
         people = []
         if r.keypoints is not None and r.keypoints.xy is not None:
             xy = r.keypoints.xy.cpu().numpy()      # (n_people, 17, 2)
@@ -473,6 +476,7 @@ def run(video_path, out_dir):
         batch=BATCH_SIZE if _cuda_available() else 1,
     )
     for r in bat_results:
+        inst1.call("observe", "bat", getattr(r, "orig_img", None))
         dets = []
         if r.boxes is not None and len(r.boxes) > 0:
             xyxy = r.boxes.xyxy.cpu().numpy()

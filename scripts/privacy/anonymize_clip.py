@@ -37,7 +37,7 @@ import sys
 import cv2
 import numpy as np
 
-MODEL = pathlib.Path(__file__).resolve().parents[1] / "pose3d" / "models" / "yolo11m-pose.pt"
+MODEL = pathlib.Path(__file__).resolve().parents[1] / "models" / "pr5-baseline-recovery" / "yolo11m-pose.pt"
 MODEL2 = MODEL.with_name("yolov8m.pt")   # second detector architecture: mask anything EITHER model sees
 WORK_W = 1280                 # working/output width (16:9 -> 1280x720)
 DET_CONF = 0.10               # deliberately low: a false positive only masks more
@@ -73,7 +73,7 @@ HELMET_FACE_R = 0.09          # face window radius around the nose (x body heigh
 HELMET_BRIM_ABOVE_EYES = 0.015  # the window never extends above this (x body height) over the eyes
 # --lettering-mode precise (prototype): instead of the broad torso band + helmet
 # mask, obscure only the lettering itself, found per frame. See precise_lettering().
-SEG_MODEL = pathlib.Path(__file__).resolve().parents[1] / "pose3d" / "models" / "yolo11m-seg.pt"
+SEG_MODEL = MODEL.with_name("yolo11m-seg.pt")
 LETTER_TOPHAT = 0.05          # candidate: a thin bright STROKE - white top-hat over this x body height ...
 LETTER_TH = 30                # ... brighter than its surroundings by this much (flat sky, glare and wide
                               # side panels are not strokes; a first, brightness-only try merged them
