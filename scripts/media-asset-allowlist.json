@@ -262,6 +262,76 @@
       "path": "validation/validation-manifest.example.json",
       "sha256": "c74433fe001a4844ff526be8505c33de29bfc67d164a1ea43971f437837f4bfd",
       "reason": "Existing synthetic example manifest"
+    },
+    {
+      "path": "screenshots/at-bat-report/01-top-video.png",
+      "sha256": "d461c2aa27c8ad49b181fe3daf85b831b6fdf2a273e12064a65b985d35973844",
+      "reason": "Redacted historical report layout/broken-media placeholder; sanitized-only Gemini visual review 2026-10-14. See docs/evaluation/screenshot-privacy-remediation.md. Original bytes are not approved."
+    },
+    {
+      "path": "screenshots/at-bat-report/02-findings.png",
+      "sha256": "86694dd17c55f779f648f39026fcacfe95170dfd845e075737efd9e410691391",
+      "reason": "Redacted historical finding-card layout; coaching prose removed. Sanitized-only Gemini visual review 2026-10-14; see docs/evaluation/screenshot-privacy-remediation.md."
+    },
+    {
+      "path": "screenshots/home/00-load-error-edge-functions-down.png",
+      "sha256": "fd7e2313f17883572763509894deab912eed507d3cc4b9987a7ed4cc1428e52d",
+      "reason": "Redacted historical Home error layout; runtime diagnostics removed. Sanitized-only Gemini visual review 2026-10-14; see docs/evaluation/screenshot-privacy-remediation.md."
+    },
+    {
+      "path": "screenshots/home/01-home.png",
+      "sha256": "2117319519058b682073ca5ee6f897155a752ec71334e86bf0cbee2f0dcdf2ea",
+      "reason": "Redacted historical Home layout; identities and activity removed. Sanitized-only Gemini visual review 2026-10-14; see docs/evaluation/screenshot-privacy-remediation.md."
+    },
+    {
+      "path": "screenshots/home/02-invite-parent.png",
+      "sha256": "afba416164e49cfe92c192508bbbf2445a6eeee2c0df546425353a9aadb8b104",
+      "reason": "Redacted invitation dialog layout; recipient and entire URL/token field removed. Sanitized-only Gemini visual review 2026-10-14; see docs/evaluation/screenshot-privacy-remediation.md. This does not revoke the original invitation."
+    },
+    {
+      "path": "screenshots/home/03-add-import-players.png",
+      "sha256": "bce196aefbf459c72ee1671fc94a23f39cfd6806e65e8b221b312fb3595e5c64",
+      "reason": "Redacted historical roster/import layout; identities removed. Sanitized-only Gemini visual review 2026-10-14; see docs/evaluation/screenshot-privacy-remediation.md."
+    },
+    {
+      "path": "screenshots/home/04-team-recent-activity.png",
+      "sha256": "49d17e2d8ae9a6aa55875d6c62d459279f191814e2dd94532bd796d3e1c28e1c",
+      "reason": "Redacted historical expanded activity layout; identities and activity removed. Sanitized-only Gemini visual review 2026-10-14; see docs/evaluation/screenshot-privacy-remediation.md."
+    },
+    {
+      "path": "screenshots/player/01-open-player-from-team.png",
+      "sha256": "f13f9fbd66a061539e1f32ffae71d8dcee5030d094687695af66b4b8e61bac91",
+      "reason": "Redacted historical player navigation/card structure; identity and performance removed. Sanitized-only Gemini visual review 2026-10-14; see docs/evaluation/screenshot-privacy-remediation.md."
+    },
+    {
+      "path": "screenshots/player/02-player-scrolled.png",
+      "sha256": "2bb2a5e9d5c63291c3f8621ff5cf3a28f81c90fc42ec906b4302a2a5b1a23a64",
+      "reason": "Redacted historical scrolled player layout; identity, status and activity removed. Sanitized-only Gemini visual review 2026-10-14; see docs/evaluation/screenshot-privacy-remediation.md."
+    },
+    {
+      "path": "screenshots/progress/01-progress.png",
+      "sha256": "1da559f87f946a8335d1501cb8c128f9a618eacc6ae14af672f578261e659446",
+      "reason": "Redacted historical Progress layout; player identity/status removed. Sanitized-only Gemini visual review 2026-10-14; see docs/evaluation/screenshot-privacy-remediation.md."
+    },
+    {
+      "path": "screenshots/record/01-record-sheet.png",
+      "sha256": "dbced4f4a53c550c44494ae8381f12a4488f407a6842e3f8cee785329a954853",
+      "reason": "Historical generic recording sheet; underlying player report removed. Sanitized-only Gemini visual review 2026-10-14; see docs/evaluation/screenshot-privacy-remediation.md."
+    },
+    {
+      "path": "screenshots/record/02-how-to-film.png",
+      "sha256": "e1580ae87fc9e85e6340cc447bff92efb89522e1bec4cdc911b9522a3e955586",
+      "reason": "Historical static filming-guide controls/illustration; underlying player report removed. Sanitized-only Gemini visual review 2026-10-14; see docs/evaluation/screenshot-privacy-remediation.md."
+    },
+    {
+      "path": "screenshots/record/03-how-to-film-scrolled.png",
+      "sha256": "fc2978f664d09ef41dd946ae3e43d1b947e02a061d18a38ddbebd16d5e366f9b",
+      "reason": "Historical static filming/safety instructions; underlying player report removed. Sanitized-only Gemini visual review 2026-10-14; see docs/evaluation/screenshot-privacy-remediation.md."
+    },
+    {
+      "path": "screenshots/settings/01-settings.png",
+      "sha256": "22484db2eb2c40a9ea29cca3cdfd48c000df030b2944e2b898e7bb41e9a513e4",
+      "reason": "Historical generic Settings sheet; background identity/status and notification preference removed. Sanitized-only Gemini visual review 2026-10-14; see docs/evaluation/screenshot-privacy-remediation.md."
     }
   ]
 }
