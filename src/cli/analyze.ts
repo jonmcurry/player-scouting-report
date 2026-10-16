@@ -161,6 +161,10 @@ export async function analyzeAndSync(
   // in the run's input_manifest and shown to the model as excluded, so an
   // omitted still or metric is explained rather than silently missing.
   extraExclusions: { field: string; reason: string }[] = [],
+  // PR10 shadow evidence hook (null/absent when EVIDENCE_GATE_MODE is off).
+  // Runs strictly after every legacy write, readable mark, focus refresh and
+  // notification below, and can neither throw into nor alter them.
+  evidenceShadow: { afterRun(analysisRunId: string): Promise<void> } | null = null,
 ): Promise<void> {
   const playerId = await findPlayerId(teamSlug, playerSlug);
   const input = await buildAnalysisInput({ teamSlug, playerSlug, playerId, framesDir, fallbackPitchContext: pitchContext, videoClipId, pipelineVersion, extraExclusions });
@@ -257,6 +261,13 @@ export async function analyzeAndSync(
       // A notification problem must not turn a stored, readable report into
       // a false analysis failure. Delivery can reconcile the durable report.
       console.error(`Report ready, but its notification could not be queued: ${notificationError instanceof Error ? notificationError.message : notificationError}`);
+    }
+  }
+  if (evidenceShadow) {
+    try {
+      await evidenceShadow.afterRun(analysisRunId);
+    } catch {
+      console.error("[evidence-shadow] run linkage failed; the stored report is unaffected");
     }
   }
   console.log(`Analyzed ${playerSlug}: run ${analysisRunId}; ${updated} checkpoint(s) updated, ${skipped} coach-reviewed checkpoint(s) protected, ${freshIssues.length} new issue draft(s), noActionNeeded=${result.noActionNeeded}.`);

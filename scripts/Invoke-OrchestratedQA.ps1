@@ -2,7 +2,7 @@
     [Parameter(Mandatory = $true)]
     [string]$ReviewPrompt,
     [switch]$SkipTests,
-    [string]$GeminiModel = "gemini-3.1-pro-high",
+    [string]$GeminiModel = "gemini-3.8-flash-high",
     [int]$TimeoutSeconds = 900,
     [string[]]$Paths = @()
 )
@@ -13,7 +13,8 @@ if (-not $repo) { throw "Run this from inside the HitterLoop repository." }
 
 Write-Host ""
 Write-Host "=== HitterLoop Orchestrated QA ===" -ForegroundColor Cyan
-Write-Host "Codex = orchestrator / implementer" -ForegroundColor DarkGray
+Write-Host "Claude = orchestrator / integration verifier" -ForegroundColor DarkGray
+Write-Host "Codex = implementer (not an independent reviewer)" -ForegroundColor DarkGray
 Write-Host "Gemini = independent reviewer" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "Git status:" -ForegroundColor Cyan
@@ -64,4 +65,4 @@ if ($reason) { throw "Gemini review did not complete: $reason." }
 
 Write-Host ""
 Write-Host "Orchestrated QA finished." -ForegroundColor Green
-Write-Host "Codex should now reconcile Gemini findings against code/tests/evidence." -ForegroundColor Green
+Write-Host "Claude should now reconcile Gemini findings against code/tests/evidence." -ForegroundColor Green

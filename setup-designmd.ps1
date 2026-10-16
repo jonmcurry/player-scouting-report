@@ -201,14 +201,14 @@ For any UI, frontend, component, CSS, styling, or visual-design work:
 
 ### Orchestrated / delegated UI work
 
-Codex is the orchestrator for this repository. When delegating frontend or UI work to Gemini, AGY, or another sub-agent:
+Claude Code is the orchestrator for this repository and owns final design consistency. When delegating frontend or UI work to Codex (implementation), Gemini/AGY (independent review and visual QA), or another sub-agent:
 
 - Include `DESIGN.md` as authoritative project context.
 - Require the delegated agent to follow the existing design tokens, components, and interaction patterns.
 - Do not allow delegated agents to invent conflicting visual conventions or silently replace the established design language.
 - Ask delegated agents to reuse existing components before creating new ones.
 - Review delegated UI output against `DESIGN.md` before accepting, merging, or presenting the work as complete.
-- Resolve design inconsistencies at the orchestrator level; Codex remains responsible for final design consistency.
+- Resolve design inconsistencies at the orchestrator level; Claude remains responsible for final design consistency.
 - If a delegated agent identifies a genuine conflict in the existing design system, surface it explicitly rather than allowing the worker to choose a new convention on its own.
 
 If `DESIGN.md` conflicts with an explicit user request, follow the explicit user request and update the design system only when appropriate.

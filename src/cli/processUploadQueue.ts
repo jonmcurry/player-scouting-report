@@ -74,6 +74,7 @@ import type { CaptureAssessment, CaptureMediaFacts, CaptureVisualSignals } from 
 import { persistCaptureAssessment } from "../services/db/captureAssessmentStore.js";
 import { recordAttemptSnapshot } from "../services/db/attemptSnapshot.js";
 import { enqueueAnalysisFailed } from "../services/notifications/outbox.js";
+import { prepareEvidenceShadow } from "./evidenceShadow.js";
 
 const POLL_INTERVAL_MS = 10_000;
 const VENV_PYTHON = process.env.POSE3D_PYTHON ?? (process.platform === "win32"
@@ -248,6 +249,8 @@ export async function processOnePendingClip(): Promise<boolean> {
     await markClipProgress(clip.videoClipId, 25);
     console.log(`[process-upload-queue] Running pose3d pipeline -> ${outDir}`);
     fs.mkdirSync(outDir, { recursive: true });
+    // Shadow evidence reads only artifacts written during THIS attempt (retries reuse outDir).
+    const pipelineStartedAt = Date.now();
     await runPipeline(localRawPath, outDir, (progress) => markClipProgress(clip.videoClipId, progress));
     await markClipProgress(clip.videoClipId, 90);
 
@@ -355,6 +358,12 @@ export async function processOnePendingClip(): Promise<boolean> {
             `${inputs.sequenceFrames} swing-sequence frame(s) for AI diagnosis (window start ${analysisWindow.startS.toFixed(3)}s)` +
             (inputs.sequenceSkipped ? ` - no swing sequence: ${inputs.sequenceSkipped}` : ""),
         );
+        // PR10 shadow evidence (EVIDENCE_GATE_MODE=shadow only; default off does
+        // nothing). Never throws and cannot change anything below.
+        const evidenceShadow = await prepareEvidenceShadow({
+          videoClipId: clip.videoClipId, outDir, stillsDir, metrics, sourceSha256: captureHash,
+          pipelineStartedAt, extraction: { sequenceFrames: inputs.sequenceFrames, sequenceSkipped: inputs.sequenceSkipped },
+        });
         const pitchContext = [clip.pitch, clip.result].filter(Boolean).join(" - ") || "No pitch/result details recorded for this at-bat.";
         // AI_ANALYZER selects the backend - defaults to Gemini (the intended
         // production path); set to "claude-cli" for local testing to use
@@ -371,7 +380,7 @@ export async function processOnePendingClip(): Promise<boolean> {
           localCli === "claude" ? "claude CLI" : localCli === "agy" ? "agy CLI" : "Gemini"}`);
         await analyzeAndSync(
           clip.teamSlug, clip.playerSlug, stillsDir, pitchContext, false, null,
-          localCli, clip.videoClipId, metrics.pipeline_version ?? null,
+          localCli, clip.videoClipId, metrics.pipeline_version ?? null, [], evidenceShadow,
         );
       }
     } catch (diagErr) {

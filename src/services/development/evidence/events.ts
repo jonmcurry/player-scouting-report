@@ -56,6 +56,11 @@ async function verifiedRows(evidence: unknown): Promise<Map<number, Record<strin
   return rows;
 }
 
+/** Shared hash-bound identity verification; preserves the PR8 all-or-nothing contract. */
+export function verifiedFrameRows(evidence: unknown): Promise<Map<number, Record<string, unknown>> | null> {
+  return verifiedRows(evidence);
+}
+
 /** Baseline adapter only. Low impact confidence fails its own event, not finish
  * or foot plant. Labels are engine metadata, NOT probabilities or calibration.
  * Missing methods/confidence fail closed. No i/fps or legacy time_s conversion. */

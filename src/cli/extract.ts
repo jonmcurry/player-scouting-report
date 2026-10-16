@@ -22,6 +22,7 @@ import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import { batterInBox, normalizeBox, subjectBoxAt, subjectBoxOverFrames, type BatFrame, type PixelBox, type Pose2dFrame } from "../services/pose3d/subjectBox.js";
 import { rawFrameIndices, type AnalysisWindow } from "../services/pose3d/analysisWindow.js";
+import { swingSequenceWindow } from "../domain/swingWindow.js";
 
 interface ExtractOptions {
   video: string;
@@ -68,9 +69,6 @@ export interface AnalysisInputSource {
 
 const ZOOM_LONG_SIDE = 1024;
 const SEQUENCE_MAX_FRAMES = 24;
-const SEQUENCE_LEAD_S = 0.1;
-const SEQUENCE_TAIL_S = 0.4;
-const SEQUENCE_MAX_S = 3;
 /** Share of sequence frames in which the tracked batter must be inside the crop. */
 const SEQUENCE_MIN_IN_BOX = 0.8;
 
@@ -123,7 +121,7 @@ function grabFrame(videoPath: string, seekS: number, filters: string[], output: 
  *   zoom_<slug>.png   the same frame cropped around the batter (when the batter is confidently tracked there)
  *   swing_seq_NN.png  batter-cropped frames in time order, evenly spaced (at most SEQUENCE_MAX_FRAMES)
  *                     from just before load to just after the last located swing phase (at most
- *                     SEQUENCE_MAX_S). Only written when load and contact are located AND the tracked
+ *                     swingWindow.ts SEQUENCE_MAX_S). Only written when load and contact are located AND the tracked
  *                     batter is inside the crop in at least SEQUENCE_MIN_IN_BOX of those frames - a
  *                     sequence that has lost the batter is never offered as whole-swing evidence.
  * Clears earlier images and AI results in outDir first so a re-run never mixes two runs. Throws
@@ -157,20 +155,18 @@ export async function extractAnalysisInputs(
 
   let sequenceFrames = 0;
   let sequenceSkipped: string | null = null;
-  const load = phases.find((p) => p.slug === "load");
-  const contact = phases.find((p) => p.slug === "contact");
-  if (!load || !contact || contact.frame <= load.frame) {
-    sequenceSkipped = "load and contact are not both located in order";
+  // Ends after the LAST located swing phase, not just contact: automatic
+  // contact detection can fire early (seen on real side-on 30fps game clips,
+  // where the swing itself was only in the "extension" frame), and a window
+  // that stops at contact would then show no swing at all. Capped so a
+  // mislocated late phase can't stretch the window far into the run to first.
+  // Shared with the evidence layer (swingWindow.ts) so both use the same frames.
+  const window = swingSequenceWindow(phases, src.fps, src.nFrames);
+  if (!window.available) {
+    sequenceSkipped = window.reason;
   } else {
-    // Ends after the LAST located swing phase, not just contact: automatic
-    // contact detection can fire early (seen on real side-on 30fps game clips,
-    // where the swing itself was only in the "extension" frame), and a window
-    // that stops at contact would then show no swing at all. Capped so a
-    // mislocated late phase can't stretch the window far into the run to first.
-    const last = Math.max(...phases.filter((p) => ["contact", "extension", "follow_through"].includes(p.slug)).map((p) => p.frame));
-    const start = Math.max(0, load.frame - Math.round(SEQUENCE_LEAD_S * src.fps));
-    const end = Math.min(src.nFrames - 1, last + Math.round(SEQUENCE_TAIL_S * src.fps), start + Math.round(SEQUENCE_MAX_S * src.fps));
-    const box = subjectBoxOverFrames(src.poseFrames, src.batFrames, start, end, src.width, src.height, load.frame);
+    const { start, end } = window;
+    const box = subjectBoxOverFrames(src.poseFrames, src.batFrames, start, end, src.width, src.height, window.anchorFrame);
     const count = Math.min(SEQUENCE_MAX_FRAMES, end - start + 1);
     const frames = [...new Set(Array.from({ length: count }, (_, i) => start + Math.round((i * (end - start)) / Math.max(1, count - 1))))];
     const inBox = box ? frames.filter((f) => batterInBox(src.poseFrames, f, box)).length / frames.length : 0;

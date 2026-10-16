@@ -7,6 +7,33 @@ entries below retain the evidence and history behind these tasks. Jon's manual v
 the earlier Android build passed. The simplified public demo has also passed a local rendered
 mobile-width review of Home and an at-bat report; authenticated family/device review remains open.
 
+### PR10 screenshot privacy preflight — local sanitization only
+
+- Redacted all 14 screenshots from the exposed screenshot commit (since replaced on `master`), stripped metadata, verified exact bytes/opaque masks, and obtained sanitized-only Gemini visual review (no blockers). The inventory and index/history/invitation risk records are kept local-only, outside the public repo.
+- Only reviewed sanitized hashes are allowlisted. The unchanged Git index still holds the original sensitive images, so media/privacy gates remain blocked. Nothing was staged; history and the potentially active invitation remain unremediated pending separate authorization.
+- PR10 worker integration has not started. Separate regression execution also exposes an existing brand-guard mismatch in two unchanged PR7 test fixtures; do not confuse that with screenshot sanitization.
+
+### HitterLoop v2 PR12 — provider-neutral evidence package (S0-10, not wired)
+
+- `evpkg-1.0.0` package (`src/services/ai/evidencePackage.ts`), `render-2.1` (legacy, golden-equal Gemini request) / `render-2.2` (prepared, unreachable), Gemini/Claude CLI/AGY adapters behind `SwingReportProvider`, and `suppliedEvidenceForV3` (only sent + verified + event-bound images count). See `docs/evaluation/evidence-package.md`.
+- Deferred S0-10 items (owner constraints): production wiring, `analysis_runs.provider_usage` writes (needs 00065), D4 hook, `extract.ts` image descriptors, visibility samples. The absolute-path scan can fail closed on benign text containing " /word"; revisit at wiring. Symlink guard test is skipped on this Windows host (EPERM).
+
+### HitterLoop v2 PR11 — engine output normalization (S1-04, evaluation-only)
+
+- `src/eval/normalize/engineObservations.ts` (schema `hitterloop.engine-observations` 1.0.0, `normalize-1.0.0`) turns baseline pose/bat/metrics artifacts into deterministic observations bound per row to the PR6 frame map; legacy "assumed" window identity only when a caller supplies window + raw PTS. Contact → `impact_estimate` only; no outcome/landmark/confidence invention. See `docs/evaluation/engine-normalization.md`.
+- Open: no real-clip normalization run yet (synthetic fixtures only); coordinates stay in analysis-raster pixels until a later PR maps them to the annotation source raster; temporal scoring must use only `verified` identities.
+
+### HitterLoop v2 PR10 — shadow evidence in the worker (S0-11, worker side only)
+
+- `EVIDENCE_GATE_MODE=shadow` (default `off` = no change at all) records a private V1-V4 assessment per processing attempt after `extractAnalysisInputs`, links the unchanged AI run to it, and writes a non-displayable `issues.claim_decision` per issue. Fail-soft, time-bounded, write-once; see `docs/evaluation/evidence-shadow-integration.md`.
+- Open: PR12 (S0-10 evidence package) is still unbuilt, so V3 records "supplied evidence unavailable" (always insufficient). Read-path shadow logging in `get-simplified-report` is not done (needs Deno verification). 00065 is not applied to any real database; no real-clip end-to-end run yet.
+
+### HitterLoop v2 PR9 — private evidence-assessment persistence
+
+- Add migration 00065 with the private append-only `clip_evidence_assessments` history, exact S0-09 checks and nullable links on provider runs/issues. Demo mirrors only the nullable columns and has no assessment table.
+- Cascade-aware triggers preserve the existing two-stage clip deletion flow while blocking direct service-role/owner assessment mutation. Disposable PostgreSQL integration tests pass 23/23. Details: `docs/evaluation/evidence-persistence.md`.
+- No worker/report/AI/flag integration is added. Native Deno remains unavailable. Full `npm test` is currently stopped by the unrelated screenshot commit's unapproved indexed media; all PR9 and requested compatible suites otherwise pass. Gemini/AGY review found no blockers; its FK-index improvement was applied.
+
 ### HitterLoop v2 PR8 — isolated evidence dimensions
 
 - Recovered Revision 1 S0-04 now supplies the exact observational strict-0.1.0 comparator and authorized V1 subject thresholds. V2 event identity, proposed V3 requirements and unmeasured V4 remain isolated from production. No claim can become enforce-eligible.

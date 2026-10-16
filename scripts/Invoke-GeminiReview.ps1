@@ -1,8 +1,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Prompt,
-    [string]$Model = "gemini-3.1-pro-high",
-    # A real Gemini 3.1 Pro (High) review of a ~30 KB diff measured 197-220s, almost all of it model
+    [string]$Model = "gemini-3.8-flash-high",
+    # Measured on the previous default model: a real Gemini 3.1 Pro (High) review of a ~30 KB diff took 197-220s, almost all of it model
     # reasoning (22-31k thinking tokens). The old 180-240s limits cut reviews off just before they
     # finished, so leave real headroom.
     [int]$TimeoutSeconds = 900,

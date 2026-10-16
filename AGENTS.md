@@ -158,33 +158,53 @@ CLI scripts, database migrations with no frontend change) — there's nothing ne
 
 - User is the final product, design, evidence, privacy, release, and deployment authority.
 
-- Codex is the sole orchestrator and implementation agent.
+- Claude Code is the primary orchestrator: architecture coordination, planning, delegation, integration verification, and final reporting.
 
-- Gemini is the independent review and visual/product QA agent.
+- Codex (GPT-6) is the primary implementation agent: coding, tests, migrations, and debugging.
+
+- Gemini/AGY is the independent review and visual/product QA agent, reviewing every implementation diff (Codex's, or Claude's under the disclosed fallback).
+
+- Codex's own work or self-review never counts as independent review.
 
 - Tests, source evidence, repository state, and rendered behavior outrank model opinion or model consensus.
 
-### Codex responsibilities
+### Claude Code responsibilities
 
-Codex owns:
+Claude owns:
 
 - understanding the requested task
 
 - inspecting repository state before edits
 
-- implementation
+- planning and architecture, and delegating bounded implementation tasks to Codex with the relevant rules from this file (privacy, baseline, evidence, DESIGN.md, safety)
 
-- test selection and execution
+- verifying and integrating Codex's changes; implementing directly only when Codex is unavailable, and disclosing that; every gate still applies
 
-- static/code review of its own diff
+- test selection, and running or independently re-running the tests it reports
+
+- internal review of the integrated diff
 
 - coordinating Gemini review when required
 
 - reconciling Gemini findings against source evidence, tests, and product rules
 
-- producing the final implementation/release report
+- producing the final implementation/release report and escalating unresolved issues to the owner
 
-Codex must not treat Gemini output as authoritative by itself.
+Claude must not treat Gemini or Codex output as authoritative by itself.
+
+### Codex responsibilities
+
+Codex implements the tasks Claude delegates: code, tests, migrations, and debugging. Codex:
+
+- follows repository architecture and every rule in this file, including privacy, baseline, evidence, security and DESIGN.md rules;
+
+- reports to Claude exactly which files it changed and which tests it ran, with results;
+
+- must not commit, push, deploy, mutate cloud data, change canonical fixture pointers, or rewrite history;
+
+- does not orchestrate the overall workflow;
+
+- is never the independent reviewer of its own work.
 
 Before any change:
 
@@ -196,11 +216,13 @@ Before any change:
 
 - do not reset, clean, revert, overwrite, commit, push, deploy, or change cloud state unless explicitly authorized
 
-### Gemini responsibilities
+### Gemini/AGY responsibilities
 
-Gemini is an independent adversarial reviewer.
+Gemini/AGY is an independent adversarial reviewer.
 
-Use Gemini for:
+Use Gemini/AGY for:
+
+- code, security and architecture review
 
 - rendered UI/visual QA
 
@@ -216,7 +238,7 @@ Use Gemini for:
 
 - identifying unsupported assumptions or invented claims
 
-Gemini should normally be read-only.
+Gemini/AGY is read-only and does not implement the production changes it reviews.
 
 Gemini must not:
 
@@ -236,15 +258,15 @@ Default workflow:
 
 2. Inspect repository state.
 
-3. Codex implements.
+3. Codex implements under Claude's delegation (Claude implements only when Codex is unavailable, with disclosure).
 
-4. Codex runs focused tests and relevant broader validation.
+4. Claude runs, or independently re-runs, focused tests and relevant broader validation.
 
-5. Codex performs an internal diff review.
+5. Claude performs an internal review of the integrated diff.
 
-6. Run Gemini review through the repository Gemini wrapper.
+6. Claude runs Gemini review through the repository Gemini wrapper (Codex may run it when Claude delegates that).
 
-7. Reconcile Gemini findings:
+7. Claude reconciles Gemini findings:
 
  - fix confirmed defects
 
@@ -272,9 +294,9 @@ Use this order when agents disagree:
 
 5. documented product rules
 
-6. Codex reasoning
+6. Claude reasoning
 
-7. Gemini reasoning
+7. Codex and Gemini reasoning
 
 Agent agreement does not convert an unsupported claim into evidence.
 
@@ -288,7 +310,7 @@ Gemini findings should be classified as:
 
 - QUESTION / JUDGMENT CALL
 
-Codex must independently verify blocking findings before changing code.
+Claude must independently verify blocking findings before changing code.
 
 ### Failure behavior
 
@@ -296,7 +318,7 @@ If Gemini is unavailable:
 
 - do not substitute fake multi-agent consensus
 
-- continue only with Codex review/tests when the task is low-risk
+- continue only with Claude review/tests when the task is low-risk
 
 - for privacy, evidence integrity, schema, release, or other high-risk work, report that independent review was unavailable and stop if the task requires it
 
@@ -410,9 +432,11 @@ Never unless explicitly authorized:
 
 ## Automatic QA Invocation
 
-For any task that modifies repository files, Codex must automatically run the repository
+For any task that modifies repository files, Claude must automatically run the repository
 
 orchestrated QA workflow before reporting the task complete.
+
+Codex may run the wrapper when Claude delegates that, but Claude reconciles the findings.
 
 Do not wait for the user to ask for QA separately.
 
@@ -438,7 +462,7 @@ is also acceptable when Windows PowerShell is intentionally being used.
 
 6. Gemini independently reviews the current repository state and diff.
 
-7. Codex reconciles Gemini findings against:
+7. Claude reconciles Gemini findings against:
 
  - source evidence;
 
@@ -450,7 +474,7 @@ is also acceptable when Windows PowerShell is intentionally being used.
 
  - documented product rules.
 
-8. Fix findings that Codex confirms from evidence.
+8. Fix findings that Claude confirms from evidence.
 
 9. Do not make a change merely because Gemini suggested it.
 
@@ -464,7 +488,7 @@ is also acceptable when Windows PowerShell is intentionally being used.
 
  - unresolved findings are explicitly surfaced to the user.
 
-Codex must never claim Gemini or multi-agent review occurred if the wrapper did not actually
+Claude must never claim Gemini or multi-agent review occurred if the wrapper did not actually
 
 complete successfully.
 
@@ -572,7 +596,7 @@ For clearly low-risk work such as:
 
 - trivial non-behavioral cleanup;
 
-Codex may continue without Gemini if Gemini is unavailable, but must explicitly say that the
+Claude may continue without Gemini if Gemini is unavailable, but must explicitly say that the
 
 Gemini review did not complete.
 
@@ -590,7 +614,7 @@ pwsh -File ./scripts/Invoke-OrchestratedQA.ps1 `
 On Windows, `powershell.exe -ExecutionPolicy Bypass -File .\scripts\Invoke-OrchestratedQA.ps1 ...`
 is also acceptable when Windows PowerShell is intentionally being used.
 
-This is the repository's Codex-orchestrated QA gate.
+This is the repository's Claude-orchestrated QA gate.
 
 ### Visual QA gate
 
@@ -610,7 +634,7 @@ If browser automation is unavailable, report:
 
 ## Final Handoff
 
-Before asking for release approval, provide:
+Before asking for release approval, Claude must provide:
 
 - files changed;
 
@@ -634,7 +658,7 @@ Before asking for release approval, provide:
 
 - anything still unverified.
 
-Do not invent a separate external Codex review result; Codex's internal diff review is part of the implementation workflow.
+Do not present a Codex self-review as an independent review result. Report what was delegated to Codex, the files it changed, and Claude's own verification of that work.
 
 Do not commit, push, deploy, modify cloud data, or publish fixtures unless explicitly authorized by
 
@@ -655,14 +679,14 @@ For any UI, frontend, component, CSS, styling, or visual-design work:
 
 ### Orchestrated / delegated UI work
 
-Codex is the orchestrator for this repository. When delegating frontend or UI work to Gemini, AGY, or another sub-agent:
+Claude Code is the orchestrator for this repository and owns final design consistency. When delegating frontend or UI work to Codex (implementation), Gemini/AGY (independent review and visual QA), or another sub-agent:
 
 - Include `DESIGN.md` as authoritative project context.
 - Require the delegated agent to follow the existing design tokens, components, and interaction patterns.
 - Do not allow delegated agents to invent conflicting visual conventions or silently replace the established design language.
 - Ask delegated agents to reuse existing components before creating new ones.
 - Review delegated UI output against `DESIGN.md` before accepting, merging, or presenting the work as complete.
-- Resolve design inconsistencies at the orchestrator level; Codex remains responsible for final design consistency.
+- Resolve design inconsistencies at the orchestrator level; Claude remains responsible for final design consistency.
 - If a delegated agent identifies a genuine conflict in the existing design system, surface it explicitly rather than allowing the worker to choose a new convention on its own.
 
 If `DESIGN.md` conflicts with an explicit user request, follow the explicit user request and update the design system only when appropriate.
