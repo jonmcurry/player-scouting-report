@@ -1,3 +1,4 @@
+import { PIPELINE_VERSION } from "../reconstruction/types.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -87,7 +88,7 @@ test("no profile and proposed claims stay non-enforceable even with synthetic ap
 test("legacy stamp maps only engine identity, never manufactures a complete tuple", () => {
   assert.equal(engineCodeForPipelineVersion(LEGACY_PIPELINE_VERSION), BASELINE_ENGINE);
   assert.equal(resolveTuple(LEGACY_PIPELINE_VERSION), null);
-  for (const unknown of [undefined, null, "", "pose3d-live-1.0.1", "barreltrace-reconstruction-v1", BASELINE_ENGINE]) {
+  for (const unknown of [undefined, null, "", "pose3d-live-1.0.1", PIPELINE_VERSION, BASELINE_ENGINE]) {
     assert.equal(engineCodeForPipelineVersion(unknown), null);
   }
 });

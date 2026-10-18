@@ -1,3 +1,4 @@
+import { PIPELINE_VERSION } from "../reconstruction/types.ts";
 // Shared synthetic acceptance table for Node and Deno; no runtime globals.
 import { BASELINE_ENGINE } from "../development/evidenceRegistry.ts";
 import type { AnalysisConfig, AnalysisFlags } from "./analysisFlags.ts";
@@ -23,7 +24,7 @@ export const flagCases: readonly {
       name: `${key} rejects ${JSON.stringify(value)}`, config: { [key]: value }, expected: null,
     })),
   ]),
-  ...["pose3d-live-1.0.0", "barreltrace-reconstruction-v1", "engine-baseline-9.0.0", "", null].map(value => ({
+  ...["pose3d-live-1.0.0", PIPELINE_VERSION, "engine-baseline-9.0.0", "", null].map(value => ({
     name: `unknown engine ${value}`, config: { ANALYSIS_ENGINE: value }, expected: null,
   })),
   ...["", "safe", "SHOW_AS_BEFORE", false, null].map(value => ({

@@ -1,3 +1,6 @@
 # PR1 hashes approval documents as raw bytes. Keep this registered record stable
 # across Windows core.autocrlf checkouts without relaxing the baseline guard.
 /docs/architecture/engine-approvals/inst-1.md text eol=lf
+# Raw-byte lock hashes are provenance and cache-key inputs.
+*.lock.json text eol=lf
+*.lock.txt text eol=lf
