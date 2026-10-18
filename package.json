@@ -60,7 +60,8 @@
     "test:eval-annotations": "node --import tsx --test src/eval/schema/annotation.test.ts src/eval/schema/legacyMapping.test.ts",
     "check:no-media": "node scripts/check-no-media.mjs",
     "check:eval-isolation": "node scripts/check-eval-isolation.mjs",
-    "test:privacy": "npm run check:no-media && npm run check:eval-isolation && node --test scripts/check-no-media.test.mjs scripts/check-eval-isolation.test.mjs && node --import tsx --test src/services/ai/claudeCliAnalyzer.test.ts src/services/ai/agyCliAnalyzer.test.ts src/services/ai/geminiAnalyzer.test.ts src/services/ai/geminiDataTerms.test.ts src/services/demoExport/privacy.test.ts src/services/development/sharedSimplePayload.test.ts src/cli/purgeDeletedClips.test.ts supabase/tests/opaqueStoragePath.test.ts supabase/tests/sharedReportIdentity.test.ts"
+    "test:privacy": "npm run check:no-media && npm run check:eval-isolation && node --test scripts/check-no-media.test.mjs scripts/check-eval-isolation.test.mjs && node --import tsx --test src/services/ai/claudeCliAnalyzer.test.ts src/services/ai/agyCliAnalyzer.test.ts src/services/ai/geminiAnalyzer.test.ts src/services/ai/geminiDataTerms.test.ts src/services/demoExport/privacy.test.ts src/services/development/sharedSimplePayload.test.ts src/cli/purgeDeletedClips.test.ts supabase/tests/opaqueStoragePath.test.ts supabase/tests/sharedReportIdentity.test.ts",
+    "test:report-shadow": "node --import tsx --test src/services/development/reportShadow.test.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^8.2.0",

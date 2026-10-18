@@ -51,6 +51,20 @@ export interface PhaseFrame {
   frame: number;
 }
 
+export interface AnalysisImageDescriptor {
+  name: string; kind: "phase_still" | "zoom" | "swing_sequence"; phase: string | null;
+  analysisFrame: number; assumed: { rawFrame: number; rawPtsS: number };
+}
+
+/** Only successful writes are supplied, in write order. Mapping is assumed, not PR6-verified. */
+export function analysisImageDescriptors(
+  written: ReadonlyArray<Omit<AnalysisImageDescriptor, "assumed"> & { rawFrame: number }>,
+  pts: readonly number[],
+): AnalysisImageDescriptor[] {
+  return written.map(({ rawFrame, ...image }) => ({ ...image,
+    assumed: { rawFrame, rawPtsS: pts[rawFrame]! } }));
+}
+
 export interface AnalysisInputSource {
   /** The raw upload. */
   videoPath: string;
@@ -131,7 +145,7 @@ export async function extractAnalysisInputs(
   src: AnalysisInputSource,
   phases: PhaseFrame[],
   outDir: string,
-): Promise<{ phaseStills: number; zooms: number; sequenceFrames: number; sequenceSkipped: string | null }> {
+): Promise<{ phaseStills: number; zooms: number; sequenceFrames: number; sequenceSkipped: string | null; images: AnalysisImageDescriptor[] }> {
   fs.mkdirSync(outDir, { recursive: true });
   // Earlier images, and earlier AI results that cite them by file name (run history stays in analysis_runs).
   for (const f of fs.readdirSync(outDir)) if (/\.(png|jpe?g)$/i.test(f) || /^analysis_result_.*\.json$/.test(f)) fs.unlinkSync(path.join(outDir, f));
@@ -142,13 +156,17 @@ export async function extractAnalysisInputs(
     return idx;
   };
 
+  const written: Array<Omit<AnalysisImageDescriptor, "assumed"> & { rawFrame: number }> = [];
   let zooms = 0;
   for (const phase of phases) {
-    const seek = seekBefore(pts, rawIndex([phase.frame])[0]!);
+    const rawFrame = rawIndex([phase.frame])[0]!;
+    const seek = seekBefore(pts, rawFrame);
     await grabFrame(src.videoPath, seek, [], path.join(outDir, `phase_${phase.slug}.png`));
+    written.push({ name: `phase_${phase.slug}.png`, kind: "phase_still", phase: phase.slug, analysisFrame: phase.frame, rawFrame });
     const box = subjectBoxAt(src.poseFrames, src.batFrames, phase.frame, src.width, src.height);
     if (box) {
       await grabFrame(src.videoPath, seek, [cropScaleFilter(box, src)], path.join(outDir, `zoom_${phase.slug}.png`));
+      written.push({ name: `zoom_${phase.slug}.png`, kind: "zoom", phase: phase.slug, analysisFrame: phase.frame, rawFrame });
       zooms++;
     }
   }
@@ -176,11 +194,12 @@ export async function extractAnalysisInputs(
       const raw = rawIndex(frames);
       for (let i = 0; i < raw.length; i++) {
         await grabFrame(src.videoPath, seekBefore(pts, raw[i]!), [cropScaleFilter(box, src)], path.join(outDir, `swing_seq_${String(i + 1).padStart(2, "0")}.png`));
+        written.push({ name: `swing_seq_${String(i + 1).padStart(2, "0")}.png`, kind: "swing_sequence", phase: null, analysisFrame: frames[i]!, rawFrame: raw[i]! });
       }
       sequenceFrames = raw.length;
     }
   }
-  return { phaseStills: phases.length, zooms, sequenceFrames, sequenceSkipped };
+  return { phaseStills: phases.length, zooms, sequenceFrames, sequenceSkipped, images: analysisImageDescriptors(written, pts) };
 }
 
 export async function extractFrames(opts: ExtractOptions): Promise<string> {

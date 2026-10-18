@@ -70,19 +70,14 @@ export async function buildShadowAssessment(args: {
   } };
 }
 
-/**
- * Minimal per-issue record for issues.claim_decision (coach-readable via RLS,
- * never selected by parent-facing paths). Carries statuses and versions only:
- * no subject signals, frames, file names or text. Supplied evidence is
- * explicitly marked unavailable because the S0-10 evidence package (PR12) does
- * not exist yet; V3 is therefore recorded as computed without supplied media,
- * not as a finding that media was missing. Never displayable or enforce-eligible.
- */
-export async function buildClaimDecisionRecord(input: ClipEvidenceInput, issue: { concept: unknown; phase: unknown },
-  assessmentId: string) {
+/** Shared per-issue fields. V1 retains its historical unavailable-supply marker;
+ * V2 replaces it with attested accounting. Neither authorizes display/enforcement.
+ * Visibility stays null and reliability unmeasured in both versions. */
+async function claimDecisionFields(input: ClipEvidenceInput, issue: { concept: unknown; phase: unknown },
+  assessmentId: string, supplied: unknown = null) {
   const phase = (ISSUE_PHASES as readonly unknown[]).includes(issue.phase) ? issue.phase as PhaseSlug : null;
   const decision = await decideClaim({ ...input, concept: issue.concept as Concept, phase,
-    supplied: null, visibility: null, mode: "shadow" });
+    supplied, visibility: null, mode: "shadow" });
   return {
     schema: "claim-decision-shadow-1",
     assessmentId, mode: "shadow" as const,
@@ -100,4 +95,24 @@ export async function buildClaimDecisionRecord(input: ClipEvidenceInput, issue: 
     authorizationReasons: [...decision.authorizationReasons],
   };
 }
-export type ClaimDecisionRecord = Awaited<ReturnType<typeof buildClaimDecisionRecord>>;
+/** V1 remains exported for existing persistence tests and compatibility callers. */
+export async function buildClaimDecisionRecord(input: ClipEvidenceInput, issue: { concept: unknown; phase: unknown }, assessmentId: string) {
+  return claimDecisionFields(input, issue, assessmentId);
+}
+
+export interface ShadowPackageAccounting {
+  status: "built" | "package_unavailable"; version: string | null; digest: string | null;
+  frameMap: "verified" | "unverified" | "absent" | null; generated: number; omitted: number; errorCode: string | null;
+}
+export interface ShadowSupplyAccounting {
+  status: "supplied" | "unattested" | "transmission_mismatch" | "package_unavailable";
+  sent: number; counted: { stills: number; zooms: number; sequence: number }; exclusionReasons: string[];
+}
+export async function buildClaimDecisionRecordV2(input: ClipEvidenceInput, issue: { concept: unknown; phase: unknown },
+  assessmentId: string, pkg: ShadowPackageAccounting, supply: ShadowSupplyAccounting, supplied: unknown) {
+  const fields = await claimDecisionFields(input, issue, assessmentId, supply.status === "supplied" ? supplied : null);
+  return { ...fields, schema: "claim-decision-shadow-2", visibility: null,
+    suppliedEvidence: { status: supply.status }, package: pkg, supplied: supply };
+}
+export type ClaimDecisionRecord = Awaited<ReturnType<typeof buildClaimDecisionRecord>>
+  | Awaited<ReturnType<typeof buildClaimDecisionRecordV2>>;

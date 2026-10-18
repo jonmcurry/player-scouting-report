@@ -362,7 +362,7 @@ export async function processOnePendingClip(): Promise<boolean> {
         // nothing). Never throws and cannot change anything below.
         const evidenceShadow = await prepareEvidenceShadow({
           videoClipId: clip.videoClipId, outDir, stillsDir, metrics, sourceSha256: captureHash,
-          pipelineStartedAt, extraction: { sequenceFrames: inputs.sequenceFrames, sequenceSkipped: inputs.sequenceSkipped },
+          pipelineStartedAt, images: inputs.images, extraction: { sequenceFrames: inputs.sequenceFrames, sequenceSkipped: inputs.sequenceSkipped },
         });
         const pitchContext = [clip.pitch, clip.result].filter(Boolean).join(" - ") || "No pitch/result details recorded for this at-bat.";
         // AI_ANALYZER selects the backend - defaults to Gemini (the intended

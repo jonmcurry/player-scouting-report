@@ -154,7 +154,7 @@ for (const [label, env, factory] of [
     });
   }
 }
-test("NO-ACTIVATION: no production importer or render-version environment selector", async () => {
+test("NO-ACTIVATION: only shadow evidence-package importer and no render-version environment selector", async () => {
   const newFiles = new Set(["services/ai/evidencePackage.ts", "services/ai/renderers.ts",
     ...["types", "gemini", "claudeCli", "agyCli"].map(name => `services/ai/providers/${name}.ts`)]);
   const forbidden: string[] = [];
@@ -169,11 +169,21 @@ test("NO-ACTIVATION: no production importer or render-version environment select
       if (newFiles.has(relative)) continue;
       const ast = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
       function inspect(node: ts.Node): void {
-        if (ts.isStringLiteralLike(node) && /(?:^|\/)(?:evidencePackage|renderers)(?:\.[cm]?ts|\.js)?$|(?:^|\/)providers\//.test(node.text)) forbidden.push(relative);
+        if (ts.isStringLiteralLike(node) && /(?:^|\/)(?:evidencePackage|renderers)(?:\.[cm]?ts|\.js)?$|(?:^|\/)providers\//.test(node.text)) {
+          const shadowPackageImport = relative === "cli/evidenceShadow.ts"
+            && node.text === "../services/ai/evidencePackage.js";
+          if (!shadowPackageImport) forbidden.push(relative);
+        }
         ts.forEachChild(node, inspect);
       }
       inspect(ast);
     }
   }
   await visit("src"); assert.deepEqual(forbidden, []);
+  const shadowSource = await fs.readFile("src/cli/evidenceShadow.ts", "utf8");
+  const parsedMode = shadowSource.search(/mode\s*=\s*readAnalysisFlags\([^;]+\)\.evidenceGateMode\s*;/);
+  const shadowGuard = shadowSource.search(/if\s*\(mode\s*!==\s*"shadow"\)\s*return\s+null\s*;/);
+  const firstPackageCall = shadowSource.search(/\bbuildEvidencePackage\s*\(/);
+  assert.ok(parsedMode >= 0 && shadowGuard > parsedMode && firstPackageCall > shadowGuard,
+    "Shadow worker must return null unless the parsed evidence gate mode is shadow before building a package");
 });

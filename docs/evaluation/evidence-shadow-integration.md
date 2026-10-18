@@ -1,126 +1,143 @@
-# PR10 shadow evidence integration (Revision 2 S0-11, worker side)
+# PR10-B shadow evidence integration (Revision 2 S0-11)
 
-PR10 connects the PR8 evidence modules to the existing upload worker in
-**shadow mode only**. With every flag at its default (`EVIDENCE_GATE_MODE=off`),
-the worker does exactly what it did before: no artifact is read, nothing is
-written, nothing is logged. No CV algorithm, model, prompt, report, focus,
-notification, review state, `swing_detection_state` or parent-facing path
-changes in either mode. Nothing is enforce-eligible.
+PR10-B connects PR12 package accounting to the existing worker shadow hook and
+adds diagnostic report read-path observations. Defaults remain off. No provider
+adapter is activated; image selection, image bytes, ordering, prompt, model,
+provider request, report JSON, eligibility, focus and notifications remain on the
+legacy path. No migration, configuration change, backfill or deployment occurs.
 
-## Worker integration point
+## Extraction and worker integration
 
-`src/cli/processUploadQueue.ts`, inside the existing per-clip AI-diagnosis
-`try`, immediately after `extractAnalysisInputs` and before the unchanged
-`analyzeAndSync` call:
+`extractAnalysisInputs` retains its existing four return fields and adds `images`.
+A descriptor is recorded immediately after each successful phase, zoom or sequence
+write, in write order. `analysisImageDescriptors` attaches the raw frame index and
+probed PTS seconds already used by the existing seek, under `assumed`. These are
+analysisWindow mappings, not PR6 verified identities. Absent zooms and skipped
+sequence files receive no descriptors. FFmpeg calls and their order are unchanged.
 
-1. `prepareEvidenceShadow` (`src/cli/evidenceShadow.ts`) parses the PR7 flags.
-   `off` returns immediately. An invalid value, or `enforce` (which the PR7
-   parser refuses without an enforced registry tuple), logs one fixed line and
-   skips shadow work. It does not affect processing.
-2. In `shadow`, it reads only artifacts written during **this** processing
-   attempt (mtime ≥ the pipeline start of this attempt; retries reuse the clip
-   directory): `pose_2d.json`, `bat_path.json`, PR6 `engine_manifest.json` and
-   the exact bytes of `frame_map.json`, plus `extract.ts` image *names*.
-3. The pure builder (`src/services/development/evidence/shadowAssessment.ts`)
-   derives the observed tuple from the manifest (engine, instrumentation and
-   **actual** environment identity, with PR7's gate/claims versions and a null
-   reliability profile; nothing inferred), checks that the manifest's
-   `input_sha256` equals the worker's own SHA-256 of the downloaded upload, and
-   runs `assessClip`. It then inserts one append-only row into
-   `clip_evidence_assessments` (PR9) with `mode='shadow'`.
-4. `analyzeAndSync` (`src/cli/analyze.ts`) receives an optional handle. Only
-   after every legacy write, the readable mark, the focus refresh and the
-   notification step, `afterRun` links `analysis_runs.evidence_assessment_id`
-   (only while null) to the assessment of the **same attempt**, and writes a
-   minimal `issues.claim_decision` (only while null) for each issue of that run.
+`processUploadQueue` passes `inputs.images` as one additional argument to
+`prepareEvidenceShadow`. Off mode returns before artifact reads, database access
+or logging. Existing invalid/enforce flag handling remains a fixed diagnostic and
+skip; the parser still refuses enforcement. In shadow mode the worker reads only
+artifacts fresh for this attempt (mtime at least the pipeline start): pose, bat,
+manifest and exact frame-map JSON. The worker's source capture hash must match the
+manifest. Existing PR8 signal extraction and assessment behavior are retained.
 
-## Signals (no new measurement or threshold)
+The assessment is appended using migration 00065 unchanged. The handle closes
+over that assessment ID and those fresh artifacts. After the legacy analysis,
+report writes, readable mark, focus and notification work, it links only a null
+run link and sets only null per-issue decisions for that run. Retries cannot link
+a different attempt. Existing deletion cascade semantics remain unchanged.
 
-`artifactSignals.ts` implements Revision 1 S0-04 `extractClipEvidenceSignals`
-over existing artifacts. It does parsing and counting only and reads no 3D field (R2).
+## Attestation and V3 accounting
 
-- Window: `extract.ts`'s own swing-sequence window, now shared from the pure
-  `src/domain/swingWindow.ts`. `extract.ts` calls the same function, and a
-  2,000-case test proves it equals the replaced inline formula.
-- `batterSelection`: `pose_2d.json` `meta.bat_evidence` (detect_2d), verbatim.
-- `batterTrackedFraction`: window frames with keypoints / window frames.
-- `identityJumpFraction`: the `subjectBox.ts` rule via PR8 `subjectPolicy.ts`
-  (anchor = load frame, else first usable frame). Revision 1 does not state the
-  denominator. PR10 uses usable-body frames, the conservative reading. With
-  no usable body it is null (unavailable), never 0.
-- `coreKeypointFraction` and `batDetectedFraction` are as specified. Contact and
-  phases are passed verbatim. An unexpected confidence label is not coerced, so
-  the comparator records it as invalid.
-- Strict comparator engine name: PR7 `engineCodeForPipelineVersion` and then
-  PR8's explicit `strictEngineVersionForComparison`, for observational
-  comparison only. Unknown pipelines keep their own name, so G8 fails.
-- V1 receives only its authorized subject signals. Crop availability is
-  "any batter zoom exists". Window availability is whether the window exists.
+The Gemini loader now returns `{ frames, names }` from the same sorted file list.
+Frames use the legacy read/MIME rules. Only with a non-null shadow handle, inside
+the Gemini branch, SHA-256 is computed over the exact buffers passed to
+`analyzeSwing`. No second image read is used for transmission attestation. CLI
+backends carry `cli_backend_reads_directory`; draft files carry
+`draft_file_no_transmission`. Both are unattested because no transmitted buffers
+are observed. There is no hashing when the handle is null.
 
-## Claim decisions
+Within the existing afterRun deadline, `buildEvidencePackage` receives the
+extraction descriptors, worker source hash, captured manifest/frame-map text,
+metrics, same-attempt assessment, unchanged analysis input and null capture
+profile. Artifacts are never re-read for this build. Package image reads are
+compared to the earlier transmitted-buffer hashes, detecting intervening changes.
 
-`issues.claim_decision` is coach-readable through the existing RLS and is never
-selected by any Edge Function or coach file (this is tested). It carries statuses and
-versions only: no subject signals, frame identities, file names or text.
-V4 is recorded as `unmeasured` with a null profile. `displayable` and
-`enforceEligible` are always false.
+Only an attested transmission whose every name and hash matches a package image
+is passed to `suppliedEvidenceForV3`, in actual sent order. Partial transmission
+counts only sent images. A generated package alone never proves supply.
+Unattested and mismatched transmissions yield null V3 supply. Missing context or
+descriptors and package-build errors yield `package_unavailable` with fixed,
+allowlisted codes; filename suffixes and error details are discarded.
 
-**Deviation recorded:** the plan sequences PR12 (S0-10 evidence package)
-before PR10, and PR12 is not implemented. Supplied stills, zooms, sequences and
-per-frame visibility therefore do not exist as frame-identity evidence. V3 is
-computed without them and the record says so explicitly
-(`suppliedEvidence: {status: "unavailable", reason: "evidence_package_not_implemented"}`),
-so it cannot be read as a finding that evidence was missing. Every V3 result is
-consequently `insufficient` until PR12.
+PR12 alone determines verified identities and event bindings. Unverified maps
+count no images; stills and zooms count only at an identical passing event frame
+and PTS. Legacy contact maps to `impact_estimate`, not `contact_confirmed`.
+Visibility is always null. V4 stays unmeasured; displayable/enforceEligible stay
+false, independent of generated or supplied counts.
 
-## Failure isolation and edge cases
+`claim-decision-shadow-2` adds package version/digest/status, frame-map status,
+generated/omitted counts, supply status, sent/countable counts and sorted unique
+exclusion codes. Image names, image hashes, paths, raw frame identities and free
+text are excluded. The package digest is intentionally retained by the specified
+contract. V1 remains exported unchanged for compatibility and existing persistence
+callers; the worker uses V2. `provider_usage` remains untouched/deferred because
+there is no trustworthy captured usage.
 
-- Every shadow entry point resolves without throwing. Each database step is
-  bounded (15 s). Logs carry fixed codes, the clip UUID and database error codes
-  only. Driver messages can echo row values and are never logged.
-- Missing migration, missing or stale or foreign manifest, a source-hash mismatch,
-  a missing capture hash, an insert or link failure, or a timeout all skip shadow
-  work. The legacy report, focus progression and notifications are unaffected.
-  Missing pose or bat files still produce an honest withheld assessment.
-- Duplicate processing attempts each get their own assessment (append-only).
-  Each run links only to its own attempt's assessment, and links and decisions
-  are never overwritten.
-- Clip deletion: an insert for a deleted clip fails its FK and is skipped. The
-  existing `begin/finish_clip_deletion` flow deletes the assessment, clears the
-  run link and deletes the clip's issues with their decisions (tested on the
-  real schema).
-- A timed-out insert may still complete later. That leaves an unlinked
-  historical row, which is acceptable for an append-only record.
+## Report read path
 
-## Not in PR10 (S0-11 read path)
+`get-simplified-report` reads flags through the existing Edge shim only for
+non-demo at-bat requests, after report assembly and shared-text redaction. Invalid
+flags emit the fixed `invalid_flags` skip line and behave as off. Off mode does not
+call the helper, clone the report, query private evidence or log anything.
 
-The S0-11 table also lists **read-path shadow logging** (`would_withhold`,
-`would_hide_fix` in `get-simplified-report`) and enforce-mode report behaviour.
-PR10 changes no Edge Function. Report output is unchanged by construction.
-Read-path shadow logging needs a Deno-capable verification environment, which this
-host lacks, and enforce behaviour belongs to S1-12. The `reportAssembly`
-off/shadow golden test and `evidenceGateParity` test from S0-11 are therefore
-not added. They become meaningful when a read-path gate exists.
+Shadow mode passes `structuredClone(report)` to the Deno-portable `reportShadow`
+module. It reads only the latest assessment's clip status, family reason, mode
+and reliability version, and the displayed fix's claim decision. It logs exactly
+one UUID-validated line of statuses/booleans and unmeasured reliability. It returns
+no data; the existing response expression remains unchanged. The persistence
+privacy test allows only these two exact queries inside the guarded call and
+continues forbidding private evidence references elsewhere.
 
-## Verification
+Decision conventions: absent/error/invalid-status assessment means unknown
+withhold status; an eligible assessment means false and withhold means true.
+No fix means false for hide-fix. An existing fix means true before calibration,
+even if a stored claim fabricates `displayable: true`: no record can authorize
+production display. Issue-query errors mean unknown hide-fix; rejected queries or
+a timeout produce an error observation with unknown values (no-fix remains false).
+The diagnostic never changes the actual report. Family reason, mode and profile
+are not emitted, and neither subject/events/signals nor report prose is logged.
 
-- `npm run test:evidence-shadow`: 15 tests (pure builder and adapter: off, invalid,
-  enforce, provenance, stale files, failures, hangs, deletion).
-- `test:evidence-persistence` (guarded disposable DB `pr9_disposable_test`
-  in the local container; schema-only clone, then 00063-00065): PR9's 23 tests and
-  PR10's 4 real-schema tests. These cover the exact builder row round-trip,
-  link/decision write-once, review state and `ai_original` untouched, the deletion
-  cascade, client denial, and no parent-facing references.
-- PR7 61, PR8 94, privacy 116 (3 platform skips), baseline, migrations,
-  instrumentation and build all pass.
+The helper has a shared 1500 ms default deadline; all other modes, including
+`enforce`, return immediately. Late assessment completion starts no issue query
+and produces no second log. Active reads cannot be cancelled by Promise.race.
+Worker package reads likewise may finish after their deadline, but no subsequent
+write starts after the budget expires. Logging failures cannot escape either
+helper. These are observational timeouts, not transaction cancellation.
 
-## Runtime requirements (unverified here)
+## Validation and outstanding gates
 
-- Migration 00065 must be applied before `EVIDENCE_GATE_MODE=shadow` can
-  persist anything. Without it, shadow logs `persistence_unavailable` and the worker
-  continues as today.
-- PR6 instrumentation must run in the production pipeline for a tuple to exist.
-  The manifest's actual environment must equal `env-f4ad5b330d0c` for a clip to be
-  `eligible`; otherwise it is honestly `analysis_version_unavailable`.
-- No production configuration enables shadow. No end-to-end worker run against
-  a real clip was performed (that requires the GPU pipeline and real media).
+All fixtures are synthetic and temporary directories are cleaned. Tests cover
+extraction metadata/call preservation, loader equality and guarded hashing, V2
+matched, partial, mismatched/unattested/missing-package supply, map/event exclusion,
+privacy, stale retries, DB failures, timeouts, report isolation and Edge placement.
+Database verification used disposable local PostgreSQL; no real media, live
+provider or cloud operation was used.
+
+The orchestrator verified these results:
+
+| Suite | Pass | Fail | Skip |
+| --- | ---: | ---: | ---: |
+| `test:evidence-shadow` | 33 | 0 | 0 |
+| report-shadow | 16 | 0 | 0 |
+| `test:evidence-package` | 44 | 0 | 1 (Windows symlink) |
+| evidence dimensions | 94 | 0 | 0 |
+| analysis flags | 61 | 0 | 0 |
+| normalize | 75 | 0 | 0 |
+| existing analyzer tests | 37 | 0 | 0 |
+| full `npm test` compiled stage | 723 | 0 | 2 |
+| disposable local PostgreSQL PR9 plus PR10 database tests | 27 | 0 | 0 |
+
+The only full-suite failure is the pre-existing PR7 brand check. One pre-existing
+shared local database methodology test race was observed once; it passed in
+isolation and on rerun and is unrelated to PR10-B. Gemini review returned
+**APPROVE** with zero blocking findings.
+
+`npx tsc -p tsconfig.json --noEmit`, `npm run check:eval-isolation`, and
+`git diff --check` pass (exit 0; no test-case counts).
+
+**Resolved NO-ACTIVATION contract:** the owner authorized PR10-B to make
+`src/cli/evidenceShadow.ts` the single shadow-only importer of the evidence
+package. The PR12 NO-ACTIVATION providers test now allows exactly that one import
+edge. It still forbids any production import of renderers or providers, any other
+production import of the evidence package, and any `PROMPT_RENDER_VERSION` read.
+It also asserts that the parsed evidence gate mode must be `shadow` before any
+package is built.
+
+Native Deno and the Supabase Edge bundler were not available. The Edge read path
+is provisionally verified only, not production ready. Live extraction,
+end-to-end worker/provider execution and rendered visual QA were not run. No
+user-visible rendering changed.
+Version/changelog updates are outside the permitted files; no version bump occurs.

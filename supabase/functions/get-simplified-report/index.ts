@@ -1,6 +1,8 @@
 // One read boundary for the simplified report. A caller supplies either their
 // own JWT or one revocable share token. All private reads happen after the
 // player-specific authorization check.
+import { readAnalysisFlags } from "../_shared/analysisFlags.ts";
+import { runReportShadow } from "../../../src/services/development/reportShadow.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Storage } from "npm:@google-cloud/storage@7";
 import { assembleReport, feedAnalysisPresentation, plainFailureReason, type ReportDrill, type ReportIssue } from "../../../src/services/development/reportAssembly.ts";
@@ -407,6 +409,20 @@ Deno.serve(async (request) => {
         looksRightWhen: drill.looksRightWhen ? sharedText(drill.looksRightWhen) : drill.looksRightWhen,
         commonMistakes: drill.commonMistakes.map(sharedText), sourceCredit: drill.sourceCredit ? sharedText(drill.sourceCredit) : drill.sourceCredit,
       }));
+    }
+    if (!demo) {
+      let mode = "off";
+      try {
+        mode = readAnalysisFlags((k) => Deno.env.get(k)).reportGateMode;
+      } catch {
+        console.log("[report-shadow] skipped: invalid_flags");
+      }
+      if (mode === "shadow") await runReportShadow({ mode, clipId, report: structuredClone(report),
+        readAssessment: () => service.from("clip_evidence_assessments")
+          .select("clip_status, family_reason, mode, reliability_profile_version").eq("video_clip_id", clipId)
+          .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        readFixDecision: (id) => service.from("issues").select("claim_decision").eq("id", id).maybeSingle(),
+        log: console.log });
     }
     return reply({ ...(shared ? {} : { playerId, clipId, entryId: clip.game_log_entry_id,
       entryClipIds: (entryClips ?? []).map((row) => row.id) }), playerName: identity,

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
+import type { EvidenceShadowHandle, ShadowTransmission } from "./evidenceShadow.js";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { analyzeSwing, type FrameImage } from "../services/ai/geminiAnalyzer.js";
@@ -26,13 +28,13 @@ function frameNames(framesDir: string): string[] {
   return fs.readdirSync(framesDir).filter((f) => IMAGE_EXTENSIONS.has(path.extname(f).toLowerCase())).sort();
 }
 
-function loadFrameImages(framesDir: string): FrameImage[] {
+export function loadFrameImages(framesDir: string): { frames: FrameImage[]; names: string[] } {
   const files = frameNames(framesDir);
   if (files.length === 0) throw new Error(`No image files found in ${framesDir} (expected .png/.jpg from extract.ts)`);
-  return files.map((f) => ({
+  return { names: files, frames: files.map((f) => ({
     data: fs.readFileSync(path.join(framesDir, f)),
     mimeType: path.extname(f).toLowerCase() === ".png" ? "image/png" : "image/jpeg",
-  }));
+  })) };
 }
 
 const emptyPitch = (): PitchContext => ({ location: null, zone: null, count: null, outcome: null, swung: null, pitchType: null });
@@ -164,10 +166,11 @@ export async function analyzeAndSync(
   // PR10 shadow evidence hook (null/absent when EVIDENCE_GATE_MODE is off).
   // Runs strictly after every legacy write, readable mark, focus refresh and
   // notification below, and can neither throw into nor alter them.
-  evidenceShadow: { afterRun(analysisRunId: string): Promise<void> } | null = null,
+  evidenceShadow: Pick<EvidenceShadowHandle, "afterRun"> | null = null,
 ): Promise<void> {
   const playerId = await findPlayerId(teamSlug, playerSlug);
   const input = await buildAnalysisInput({ teamSlug, playerSlug, playerId, framesDir, fallbackPitchContext: pitchContext, videoClipId, pipelineVersion, extraExclusions });
+  let transmission: ShadowTransmission | undefined;
   let result: SwingAnalysisResult;
   if (claudeDraftPath) {
     console.log(`Loading Claude-drafted analysis from ${claudeDraftPath} (Gemini not called)...`);
@@ -181,7 +184,12 @@ export async function analyzeAndSync(
     console.log(`Running analysis via the local claude CLI on ${framesDir} (Gemini not called)...`);
     result = await analyzeSwingViaClaudeCli(framesDir, input);
   } else {
-    const frames = loadFrameImages(framesDir);
+    const { frames, names } = loadFrameImages(framesDir);
+    if (evidenceShadow) {
+      transmission = { mode: "attested", images: frames.map((frame, i) => ({
+        name: names[i]!, sha256: createHash("sha256").update(frame.data).digest("hex"),
+      })) };
+    }
     console.log(`Sending ${frames.length} frame(s) from ${framesDir} to configured Gemini model...`);
     result = await analyzeSwing(frames, input);
   }
@@ -265,7 +273,9 @@ export async function analyzeAndSync(
   }
   if (evidenceShadow) {
     try {
-      await evidenceShadow.afterRun(analysisRunId);
+      await evidenceShadow.afterRun(analysisRunId, { input, transmission: transmission ?? {
+        mode: "unattested", reason: claudeDraftPath ? "draft_file_no_transmission" : "cli_backend_reads_directory",
+      } });
     } catch {
       console.error("[evidence-shadow] run linkage failed; the stored report is unaffected");
     }

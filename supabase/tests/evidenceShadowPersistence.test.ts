@@ -122,6 +122,19 @@ test("authenticated (coach/guardian) sessions cannot read assessments; parent-fa
   } };
   for (const dir of ["supabase/functions", "coach"]) walk(dir);
   for (const file of files) {
-    assert.doesNotMatch(readFileSync(file, "utf8"), /claim_decision|evidence_assessment|clip_evidence_assessments/, file);
+    let source = readFileSync(file, "utf8").replaceAll("\r\n", "\n");
+    if (file.replaceAll("\\", "/") === "supabase/functions/get-simplified-report/index.ts") {
+      const call = source.match(/if \(mode === "shadow"\) await runReportShadow\(\{[\s\S]*?log: console\.log \}\);/);
+      assert.ok(call, "only the guarded diagnostic call can read private columns");
+      const queries = [
+        'service.from("clip_evidence_assessments")\n          .select("clip_status, family_reason, mode, reliability_profile_version").eq("video_clip_id", clipId)\n          .order("created_at", { ascending: false }).limit(1).maybeSingle()',
+        'service.from("issues").select("claim_decision").eq("id", id).maybeSingle()',
+      ];
+      let allowed = call[0];
+      for (const query of queries) { assert.ok(allowed.includes(query)); allowed = allowed.replace(query, ""); }
+      assert.doesNotMatch(allowed, /claim_decision|evidence_assessment|clip_evidence_assessments/);
+      source = source.replace(call[0], allowed);
+    }
+    assert.doesNotMatch(source, /claim_decision|evidence_assessment|clip_evidence_assessments/, file);
   }
 });
