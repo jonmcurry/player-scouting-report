@@ -9,7 +9,7 @@
   },
   "scripts": {
     "pretest": "npm run test:eval-baseline && npm run test:instrumentation && npm run test:analysis-flags && npm run test:evidence-dimensions",
-    "test:evidence-dimensions": "node --import tsx --test src/services/development/evidence/evidence.test.ts src/services/development/evidence/strictBaseline.test.ts src/services/development/evidence/conceptApprovals.test.ts",
+    "test:evidence-dimensions": "node --import tsx --test src/services/development/evidence/evidence.test.ts src/services/development/evidence/strictBaseline.test.ts src/services/development/evidence/reliability.test.ts src/services/development/evidence/conceptApprovals.test.ts",
     "test:analysis-flags": "node --import tsx --test src/services/config/analysisFlags.test.ts src/services/development/evidenceRegistry.test.ts",
     "test:evidence-persistence": "node --import tsx --test supabase/tests/clipEvidenceAssessments.test.ts supabase/tests/evidenceShadowPersistence.test.ts",
     "test:evidence-shadow": "node --import tsx --test src/services/development/evidence/shadowIntegration.test.ts src/cli/evidenceShadow.test.ts",
