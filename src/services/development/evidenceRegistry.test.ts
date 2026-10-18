@@ -4,7 +4,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import {
   assertEnforceableTuple, BASELINE_ENGINE, EVIDENCE_REGISTRY, engineCodeForPipelineVersion,
-  INITIAL_EVIDENCE_TUPLE, isEvidenceTuple, LEGACY_PIPELINE_VERSION, resolveTuple,
+  ENGINE_RUNTIME_EVIDENCE_TUPLE, INITIAL_EVIDENCE_TUPLE, isEvidenceTuple, LEGACY_PIPELINE_VERSION, resolveTuple,
   type ActiveTuple, type EvidenceTuple,
 } from "./evidenceRegistry.ts";
 
@@ -16,13 +16,28 @@ const enforced: ActiveTuple = { ...approved, status: "enforced", reliabilityRefe
   approvedBy: "synthetic-reviewer", approvedAt: "2026-10-13T00:00:00.000Z" };
 
 test("initial catalog is immutable, shadow-only, uncalibrated and unapproved", () => {
-  assert.equal(EVIDENCE_REGISTRY.length, 1);
+  assert.equal(EVIDENCE_REGISTRY.length, 2);
   assert.equal(EVIDENCE_REGISTRY[0]!.status, "shadow");
   assert.equal(EVIDENCE_REGISTRY[0]!.reliabilityProfileVersion, null);
   assert.equal(EVIDENCE_REGISTRY[0]!.approvedBy, undefined);
   assert.equal(EVIDENCE_REGISTRY[0]!.d7ApprovalReference, undefined);
   assert.ok(Object.isFrozen(EVIDENCE_REGISTRY) && Object.isFrozen(EVIDENCE_REGISTRY[0]));
   assert.throws(() => assertEnforceableTuple(INITIAL_EVIDENCE_TUPLE, BASELINE_ENGINE));
+});
+
+test("runtime capture is a distinct immutable shadow identity with unique resolution", () => {
+  assert.deepEqual(EVIDENCE_REGISTRY[1], { ...ENGINE_RUNTIME_EVIDENCE_TUPLE, status: "shadow" });
+  assert.deepEqual(Object.keys(INITIAL_EVIDENCE_TUPLE).filter(key =>
+    INITIAL_EVIDENCE_TUPLE[key as keyof EvidenceTuple] !== ENGINE_RUNTIME_EVIDENCE_TUPLE[key as keyof EvidenceTuple]),
+  ["environmentVersion"]);
+  for (const [index, tuple] of [INITIAL_EVIDENCE_TUPLE, ENGINE_RUNTIME_EVIDENCE_TUPLE].entries()) {
+    assert.ok(Object.isFrozen(tuple));
+    assert.ok(Object.isFrozen(EVIDENCE_REGISTRY[index]));
+    assert.deepEqual(resolveTuple(tuple), EVIDENCE_REGISTRY[index]);
+    assert.throws(() => assertEnforceableTuple(tuple, BASELINE_ENGINE));
+    assert.equal(resolveTuple(tuple, [...EVIDENCE_REGISTRY, EVIDENCE_REGISTRY[index]]), null);
+  }
+  assert.equal(resolveTuple({ ...ENGINE_RUNTIME_EVIDENCE_TUPLE, environmentVersion: "env-000000000000" }), null);
 });
 
 test("exact resolution is deterministic and independent of key order", () => {

@@ -14,7 +14,7 @@ PR7 preflight verified the annotated tag `engine-baseline-1.0.0`, original commi
 `766f4fbc64620d428da428e59b144554ca2f2a7b`, and the unchanged guard's 18 files.
 The tag object remains `47ac6ef85cdfca186c23a0ebcc644c4bf4b5e3ae`.
 
-The sole initial entry is:
+The preserved initial entry is:
 
 | Field | Value |
 | --- | --- |
@@ -25,6 +25,20 @@ The sole initial entry is:
 | claimsVersion | `claims-0.1.0-proposed` |
 | reliabilityProfileVersion | `null` |
 | status | `shadow` |
+
+The additive runtime registration (owner-approved 2026-10-17) is:
+
+| Entry | environmentVersion | Other tuple fields | Status |
+| --- | --- | --- | --- |
+| `INITIAL_EVIDENCE_TUPLE` (index 0) | `env-f4ad5b330d0c` | As above | `shadow` |
+| `ENGINE_RUNTIME_EVIDENCE_TUPLE` (index 1) | `env-9a6a8510dec8` | Identical to initial | `shadow` |
+
+The second entry identifies the engine runtime boundary after ultralytics sets
+`OMP_NUM_THREADS=1` (one torch CPU thread). It is shadow only, grants no enforcement,
+and has no approval or reliability fields beyond the null profile version. This is
+a distinct identity, not an alias; output equivalence between thread settings is
+unmeasured. See [environment provenance](environment-provenance.md). The baseline
+drift test still checks only the original entry against the protected PR5 policy.
 
 Gate/strict/proposed-claims constants in `evidence/version.ts` reserve S0-06's
 names; they do not assert implemented gates or approved concept requirements.

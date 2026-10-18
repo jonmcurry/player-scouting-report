@@ -34,8 +34,17 @@ export const INITIAL_EVIDENCE_TUPLE: Readonly<EvidenceTuple> = Object.freeze({
   reliabilityProfileVersion: null,
 });
 
+// Engine runtime boundary capture: ultralytics import sets OMP_NUM_THREADS=1,
+// torch uses 1 CPU thread. See docs/evaluation/environment-provenance.md.
+// A distinct identity, not an alias of the initial capture.
+export const ENGINE_RUNTIME_EVIDENCE_TUPLE: Readonly<EvidenceTuple> = Object.freeze({
+  ...INITIAL_EVIDENCE_TUPLE,
+  environmentVersion: "env-9a6a8510dec8",
+});
+
 export const EVIDENCE_REGISTRY: readonly Readonly<ActiveTuple>[] = Object.freeze([
   Object.freeze({ ...INITIAL_EVIDENCE_TUPLE, status: "shadow" as const }),
+  Object.freeze({ ...ENGINE_RUNTIME_EVIDENCE_TUPLE, status: "shadow" as const }),
 ]);
 
 const tupleKeys = ["engineCodeVersion", "instrumentationVersion", "environmentVersion",

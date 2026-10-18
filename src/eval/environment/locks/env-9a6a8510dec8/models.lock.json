@@ -1,0 +1,46 @@
+{
+  "models": {
+    "pretrained_h36m_detectron_coco.bin": {
+      "bytes": 67892577,
+      "sha256": "d3219e005b50591f694da5cbaf6849f060d6b2cf895864a779f8a992ac63a232"
+    },
+    "yolo11m-pose.pt": {
+      "bytes": 42459307,
+      "sha256": "29b17eaf3a3117cbea906090dbedf9159f7c6a49db58ec8b99ed2dfde1cf6eb2"
+    },
+    "yolov8m.pt": {
+      "bytes": 52136884,
+      "sha256": "5d4a90cdc7a21786cc59cd19778e9eafff836df9e2da32524737c7ee6efe4fe5"
+    }
+  },
+  "runtime": {
+    "architecture": "AMD64",
+    "cuda": "12.8",
+    "cudnn": "91900",
+    "driver": "617.42",
+    "ffmpeg": "ffmpeg version 9.0.2-full_build-www.gyan.dev",
+    "gpu": "NVIDIA GeForce RTX 5070 Ti",
+    "opencv": "5.0.0",
+    "os": "Windows 11 10.0.26300",
+    "python": "3.12.10",
+    "settings": {
+      "CUBLAS_WORKSPACE_CONFIG": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "MKL_NUM_THREADS": null,
+      "OMP_NUM_THREADS": "1",
+      "PYTHONHASHSEED": null,
+      "cudaAvailable": true,
+      "cudnnBenchmark": false,
+      "cudnnDeterministic": false,
+      "deterministicAlgorithms": false,
+      "tf32Cudnn": true,
+      "tf32Matmul": false,
+      "torchInteropThreads": 8,
+      "torchThreads": 1
+    },
+    "torch": "2.11.0+cu128",
+    "ultralytics": "8.4.107"
+  },
+  "schemaVersion": 1,
+  "videoPose3dCommit": "1afb1ca0f1237776518469876342fc8669d3f6a9"
+}
