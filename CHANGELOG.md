@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.53.0] - 2026-10-18
+
+PR5-PR12 were committed without a version bump; this section records them retrospectively alongside PR13-PR18.
+
+### Added
+
+- Baseline environment capture and golden-comparison tooling (PR5), observer-only frame provenance instrumentation (PR6), and engine runtime environment provenance. Real-video repeatability and accuracy remain unverified.
+- Fail-closed configuration and evidence registry (PR7), separate V1-V4 evidence dimensions and the historical strict comparator (PR8), and private append-only assessment storage in migration `00065` (committed in PR9; no hosted migration was applied during this work).
+- Shadow worker and report diagnostics (PR10), evaluation-only engine observation normalization (PR11), and provider-neutral evidence packages and prepared provider adapters (PR12).
+- Offline benchmark runner (PR13), diagnostic metrics and comparison reports (PR14), and experimental reliability calibration tooling (PR15), with explicit missing-evidence and unmeasured results.
+- Content-bound concept requirement approval tooling (PR16) and migration `00066`, not applied to hosted databases; no reviewers or approvals are seeded.
+- Offline enforcement checks, dry-run comparison and unwired focus cut-over safeguards (PR17), plus a sealed-test runbook, encrypted export and access accounting (PR18). Sealed scoring and production acceptance remain deferred; no sealed evaluation has run.
+
+### Changed
+
+- Prepared version 0.53.0 without changing live coaching or report behaviour. Defaults remain off, production V4 stays unmeasured, and enforcement is not enabled.
+
+### Fixed
+
+- Specify LF checkout endings for lock provenance and cache-key inputs without rewriting lock files (S0).
+- Reuse the canonical persisted reconstruction identifier in unknown-engine test cases without changing test values (S1).
+- Serialize shared-database compiled tests after the parallel stage, preserve every compiled test exactly once, and guard against missing DB-test registrations (S2).
+
 ## [0.52.2] - 2026-10-12
 
 ### Added
