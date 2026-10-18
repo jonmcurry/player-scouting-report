@@ -1,7 +1,8 @@
 import { PROPOSED_CLAIMS_VERSION } from "./version.ts";
 import type { BodyPart, Concept, EvidenceEvent } from "./types.ts";
+import type { ConceptApprovalReference } from "./conceptApprovalTypes.ts";
 export interface ClaimRequirement {
-  readonly version: string; readonly status: "proposed"; readonly reviewApproval: null;
+  readonly version: string; readonly status: "proposed"; readonly reviewApproval: ConceptApprovalReference | null;
   /** AND of OR groups. No sequence-bound substitutions before D7 approval. */
   readonly events: readonly (readonly EvidenceEvent[])[];
   readonly images: "still_zoom" | "sequence" | "sequence_extension_zoom" | "still_or_sequence" | "still" | "none";

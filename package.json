@@ -9,7 +9,7 @@
   },
   "scripts": {
     "pretest": "npm run test:eval-baseline && npm run test:instrumentation && npm run test:analysis-flags && npm run test:evidence-dimensions",
-    "test:evidence-dimensions": "node --import tsx --test src/services/development/evidence/evidence.test.ts src/services/development/evidence/strictBaseline.test.ts",
+    "test:evidence-dimensions": "node --import tsx --test src/services/development/evidence/evidence.test.ts src/services/development/evidence/strictBaseline.test.ts src/services/development/evidence/conceptApprovals.test.ts",
     "test:analysis-flags": "node --import tsx --test src/services/config/analysisFlags.test.ts src/services/development/evidenceRegistry.test.ts",
     "test:evidence-persistence": "node --import tsx --test supabase/tests/clipEvidenceAssessments.test.ts supabase/tests/evidenceShadowPersistence.test.ts",
     "test:evidence-shadow": "node --import tsx --test src/services/development/evidence/shadowIntegration.test.ts src/cli/evidenceShadow.test.ts",
@@ -61,7 +61,8 @@
     "check:no-media": "node scripts/check-no-media.mjs",
     "check:eval-isolation": "node scripts/check-eval-isolation.mjs",
     "test:privacy": "npm run check:no-media && npm run check:eval-isolation && node --test scripts/check-no-media.test.mjs scripts/check-eval-isolation.test.mjs && node --import tsx --test src/services/ai/claudeCliAnalyzer.test.ts src/services/ai/agyCliAnalyzer.test.ts src/services/ai/geminiAnalyzer.test.ts src/services/ai/geminiDataTerms.test.ts src/services/demoExport/privacy.test.ts src/services/development/sharedSimplePayload.test.ts src/cli/purgeDeletedClips.test.ts supabase/tests/opaqueStoragePath.test.ts supabase/tests/sharedReportIdentity.test.ts",
-    "test:report-shadow": "node --import tsx --test src/services/development/reportShadow.test.ts"
+    "test:report-shadow": "node --import tsx --test src/services/development/reportShadow.test.ts",
+    "test:concept-approvals": "node --import tsx --test supabase/tests/conceptRequirementApprovals.test.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^8.2.0",
