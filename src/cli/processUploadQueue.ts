@@ -54,7 +54,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { claimNextPendingClip, markClipAnalysisFinished, markClipFailed, markClipPermanentlyFailed, markClipProgress, markClipReady } from "../services/db/uploadQueue.js";
+import { claimNextPendingClip, heartbeatClaim, markClipAnalysisFinished, markClipFailed, markClipPermanentlyFailed, markClipProgress, markClipReady } from "../services/db/uploadQueue.js";
 import { upsertPose3dFrames, deletePose3dFrames } from "../services/db/videoClipUpsert.js";
 import { downloadFile, deleteObjectIfExists } from "../services/storage/gcs.js";
 import { smoothJoints, SMOOTHING_METHOD_LABEL, type Pose3dFrame } from "../services/pose3d/smoothJoints.js";
@@ -76,24 +76,20 @@ import { recordAttemptSnapshot } from "../services/db/attemptSnapshot.js";
 import { enqueueAnalysisFailed } from "../services/notifications/outbox.js";
 import { prepareEvidenceShadow } from "./evidenceShadow.js";
 
+import { selectEngine, BASELINE_PROGRESS, assertEngineArtifacts, hasRotationMismatch, REQUIRED_V2_ARTIFACTS, workerTiming } from "../services/engine/engineSelection.js";
+import { superviseProcess } from "../services/engine/processLifetime.js";
+import { ClaimLostError, startClaimHeartbeat } from "../services/engine/claimHeartbeat.js";
+
+const ENGINE = selectEngine();
+const TIMING = workerTiming();
 const POLL_INTERVAL_MS = 10_000;
-const VENV_PYTHON = process.env.POSE3D_PYTHON ?? (process.platform === "win32"
-  ? path.join(".venv_pose3d", "Scripts", "python.exe")
-  : path.join(".venv_pose3d", "bin", "python"));
-const PIPELINE_SCRIPT = path.join("scripts", "pose3d", "run_pipeline.py");
-
-const PIPELINE_STAGE_PROGRESS = new Map([
-  ["Stage 0/4", 30], ["Stage 0.5/4", 35], ["Stage 1/4", 45],
-  ["Stage 2/4", 65], ["Stage 3/4", 75], ["Stage 3.5/4", 82], ["Stage 4/4", 88],
-]);
-
 export function pipelineProgressFromOutput(output: string): number[] {
-  return [...PIPELINE_STAGE_PROGRESS.entries()]
+  return [...BASELINE_PROGRESS]
     .filter(([label]) => output.includes(label))
     .map(([, progress]) => progress);
 }
 
-function runPipeline(videoPath: string, outDir: string, onProgress: (progress: number) => Promise<void>): Promise<void> {
+function runPipeline(videoPath: string, outDir: string, onProgress: (progress: number) => Promise<void>, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     // Array args, NOT a shell string - real clip names contain spaces and
     // parentheses (e.g. "Emily_C_AB1 (4).mp4"), which a shell-interpreted
@@ -109,9 +105,12 @@ function runPipeline(videoPath: string, outDir: string, onProgress: (progress: n
     // output instead, confirmed by direct testing - without it, a real run
     // produced zero stage output in this worker's log despite completing.
     const startedAt = Date.now();
-    const child = spawn(VENV_PYTHON, [PIPELINE_SCRIPT, videoPath, outDir], {
-      env: { ...process.env, PYTHONUNBUFFERED: "1" },
+    const child = spawn(ENGINE.python, [ENGINE.script, videoPath, outDir], {
+      env: { ...process.env, PYTHONUNBUFFERED: "1", ...(ENGINE.name === "v2-exp" ? { PYTHONDONTWRITEBYTECODE: "1", YOLO_OFFLINE: "1" } : {}) },
+      detached: process.platform !== "win32", windowsHide: true,
     });
+    const supervision = superviseProcess(child, TIMING.timeoutMs, signal, reject);
+    const progressFromOutput = (output: string) => ENGINE.progress.filter(([label]) => output.includes(label)).map(([, progress]) => progress);
     let stderr = "";
     let progressOutputBuffer = "";
     // Forward the pipeline's own [locate_swing]/[detect_2d]/[metrics]/
@@ -120,12 +119,13 @@ function runPipeline(videoPath: string, outDir: string, onProgress: (progress: n
     // so none of that stage-by-stage output was ever visible to anyone
     // tailing this process, success or failure.
     child.stdout.on("data", (chunk) => {
+      if (supervision.stopped) return;
       const output = chunk.toString();
       process.stdout.write(output);
       progressOutputBuffer += output;
       const lines = progressOutputBuffer.split(/\r?\n/);
       progressOutputBuffer = lines.pop() ?? "";
-      for (const progress of pipelineProgressFromOutput(lines.join("\n"))) {
+      for (const progress of progressFromOutput(lines.join("\n"))) {
         void onProgress(progress).catch((error) => {
           console.warn(`[process-upload-queue] Couldn't store ${progress}% progress: ${error instanceof Error ? error.message : error}`);
         });
@@ -134,9 +134,12 @@ function runPipeline(videoPath: string, outDir: string, onProgress: (progress: n
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
-    child.on("error", (err) => reject(err));
+    child.on("error", (err) => { supervision.dispose(); reject(err); });
     child.on("close", (code) => {
-      for (const progress of pipelineProgressFromOutput(progressOutputBuffer)) {
+      supervision.dispose();
+      if (supervision.stopped) return;
+      if (signal.aborted) { reject(new Error("Claim lost")); return; }
+      for (const progress of progressFromOutput(progressOutputBuffer)) {
         void onProgress(progress).catch((error) => {
           console.warn(`[process-upload-queue] Couldn't store ${progress}% progress: ${error instanceof Error ? error.message : error}`);
         });
@@ -170,6 +173,11 @@ function runPipeline(videoPath: string, outDir: string, onProgress: (progress: n
         }
       }
 
+      if (ENGINE.name === "v2-exp") {
+        if (status?.status === "complete" || status?.status === "analysis_unavailable") resolve();
+        else reject(new Error(`Experimental pipeline failed: ${JSON.stringify(status?.detail ?? "missing status")}`));
+        return;
+      }
       if (status?.status === "complete") {
         if (code !== 0) {
           console.warn(
@@ -204,11 +212,14 @@ function runPipeline(videoPath: string, outDir: string, onProgress: (progress: n
 export async function processOnePendingClip(): Promise<boolean> {
   const clip = await claimNextPendingClip();
   if (!clip) return false;
+  const claim = startClaimHeartbeat(clip.claimedAt, TIMING.heartbeatMs,
+    expected => heartbeatClaim(clip.videoClipId, expected),
+    error => console.warn("[process-upload-queue] Heartbeat failed; retrying next tick:", error));
 
   console.log(`[process-upload-queue] Claimed clip "${clip.clipSlug}" (${clip.teamSlug}/${clip.playerSlug})`);
   const ext = path.extname(clip.rawGcsPath) || ".mp4";
   const localRawPath = path.join("videos", "_uploads", `${clip.clipSlug}${ext}`);
-  const outDir = path.join("frames", clip.playerSlug, clip.clipSlug);
+  const outDir = ENGINE.outDir(clip.playerSlug, clip.clipSlug);
   const queueFailureNotification = async () => {
     try {
       await enqueueAnalysisFailed(getSupabaseClient(), clip.playerId, clip.videoClipId);
@@ -227,11 +238,11 @@ export async function processOnePendingClip(): Promise<boolean> {
     const durationRejection = uploadDurationRejection(durationProbe.durationS);
     if (durationRejection) {
       console.error(`[process-upload-queue] Clip "${clip.clipSlug}" rejected: ${durationRejection}`);
-      await markClipPermanentlyFailed(clip.videoClipId, durationRejection);
+      await claim.finish(() => markClipPermanentlyFailed(clip.videoClipId, durationRejection));
       await queueFailureNotification();
       return true;
     }
-    await markClipProgress(clip.videoClipId, 15);
+    await claim.write(() => markClipProgress(clip.videoClipId, 15));
     // Capture assessment is additive. Missing migration, unavailable ffmpeg
     // signals, or a failed check never discards a valid family upload.
     let captureHash: string | null = null;
@@ -241,28 +252,53 @@ export async function processOnePendingClip(): Promise<boolean> {
       media = await probeCaptureMedia(localRawPath);
       captureHash = await sha256File(localRawPath);
       visualSignals = await sampleCaptureVisuals(localRawPath).catch(() => null);
-      await persistCaptureAssessment({ clipId: clip.videoClipId, sourceHash: captureHash,
-        media, visual: visualSignals });
+      const capturedMedia = media;
+      const sourceHash = captureHash;
+      await claim.write(() => persistCaptureAssessment({ clipId: clip.videoClipId, sourceHash,
+        media: capturedMedia, visual: visualSignals }));
     } catch (captureError) {
+      if (captureError instanceof ClaimLostError) throw captureError;
       console.warn(`[process-upload-queue] Capture media assessment unavailable: ${captureError instanceof Error ? captureError.message : captureError}`);
     }
-    await markClipProgress(clip.videoClipId, 25);
+    await claim.write(() => markClipProgress(clip.videoClipId, 25));
     console.log(`[process-upload-queue] Running pose3d pipeline -> ${outDir}`);
     fs.mkdirSync(outDir, { recursive: true });
     // Shadow evidence reads only artifacts written during THIS attempt (retries reuse outDir).
     const pipelineStartedAt = Date.now();
-    await runPipeline(localRawPath, outDir, (progress) => markClipProgress(clip.videoClipId, progress));
-    await markClipProgress(clip.videoClipId, 90);
+    await runPipeline(localRawPath, outDir, progress => claim.write(() => markClipProgress(clip.videoClipId, progress)), claim.signal);
+    claim.check();
+    if (ENGINE.name === "v2-exp") {
+      const artifacts = Object.fromEntries(REQUIRED_V2_ARTIFACTS.map(name =>
+        [name, JSON.parse(fs.readFileSync(path.join(outDir, name), "utf-8"))]));
+      assertEngineArtifacts(artifacts);
+      if (artifacts["pipeline_status.json"].status === "analysis_unavailable") {
+        await claim.write(() => deletePose3dFrames(clip.videoClipId));
+        await claim.finish(() => markClipPermanentlyFailed(clip.videoClipId,
+          `Experimental engine analysis unavailable: ${JSON.stringify(artifacts["pipeline_status.json"].detail)}`));
+        await queueFailureNotification();
+        return true;
+      }
+      // Only a result that will be ingested needs the independent ffprobe orientation check;
+      // an unavailable result keeps its own, more specific reason.
+      if (hasRotationMismatch(artifacts["frame_map.json"].rotation, media)) {
+        await claim.write(() => deletePose3dFrames(clip.videoClipId));
+        await claim.finish(() => markClipPermanentlyFailed(clip.videoClipId,
+          "Experimental engine analysis unavailable: ROTATION_MISMATCH"));
+        await queueFailureNotification();
+        return true;
+      }
+    }
+    await claim.write(() => markClipProgress(clip.videoClipId, 90));
 
     console.log("[process-upload-queue] Ingesting phases");
-    await ingestPhases(clip.teamSlug, clip.playerSlug, clip.date, clip.opponent, clip.ab, outDir);
-    await markClipProgress(clip.videoClipId, 94);
+    await claim.write(() => ingestPhases(clip.teamSlug, clip.playerSlug, clip.date, clip.opponent, clip.ab, outDir, 0, ENGINE.name === "v2-exp" ? clip.videoClipId : undefined));
+    await claim.write(() => markClipProgress(clip.videoClipId, 94));
 
     console.log("[process-upload-queue] Smoothing + storing 3D joint trajectory");
-    const pose3d = JSON.parse(fs.readFileSync(path.join(outDir, "pose_3d.json"), "utf-8")) as {
+    const pose3d = ENGINE.requiresPose3d ? JSON.parse(fs.readFileSync(path.join(outDir, "pose_3d.json"), "utf-8")) as {
       meta: { joint_names: string[] };
       frames: Pose3dFrame[];
-    };
+    } : { meta: { joint_names: [] }, frames: [] };
     // metrics.json's lead_side_guess is the pipeline's own real "which leg is
     // the front leg" answer (a 2D-pixel heuristic - see metrics.py's
     // front_side_at()) - reused as-is here rather than re-derived from 3D
@@ -282,9 +318,10 @@ export async function processOnePendingClip(): Promise<boolean> {
         const pose2d = JSON.parse(fs.readFileSync(path.join(outDir, "pose_2d.json"), "utf-8"));
         const batFile = path.join(outDir, "bat_path.json");
         const batFrames = fs.existsSync(batFile) ? JSON.parse(fs.readFileSync(batFile, "utf-8")).frames ?? [] : [];
-        fullCapture = await persistCaptureAssessment({ clipId: clip.videoClipId, sourceHash: captureHash,
-          media, visual: visualSignals, pose2d, batFrames, phases: metrics.phases });
+        fullCapture = await claim.write(() => persistCaptureAssessment({ clipId: clip.videoClipId, sourceHash: captureHash,
+          media, visual: visualSignals, pose2d, batFrames, phases: metrics.phases }));
       } catch (captureError) {
+        if (captureError instanceof ClaimLostError) throw captureError;
         console.warn(`[process-upload-queue] Capture phase assessment unavailable: ${captureError instanceof Error ? captureError.message : captureError}`);
       }
     }
@@ -295,22 +332,22 @@ export async function processOnePendingClip(): Promise<boolean> {
           `${trackedFrames.length} frame(s) (need >= ${MIN_TRACKED_FRAMES}) - not enough real ` +
           `data for a skeleton comparison, skipping pose3d storage.`,
       );
-      await deletePose3dFrames(clip.videoClipId);
+      await claim.write(() => deletePose3dFrames(clip.videoClipId));
     } else {
       const smoothedFrames = smoothJoints(trackedFrames);
       const rigidFrames = rigidifySkeleton(smoothedFrames);
-      await upsertPose3dFrames({
+      await claim.write(() => upsertPose3dFrames({
         videoClipId: clip.videoClipId,
         jointNames: pose3d.meta.joint_names,
         smoothingMethod: `${SMOOTHING_METHOD_LABEL}+${RIGID_METHOD_LABEL}`,
         leadSide: metrics.lead_side_guess ?? null,
         frames: rigidFrames,
-      });
+      }));
     }
-    await markClipProgress(clip.videoClipId, 98);
+    await claim.write(() => markClipProgress(clip.videoClipId, 98));
 
     const detectionState = swingDetectionState(metrics);
-    await markClipReady(clip.videoClipId, detectionState, { analysisPending: true });
+    await claim.finish(() => markClipReady(clip.videoClipId, detectionState, { analysisPending: ENGINE.name === "baseline" }));
     try {
       await recordAttemptSnapshot({ clipId: clip.videoClipId, detectionState,
         phases: metrics.phases, pipelineVersion: metrics.pipeline_version ?? null,
@@ -320,6 +357,11 @@ export async function processOnePendingClip(): Promise<boolean> {
       console.warn(`[process-upload-queue] Attempt snapshot unavailable: ${attemptError instanceof Error ? attemptError.message : attemptError}`);
     }
     console.log(`[process-upload-queue] Clip "${clip.clipSlug}" ready (${detectionState}).`);
+
+    if (ENGINE.name === "v2-exp") {
+      console.log("[process-upload-queue] Skipping AI diagnosis for experimental v2 events.");
+      return true;
+    }
 
     // AI diagnosis (checklist draft + issues + comps + drills) - own try/
     // catch deliberately separate from the block above: this clip's pose3d/
@@ -396,10 +438,12 @@ export async function processOnePendingClip(): Promise<boolean> {
       }
     }
   } catch (err) {
+    if (claim.lost) { console.warn("[process-upload-queue] Claim lost; clip abandoned."); return true; }
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[process-upload-queue] Clip "${clip.clipSlug}" failed: ${message}`);
-    if (await markClipFailed(clip.videoClipId, message)) await queueFailureNotification();
+    if (await claim.finish(() => markClipFailed(clip.videoClipId, message))) await queueFailureNotification();
   } finally {
+    claim.stop();
     // Only the raw downloaded copy, not outDir - GCS still has the
     // authoritative raw video (safe to re-download if ever needed), so this
     // local copy is pure redundant disk usage once processing finishes,
@@ -416,7 +460,7 @@ export async function processOnePendingClip(): Promise<boolean> {
     // about, since failed clips can retry/reprocess repeatedly. Guarded
     // with existsSync since a failure before the download completes means
     // there's nothing to remove.
-    if (fs.existsSync(localRawPath)) {
+    if (!claim.lost && fs.existsSync(localRawPath)) {
       try {
         fs.unlinkSync(localRawPath);
       } catch (cleanupErr) {

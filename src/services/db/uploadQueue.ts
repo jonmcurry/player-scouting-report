@@ -7,6 +7,7 @@
  */
 import { getSupabaseClient } from "./supabaseClient.js";
 import type { SwingDetectionState } from "../development/swingDetection.js";
+import { heartbeatUpdate } from "../engine/claimHeartbeat.js";
 
 // A clip stuck in 'processing' past this long is assumed to belong to a
 // crashed/killed worker, not a slow-but-alive one, and becomes reclaimable -
@@ -27,6 +28,7 @@ const MAX_AUTO_RETRIES = 3;
 const RETRY_BACKOFF_MINUTES = [2, 10, 30];
 
 export interface ClipContext {
+  claimedAt: string;
   videoClipId: string;
   playerId: string;
   clipSlug: string;
@@ -79,12 +81,21 @@ export async function claimNextPendingClip(): Promise<ClipContext | null> {
     .update({ status: "processing", claimed_at: new Date().toISOString(), processing_progress: 5 })
     .eq("id", candidateId)
     .or(claimableFilter) // the actual race guard - only succeeds if still claimable
-    .select("id, clip_slug, raw_gcs_path")
+    .select("id, clip_slug, raw_gcs_path, claimed_at")
     .maybeSingle();
   if (claimErr) throw new Error(`Claiming clip ${candidateId}: ${claimErr.message}`);
   if (!claimed) return null; // another run claimed it first
 
-  return findClipContext(claimed.id as string, claimed.clip_slug as string, claimed.raw_gcs_path as string);
+  return findClipContext(claimed.id as string, claimed.clip_slug as string, claimed.raw_gcs_path as string, claimed.claimed_at as string);
+}
+
+export async function heartbeatClaim(videoClipId: string, expectedClaimedAt: string): Promise<string | null> {
+  const { values, where } = heartbeatUpdate(videoClipId, expectedClaimedAt, new Date().toISOString());
+  const { data, error } = await getSupabaseClient().from("video_clips").update(values)
+    .eq("id", where.id).eq("status", where.status).eq("claimed_at", where.claimed_at)
+    .select("claimed_at").maybeSingle();
+  if (error) throw new Error(`Claim heartbeat failed: ${error.message}`);
+  return data?.claimed_at ?? null;
 }
 
 /** Records completed work, never an elapsed-time estimate or a regression. */
@@ -105,6 +116,7 @@ async function findClipContext(
   videoClipId: string,
   clipSlug: string,
   rawGcsPath: string,
+  claimedAt: string,
 ): Promise<ClipContext> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
@@ -126,6 +138,7 @@ async function findClipContext(
     players: { id: string; slug: string; teams: { slug: string } };
   };
   return {
+    claimedAt,
     videoClipId,
     playerId: entry.players.id,
     clipSlug,

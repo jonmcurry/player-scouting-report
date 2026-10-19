@@ -1,6 +1,6 @@
 {
   "name": "hitterloop",
-  "version": "0.53.0",
+  "version": "0.54.0",
   "private": true,
   "description": "Node/TypeScript CLI layer for HitterLoop's swing-analysis pipeline: Supabase-backed coach editing, GCS media, Gemini-assisted drafts. Separate from and does not replace the existing Python pose3d pipeline (scripts/pose3d/).",
   "type": "module",
@@ -11,7 +11,8 @@
     "eval:sealed-scan": "node --import tsx src/eval/sealedScan.ts",
     "eval:sealed-test": "node --import tsx src/eval/sealedTestRun.ts",
     "test:sealed": "node --import tsx --test src/eval/sealed/membership.test.ts src/eval/sealed/leakage.test.ts src/eval/sealed/scan.test.ts src/eval/sealed/encryption.test.ts src/eval/sealed/accessLog.test.ts src/eval/sealed/testMode.test.ts",
-    "pretest": "npm run test:eval-baseline && npm run test:instrumentation && npm run test:analysis-flags && npm run test:evidence-dimensions",
+    "test:engine-v2": "node scripts/run-engine-v2-tests.mjs",
+    "pretest": "npm run test:engine-v2 && npm run test:eval-baseline && npm run test:instrumentation && npm run test:analysis-flags && npm run test:evidence-dimensions",
     "test:evidence-dimensions": "node --import tsx --test src/services/development/evidence/evidence.test.ts src/services/development/evidence/strictBaseline.test.ts src/services/development/evidence/reliability.test.ts src/services/development/evidence/conceptApprovals.test.ts src/services/development/evidence/enforceability.test.ts src/services/development/evidence/enforcementDiff.test.ts src/services/development/enforcementCutover.test.ts",
     "test:analysis-flags": "node --import tsx --test src/services/config/analysisFlags.test.ts src/services/development/evidenceRegistry.test.ts",
     "test:enforcement-db": "node --import tsx --test supabase/tests/enforcementReadModel.test.ts",

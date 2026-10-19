@@ -35,6 +35,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { findPlayerId } from "../services/db/checklistUpsert.js";
 import { computeAnalysisQuality } from "../services/db/analysisQuality.js";
+import { getSupabaseClient } from "../services/db/supabaseClient.js";
+import { assertV2IngestionRoute, v2IngestionPlan } from "../services/engine/v2Ingestion.js";
 import { normalizeBox, subjectBoxAt, SUBJECT_BOX_METHOD, type BatFrame } from "../services/pose3d/subjectBox.js";
 import {
   findGameLogEntryId,
@@ -97,12 +99,14 @@ export async function ingestPhases(
   ab: number,
   clipDir: string,
   position = 0,
+  existingVideoClipId?: string,
 ): Promise<void> {
   if (!fs.existsSync(clipDir)) {
     throw new Error(`Clip dir not found: ${clipDir}`);
   }
   const pose2d = JSON.parse(fs.readFileSync(path.join(clipDir, "pose_2d.json"), "utf-8"));
   const metrics = JSON.parse(fs.readFileSync(path.join(clipDir, "metrics.json"), "utf-8"));
+  assertV2IngestionRoute(metrics, existingVideoClipId);  // before any database access
   const batPath = path.join(clipDir, "bat_path.json");
   const batFrames: BatFrame[] = fs.existsSync(batPath) ? JSON.parse(fs.readFileSync(batPath, "utf-8")).frames ?? [] : [];
 
@@ -137,12 +141,21 @@ export async function ingestPhases(
   // pinned every one of them at position 0 (whichever ingester runs first
   // for a brand-new clip wins the create), scrambling the multi-clip
   // switcher order until manually corrected in the DB.
-  const videoClipId = await findOrCreateVideoClip(gameLogEntryId, {
+  const videoClipId = existingVideoClipId ?? await findOrCreateVideoClip(gameLogEntryId, {
     clipSlug,
     fps: pose2d.meta.fps,
     nFrames: pose2d.meta.n_frames,
     position,
   });
+
+  if (existingVideoClipId) {
+    const plan = v2IngestionPlan(metrics, pose2d);
+    const db = getSupabaseClient();
+    const { error: clearError } = await db.from("video_clip_metrics").delete().eq("video_clip_id", videoClipId);
+    if (clearError) throw new Error(`Clearing baseline summary: ${clearError.message}`);
+    const { error: metaError } = await db.from("video_clips").update(plan.clipMetadata).eq("id", videoClipId);
+    if (metaError) throw new Error(`Updating v2 clip metadata: ${metaError.message}`);
+  }
 
   let written = 0;
   for (const slug of PHASE_SLUGS) {
@@ -160,7 +173,7 @@ export async function ingestPhases(
     if (!phaseTypeId) {
       throw new Error(`No swing_phase_types row for slug "${dbSlug}" - was migration 00004 applied?`);
     }
-    const normalized = normalizePhase(raw);
+    const normalized = normalizePhase(existingVideoClipId ? { ...raw, method: raw.method ?? null, confidence: null } : raw);
     // Where the batter is at this phase, for the coach app's "zoom on player"
     // view. Omitted (not guessed) when the tracked person isn't confidently
     // visible around this frame.

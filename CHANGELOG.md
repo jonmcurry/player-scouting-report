@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.54.0] - 2026-10-19
+
+### Added
+
+- Experimental, development-only v2 analysis engine (`scripts/engine_v2/`), selected by the worker only with `ANALYSIS_ENGINE=v2-exp` against a local Supabase; the default worker still runs the protected baseline. M1: original-timestamp decoding with PyAV, offline BoT-SORT/ReID person tracking, continuity splitting and conservative pose-only batter candidates with no longest-track fallback.
+- M2: bat masks from the pinned COCO segmentation weights, oriented mask-to-segment geometry, hand-based knob/barrel identity, explicit ambiguity and flip-conflict statuses, PTS-bounded labelled interpolation, and `bat_path.json` whose baseline fields carry direct detections only.
+- M2.1: final batter selection grounded in exclusive direct bat evidence compared across all pose-eligible candidates, with fixed thresholds and explicit ambiguous/unavailable outcomes.
+- M3: PR3-aligned swing events (impact as an estimate, never contact) on exact source PTS with fail-closed gates, order rules and `downstream_use` labels; compatible phase slugs only for located events; a local-only diagnostic overlay tool that refuses repository destinations.
+- Worker pipeline timeout with process-tree termination and a compare-and-swap claim heartbeat for both engines.
+
+### Changed
+
+- No live coaching, report, flag or hosted behaviour changes. All v2 thresholds are provisional and unvalidated; local development checks on a small set of authorized clips are not validation and are not published. Launch and stride timing are flagged not for downstream use.
+
 ## [0.53.0] - 2026-10-18
 
 PR5-PR12 were committed without a version bump; this section records them retrospectively alongside PR13-PR18.

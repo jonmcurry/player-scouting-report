@@ -13,6 +13,27 @@ mobile-width review of Home and an at-bat report; authenticated family/device re
 - Only reviewed sanitized hashes are allowlisted. The unchanged Git index still holds the original sensitive images, so media/privacy gates remain blocked. Nothing was staged; history and the potentially active invitation remain unremediated pending separate authorization.
 - PR10 worker integration has not started. Separate regression execution also exposes an existing brand-guard mismatch in two unchanged PR7 test fixtures; do not confuse that with screenshot sanitization.
 
+### HitterLoop v2 engine M3 — experimental swing events on source PTS
+
+- Pipeline 0.3.0 adds PR3-aligned events (stance_set, load_peak_estimate, stride_foot_lift, foot_plant, swing_launch, impact_estimate, extension, finish; contact_confirmed and load_start never produced) from selected-batter pose and direct barrel-end/mask-axis evidence only (knob never used), exact PTS derivatives, fail-closed gates and order rules, phases mirroring only available events. Contract: `docs/evaluation/engine-v2-m3.md`.
+- Local development check on a small set of authorized clips (results kept locally, not published): impact/extension usually located and consistent with the owner's approximate swing annotation where one existed; swing_launch is late in the acceleration ramp and stride lift/plant are not usable (flagged not_recommended / unavailable). Not validated. Released as 0.54.0 (dev-only engine, default behaviour unchanged); no deployment. M4 not started.
+
+### HitterLoop v2 engine M2.1 — evidence-aware batter selection
+
+- Final batter decision (pipeline 0.2.1) now combines unchanged pose eligibility with exclusive direct bat evidence across all eligible candidates (shared bats credit nobody; thresholds fixed in advance), keeping explicit selected/ambiguous/unavailable outcomes. Contract: `docs/evaluation/engine-v2-m2.1.md`.
+- In a local development check on a small set of authorized clips (results kept locally, not published) grounding resolved clips that pose-only selection left ambiguous and matched the one owner annotation available. Development examples are not validation; knob error remains open.
+
+### HitterLoop v2 engine M2 — experimental bat geometry and tracking
+
+- Add a bat stage to the dev-only v2 engine (pipeline 0.2.0): pinned in-place YOLO11m-seg COCO class 34 masks, PCA mask-to-segment geometry, hand-based knob/tip identity with continuity only as a secondary signal, explicit ambiguity/flip-conflict statuses, PTS-bounded labelled interpolation, and `bat_path.json` whose baseline `tip`/`knob` hold direct detections only. Contract: `docs/evaluation/engine-v2-m2.md`.
+- Open: the pretrained bat class detected nothing on synthetic renders, so real detection rates are unknown until authorized annotated footage exists; thresholds unvalidated; wrists stand in for hands. Implemented directly by Claude while Codex was rate-limited. No version bump or deployment. M3 not started.
+
+### HitterLoop v2 engine M1 — experimental decoder/tracker skeleton
+
+- Add original-PTS streaming decode, offline native-ReID person tracking, continuity-split pose-only batter selection and isolated dev-only worker routing. No bat/events/AI claims; thresholds remain unvalidated. Contract: `docs/evaluation/engine-v2-m1.md`.
+- Worker timeout and CAS heartbeat cover both engines; v2 clears stale baseline phase/summary/3D evidence. Synthetic-only verification passes (engine 16, engine TS 13, full `npm test` incl. DB, guards). Three Gemini reviews found no blockers; confirmed findings (high-fps centre-jump splitting, nearby-swap sensitivity, ClaimLostError absorption, taskkill 128, ffprobe rotation cross-check, 33 ms time-base window) were fixed; slow multi-frame identity drift remains a documented limit. See the contract doc.
+- Open: no real-footage run (needs authorized clips); batter selection thresholds are unvalidated; PyAV 18.1.0 cannot read stream-level display matrices; no end-to-end v2 worker run yet. M2 not started. No version bump or deployment.
+
 ### HitterLoop v2 PR12 — provider-neutral evidence package (S0-10, not wired)
 
 - `evpkg-1.0.0` package (`src/services/ai/evidencePackage.ts`), `render-2.1` (legacy, golden-equal Gemini request) / `render-2.2` (prepared, unreachable), Gemini/Claude CLI/AGY adapters behind `SwingReportProvider`, and `suppliedEvidenceForV3` (only sent + verified + event-bound images count). See `docs/evaluation/evidence-package.md`.

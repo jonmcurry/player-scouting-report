@@ -98,3 +98,4 @@ demo-curation*.json
 
 # Local multi-agent QA scratch files
 .agent-tmp/
+.venv_engine_v2/

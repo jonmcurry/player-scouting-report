@@ -21,8 +21,14 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { ingestPhases } from "../../cli/ingestPhases.js";
+import { V2_IDENTITY } from "../engine/engineSelection.js";
+import { M1_PHASES } from "../engine/v2Ingestion.js";
 import { getSupabaseClient } from "./supabaseClient.js";
-import { claimNextPendingClip, markClipAnalysisFinished, markClipFailed, markClipPermanentlyFailed, markClipProgress, markClipReady } from "./uploadQueue.js";
+import { claimNextPendingClip, heartbeatClaim, markClipAnalysisFinished, markClipFailed, markClipPermanentlyFailed, markClipProgress, markClipReady } from "./uploadQueue.js";
 
 let gameLogEntryId: string;
 const insertedClipIds: string[] = [];
@@ -72,6 +78,88 @@ test("claimNextPendingClip: only one of two concurrent callers claims the same p
   const [a, b] = await Promise.all([claimNextPendingClip(), claimNextPendingClip()]);
   const winners = [a, b].filter((r) => r?.videoClipId === clip!.id);
   assert.equal(winners.length, 1, "exactly one of two concurrent claims should win the race for the same row");
+  const winner = winners[0]!;
+  const { data: stored } = await supabase.from("video_clips").select("claimed_at").eq("id", winner.videoClipId).single();
+  assert.equal(winner.claimedAt, stored!.claimed_at);
+});
+
+test("heartbeatClaim compares exact stored claim and processing state", async () => {
+  const db = getSupabaseClient();
+  const { data: row, error } = await db.from("video_clips").insert({
+    game_log_entry_id: gameLogEntryId, clip_slug: randomUUID(), status: "processing",
+    claimed_at: "2026-01-01T00:00:00.123456+00:00",
+  }).select("id, claimed_at").single();
+  assert.equal(error, null, error?.message);
+  insertedClipIds.push(row!.id);
+  const next = await heartbeatClaim(row!.id, row!.claimed_at);
+  assert.ok(next);
+  assert.equal(await heartbeatClaim(row!.id, row!.claimed_at), null);
+  const { data: stored } = await db.from("video_clips").select("claimed_at").eq("id", row!.id).single();
+  assert.equal(next, stored!.claimed_at);
+  await markClipReady(row!.id, "inconclusive");
+  assert.equal(await heartbeatClaim(row!.id, next!), null);
+});
+
+test("v2 ingestion clears existing baseline phases and summary on the claimed clip", async () => {
+  const db = getSupabaseClient();
+  const { data: entry, error: entryError } = await db.from("game_log_entries")
+    .select("date, opponent, ab, players!inner(slug, teams!inner(slug))").eq("id", gameLogEntryId).single();
+  assert.equal(entryError, null);
+  const context = entry as unknown as { date: string; opponent: string | null; ab: number;
+    players: { slug: string; teams: { slug: string } } };
+  const slug = randomUUID();
+  const { data: clip, error } = await db.from("video_clips").insert({
+    game_log_entry_id: gameLogEntryId, clip_slug: slug, status: "processing",
+  }).select("id").single();
+  assert.equal(error, null);
+  const id = clip!.id as string;
+  insertedClipIds.push(id);
+  const { data: phaseTypes } = await db.from("swing_phase_types").select("id, slug");
+  const typeIds = phaseTypes!.filter(p => [...M1_PHASES.map(s => s.replace("_", "-"))].includes(p.slug));
+  assert.equal(typeIds.length, 6);
+  const { error: phaseError } = await db.from("swing_phases").insert(typeIds.map(p => ({
+    video_clip_id: id, phase_type_id: p.id, frame: 12, time_s: 1.2, method: "baseline-test", confidence: "high",
+  })));
+  assert.equal(phaseError, null);
+  const { error: summaryError } = await db.from("video_clip_metrics").insert({ video_clip_id: id, max_bat_speed_value: 20 });
+  assert.equal(summaryError, null);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "v2-ingest-"));
+  try {
+    fs.writeFileSync(path.join(directory, "metrics.json"), JSON.stringify({ ...V2_IDENTITY,
+      phases: Object.fromEntries(M1_PHASES.map(p => [p, { frame: null, time_s: null, reason: "not_produced_in_m1" }])) }));
+    fs.writeFileSync(path.join(directory, "pose_2d.json"), JSON.stringify({
+      meta: { ...V2_IDENTITY, fps: 30, n_frames: 2, width: 160, height: 96 },
+      frames: [{ frame: 0, time_s: 3, keypoints: null }, { frame: 1, time_s: 3.2, keypoints: null }],
+    }));
+    await ingestPhases(context.players.teams.slug, context.players.slug, context.date, context.opponent, context.ab, directory, 0, id);
+    const { data: phases } = await db.from("swing_phases").select("frame, time_s, method, confidence").eq("video_clip_id", id);
+    assert.equal(phases!.length, 6);
+    assert.ok(phases!.every(p => p.frame === null && p.time_s === null && p.method === null && p.confidence === null));
+    const { data: summaries } = await db.from("video_clip_metrics").select("video_clip_id").eq("video_clip_id", id);
+    assert.deepEqual(summaries, []);
+    const { data: stored } = await db.from("video_clips").select("clip_slug, duration_s").eq("id", id).single();
+    assert.equal(stored!.clip_slug, slug);
+    assert.ok(Math.abs(stored!.duration_s - .2) < 1e-6);
+    // M3: one available phase retains its method; all absent phases stay null.
+    fs.writeFileSync(path.join(directory, "metrics.json"), JSON.stringify({ ...V2_IDENTITY,
+      phases: { ...Object.fromEntries(M1_PHASES.map(p => [p,
+        { frame: null, time_s: null, reason: "INSUFFICIENT_OBSERVATIONS" }])),
+        contact: { frame: 1, time_s: 3.2, method: "v2:impact_estimate", window_s: [3, 3.2], reason: null } } }));
+    await ingestPhases(context.players.teams.slug, context.players.slug, context.date, context.opponent, context.ab, directory, 0, id);
+    const { data: located, error: locatedError } = await db.from("swing_phases")
+      .select("frame, time_s, method, confidence, phase_type_id").eq("video_clip_id", id);
+    assert.equal(locatedError, null);
+    assert.equal(located!.length, 6);
+    const contact = located!.find(p => p.phase_type_id === typeIds.find(t => t.slug === "contact")!.id)!;
+    assert.equal(contact.frame, 1);
+    assert.equal(contact.time_s, 3.2);
+    assert.equal(contact.method, "v2:impact_estimate");
+    assert.equal(contact.confidence, null);
+    assert.ok(located!.filter(p => p !== contact).every(p =>
+      p.frame === null && p.time_s === null && p.method === null && p.confidence === null));
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("claimNextPendingClip: a stale 'processing' clip becomes reclaimable", async () => {
