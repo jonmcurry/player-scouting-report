@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.55.0] - 2026-10-20
+
+### Added
+
+- Experimental, development-only AI coaching for the v2 engine (M4), opt-in with `ENGINE_V2_AI=enabled` and a local CLI provider only. Findings must cite supplied swing events and state whether they are direct observations or qualified interpretations; a deterministic pre-storage qualification suppresses unsupported findings with plain-English reasons. Not accuracy-validated or calibrated; production prompts, report gates and the empty V4 reliability catalog are unchanged.
+- Experimental Android report for v2 clips (M5), labelled "Experimental analysis — not yet validated": qualified findings with claim type and supporting moment, "See it" seeking to the source event timestamp, estimated impact never shown as contact, specific reasons when a swing can't be assessed, and distinct insufficient-evidence and no-issue outcomes that are never presented as a verified clean swing.
+- Development-only `experimental_v2_results` table and coach/guardian retry RPC in migration `00067`, not applied to any hosted database.
+
+### Changed
+
+- v2 clips are excluded from focus, progress, practice evidence, share links and report-ready notifications.
+- Android release builds no longer allow mixed content or cleartext to the local development host; those settings now apply to debug builds only.
+- Experimental v2 coaching skips uploads whose container start time is more than 1 ms from zero (or can't be read), because analysis stills for such files would show a different moment than their label; the report explains why the swing couldn't be assessed.
+
+### Fixed
+
+- Debug Android builds can play local development videos: the debug WebView uses an http origin so report video and event seeking work against the local storage emulator (M5.1). Release builds keep https.
+
 ## [0.54.0] - 2026-10-19
 
 ### Added

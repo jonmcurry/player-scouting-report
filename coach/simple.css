@@ -70,6 +70,10 @@
 .simple-guide .hl-capture-mode p { margin:8px 0 0; }
 .simple-card summary { min-height:48px; display:flex; align-items:center; cursor:pointer; font-weight:700; }
 .simple-error { color:var(--warning); }
+.simple-experimental { margin:8px 0 0; padding:10px 12px; border:1px solid var(--warning); border-radius:12px; background:var(--warning-subtle); color:var(--warning); font-weight:700; }
+.simple-claim { display:inline-block; margin:8px 0 0 8px; padding:4px 10px; border-radius:var(--radius-pill, 999px); background:var(--surface-2); color:var(--text-2); font-size:.75rem; font-weight:600; }
+.simple-reasons { margin:8px 0; padding-left:20px; line-height:1.5; }
+.simple-see-it { flex:1 1 100%; }
 #simpleMessage:not(:empty) { background:var(--surface-2); border-radius:10px; padding:12px; margin-bottom:12px; }
 .simple-nav[hidden] { display:none; }
 @media (min-width:700px) { .simple-dialog { margin:auto; border-radius:20px; } }

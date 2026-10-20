@@ -75,6 +75,12 @@ import { persistCaptureAssessment } from "../services/db/captureAssessmentStore.
 import { recordAttemptSnapshot } from "../services/db/attemptSnapshot.js";
 import { enqueueAnalysisFailed } from "../services/notifications/outbox.js";
 import { prepareEvidenceShadow } from "./evidenceShadow.js";
+import { qualifyV2Findings, v2CoachingEligibility } from "../services/engine/v2Coaching.js";
+import { buildV2EvidencePackage, renderV2Addendum, v2PhaseFrames } from "../services/ai/v2EvidencePackage.js";
+import type { ClipContext } from "../services/db/uploadQueue.js";
+import { experimentalEvents, experimentalResult, storedExperimentalResult, upsertExperimentalV2Result } from "../services/db/experimentalV2Results.js";
+import type { ExperimentalV2Row } from "../services/development/experimentalV2Report.js";
+import type { V2Qualification } from "../services/engine/v2Coaching.js";
 
 import { selectEngine, BASELINE_PROGRESS, assertEngineArtifacts, hasRotationMismatch, REQUIRED_V2_ARTIFACTS, workerTiming } from "../services/engine/engineSelection.js";
 import { superviseProcess } from "../services/engine/processLifetime.js";
@@ -209,6 +215,96 @@ function runPipeline(videoPath: string, outDir: string, onProgress: (progress: n
   });
 }
 
+/** Extraction seeks a quarter frame early, so a container start within 1 ms of zero still lands on the
+ * labelled frame up to 240 fps. Anything else, including an unreadable (NaN) start, fails closed. */
+export const startOffsetSupported = (startS: number): boolean => Math.abs(startS) <= 0.001;
+
+/** The container's start time in seconds (ffprobe format=start_time); NaN when it can't be read. */
+export function containerStartS(file: string): Promise<number> {
+  return new Promise((resolve) => {
+    let out = "";
+    const child = spawn("ffprobe", ["-v", "error", "-show_entries", "format=start_time", "-of", "csv=p=0", file]);
+    // A hung probe must not stall the worker: treat it as unreadable.
+    const timer = setTimeout(() => { child.kill(); resolve(Number.NaN); }, 30_000);
+    child.stdout.on("data", (d) => (out += d.toString()));
+    child.on("error", () => { clearTimeout(timer); resolve(Number.NaN); });
+    child.on("close", (code) => { clearTimeout(timer); resolve(code === 0 && out.trim() !== "" ? Number(out.trim()) : Number.NaN); });
+  });
+}
+
+function readJsonIfPresent(file: string): unknown {
+  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf-8")) : null;
+}
+
+/** Development-only v2 coaching (M4): exact-frame stills for supported events only, an ordered labelled
+ * package, the evidence addendum, and pre-storage qualification. Throws to the caller's diagnosis catch. */
+async function runV2Coaching(args: { clip: ClipContext; outDir: string; localRawPath: string; sourceSha256: string | null;
+  metrics: { pipeline_version?: string }; provider: "agy" | "claude"; base: ExperimentalV2Row }): Promise<void> {
+  const { clip, outDir } = args;
+  const skipped = (code: string) => upsertExperimentalV2Result({ ...args.base, outcome: "not_assessable", reason_codes: [code] });
+  const read = (name: string) => JSON.parse(fs.readFileSync(path.join(outDir, name), "utf-8"));
+  const metrics = read("metrics.json"), pose2d = read("pose_2d.json"), batPath = read("bat_path.json");
+  // v2 decodes the upload directly: analysed frames must be source frames one-to-one.
+  // extractAnalysisInputs seeks with ffmpeg -ss, which is offset by the container start time while
+  // the frame timestamps are absolute. On a file that does not start at 0 every still would show a
+  // later moment than its label (measured: +45 frames on a 1.5 s-offset synthetic file), so fail closed.
+  if (!startOffsetSupported(await containerStartS(args.localRawPath))) {
+    console.log("[process-upload-queue] Experimental v2 upload does not start at 0 s; skipping AI diagnosis.");
+    await skipped("SOURCE_START_OFFSET_UNSUPPORTED");
+    return;
+  }
+  const window = analysisWindowForClipDir(outDir, args.localRawPath);
+  if (!window || window.startS !== 0 || window.frameStep !== 1) {
+    // Same as baseline: an unplaceable window is a skipped diagnosis, not a failed clip.
+    console.log("[process-upload-queue] Experimental v2 frames don't map one-to-one onto the upload; skipping AI diagnosis.");
+    await skipped("FRAME_MAPPING_UNAVAILABLE");
+    return;
+  }
+  const stillsDir = path.join(outDir, "phase_stills");
+  const inputs = await extractAnalysisInputs({
+    videoPath: args.localRawPath, window, fps: pose2d.meta.fps, nFrames: pose2d.meta.n_frames,
+    width: pose2d.meta.width, height: pose2d.meta.height, poseFrames: pose2d.frames, batFrames: batPath.frames ?? [],
+  }, v2PhaseFrames(metrics), stillsDir);
+  const built = await buildV2EvidencePackage({ videoClipId: clip.videoClipId, sourceSha256: args.sourceSha256 ?? "",
+    imagesDir: stillsDir, images: inputs.images, metrics, frameMap: read("frame_map.json"), batPath, pose2d, tracks: read("tracks.json") });
+  if (!built.ok) {
+    console.log(`[process-upload-queue] Experimental v2 evidence unavailable (${built.error}); skipping AI diagnosis.`);
+    await skipped("EVIDENCE_PACKAGE_UNAVAILABLE"); return;
+  }
+  const pkg = built.pkg;
+  // The CLI analyzers read every image in the directory: only package images may remain, byte-identical.
+  for (const { name } of pkg.excludedImages) fs.rmSync(path.join(stillsDir, name), { force: true });
+  const present = fs.readdirSync(stillsDir).filter(f => /\.(png|jpe?g)$/i.test(f)).sort();
+  if (present.join("\n") !== pkg.images.map(i => i.name).sort().join("\n")) throw new Error("V2_PACKAGE_DIRECTORY_MISMATCH");
+  for (const image of pkg.images) {
+    if (await sha256File(path.join(stillsDir, image.name)) !== image.sha256) throw new Error("V2_PACKAGE_DIRECTORY_MISMATCH");
+  }
+  fs.writeFileSync(path.join(outDir, "evidence_package_v2.json"), JSON.stringify({ digest: built.digest, package: pkg }, null, 2));
+  if (pkg.supportedEvents.length === 0) {
+    console.log("[process-upload-queue] No citable v2 event has a still; skipping AI diagnosis.");
+    await skipped("NO_SUPPORTED_EVENT_STILL"); return;
+  }
+  const addendum = renderV2Addendum(pkg);
+  const pitchContext = [clip.pitch, clip.result].filter(Boolean).join(" - ") || "No pitch/result details recorded for this at-bat.";
+  let qualification: V2Qualification | null = null;
+  await analyzeAndSync(clip.teamSlug, clip.playerSlug, stillsDir, pitchContext, false, null, args.provider, clip.videoClipId,
+    args.metrics.pipeline_version ?? null, [], null, {
+      supportedEvents: pkg.supportedEvents, addendum: addendum.text,
+      qualify: (result) => qualifyV2Findings(result, pkg),
+      record: async (q) => {
+        qualification = q;
+        fs.writeFileSync(path.join(outDir, "coaching_qualification.json"),
+          JSON.stringify({ package_digest: built.digest, render: addendum.version, ...q }, null, 2));
+        if (q.withheld) await upsertExperimentalV2Result({ ...args.base, outcome: "withheld",
+          reason_codes: [...new Set(["SUMMARY_UNSUPPORTED_CLAIM", ...q.decisions.filter(d => d.kind === "summary").flatMap(d => d.reasons)])] });
+      },
+      stored: async ({ result, analysisRunId, issueIds }) => {
+        if (!qualification) throw new Error("Missing experimental qualification");
+        await upsertExperimentalV2Result(storedExperimentalResult(args.base, qualification, result, analysisRunId, issueIds));
+      },
+    });
+}
+
 export async function processOnePendingClip(): Promise<boolean> {
   const clip = await claimNextPendingClip();
   if (!clip) return false;
@@ -229,6 +325,7 @@ export async function processOnePendingClip(): Promise<boolean> {
   };
 
   try {
+    if (ENGINE.name === "v2-exp") await claim.write(() => upsertExperimentalV2Result(experimentalResult(clip.videoClipId)));
     console.log(`[process-upload-queue] Downloading ${clip.rawGcsPath} -> ${localRawPath}`);
     await downloadFile(clip.rawGcsPath, localRawPath);
 
@@ -238,6 +335,9 @@ export async function processOnePendingClip(): Promise<boolean> {
     const durationRejection = uploadDurationRejection(durationProbe.durationS);
     if (durationRejection) {
       console.error(`[process-upload-queue] Clip "${clip.clipSlug}" rejected: ${durationRejection}`);
+      // Deterministic: recorded as not assessable so it is never offered for retry.
+      if (ENGINE.name === "v2-exp") await claim.write(() => upsertExperimentalV2Result(experimentalResult(clip.videoClipId, {
+        outcome: "not_assessable", reason_codes: ["UPLOAD_DURATION_UNSUPPORTED"] })));
       await claim.finish(() => markClipPermanentlyFailed(clip.videoClipId, durationRejection));
       await queueFailureNotification();
       return true;
@@ -272,6 +372,9 @@ export async function processOnePendingClip(): Promise<boolean> {
         [name, JSON.parse(fs.readFileSync(path.join(outDir, name), "utf-8"))]));
       assertEngineArtifacts(artifacts);
       if (artifacts["pipeline_status.json"].status === "analysis_unavailable") {
+        await claim.write(() => upsertExperimentalV2Result(experimentalResult(clip.videoClipId, {
+          outcome: "not_assessable", reason_codes: artifacts["pipeline_status.json"].detail?.reason_codes ?? [],
+        })));
         await claim.write(() => deletePose3dFrames(clip.videoClipId));
         await claim.finish(() => markClipPermanentlyFailed(clip.videoClipId,
           `Experimental engine analysis unavailable: ${JSON.stringify(artifacts["pipeline_status.json"].detail)}`));
@@ -281,6 +384,9 @@ export async function processOnePendingClip(): Promise<boolean> {
       // Only a result that will be ingested needs the independent ffprobe orientation check;
       // an unavailable result keeps its own, more specific reason.
       if (hasRotationMismatch(artifacts["frame_map.json"].rotation, media)) {
+        await claim.write(() => upsertExperimentalV2Result(experimentalResult(clip.videoClipId, {
+          outcome: "not_assessable", reason_codes: ["ROTATION_MISMATCH"],
+        })));
         await claim.write(() => deletePose3dFrames(clip.videoClipId));
         await claim.finish(() => markClipPermanentlyFailed(clip.videoClipId,
           "Experimental engine analysis unavailable: ROTATION_MISMATCH"));
@@ -347,7 +453,21 @@ export async function processOnePendingClip(): Promise<boolean> {
     await claim.write(() => markClipProgress(clip.videoClipId, 98));
 
     const detectionState = swingDetectionState(metrics);
-    await claim.finish(() => markClipReady(clip.videoClipId, detectionState, { analysisPending: ENGINE.name === "baseline" }));
+    // v2: decided before "ready" so the app shows analysis as pending only when it will actually run.
+    const v2Gate = ENGINE.name === "v2-exp" ? v2CoachingEligibility(Object.fromEntries(
+      ["pipeline_status.json", "metrics.json", "tracks.json"].map(name => [name, readJsonIfPresent(path.join(outDir, name))]))) : null;
+    const v2Base = ENGINE.name === "v2-exp" ? experimentalResult(clip.videoClipId, {
+      ...(metrics.pipeline_version ? { pipeline_version: metrics.pipeline_version } : {}),
+      events: experimentalEvents(readJsonIfPresent(path.join(outDir, "metrics.json")), readJsonIfPresent(path.join(outDir, "frame_map.json"))),
+    }) : null;
+    // Written before "ready" so a reader never sees a ready clip with a stale "processing" result.
+    if (v2Base && !v2Gate!.eligible) {
+      await claim.write(() => upsertExperimentalV2Result({ ...v2Base,
+        outcome: v2Gate!.reasons.every(r => ["V2_AI_NOT_ENABLED", "V2_PROVIDER_UNSUPPORTED"].includes(r))
+          ? "analysis_not_enabled" : "not_assessable", reason_codes: v2Gate!.reasons }));
+    } else if (v2Base) await claim.write(() => upsertExperimentalV2Result(v2Base));
+    await claim.finish(() => markClipReady(clip.videoClipId, detectionState,
+      { analysisPending: ENGINE.name === "baseline" || v2Gate?.eligible === true }));
     try {
       await recordAttemptSnapshot({ clipId: clip.videoClipId, detectionState,
         phases: metrics.phases, pipelineVersion: metrics.pipeline_version ?? null,
@@ -358,8 +478,24 @@ export async function processOnePendingClip(): Promise<boolean> {
     }
     console.log(`[process-upload-queue] Clip "${clip.clipSlug}" ready (${detectionState}).`);
 
-    if (ENGINE.name === "v2-exp") {
-      console.log("[process-upload-queue] Skipping AI diagnosis for experimental v2 events.");
+    if (v2Base) {
+      if (!v2Gate!.eligible) {
+        // Covers the explicit ENGINE_V2_AI opt-in: no v2 footage or evidence reaches a provider without it.
+        console.log(`[process-upload-queue] Skipping AI diagnosis for experimental v2: ${v2Gate!.reasons.join(", ")}`);
+        return true;
+      }
+      try {
+        await runV2Coaching({ clip, outDir, localRawPath, sourceSha256: captureHash, metrics, provider: v2Gate!.provider!, base: v2Base });
+      } catch (diagErr) {
+        // The clip is already ready: a failure here must never fall through to the pipeline-failure path.
+        try { await upsertExperimentalV2Result({ ...v2Base, outcome: "analysis_failed", reason_codes: ["AI_ANALYSIS_FAILED"], retry_eligible: true }); }
+        catch (storeErr) { console.error(`[process-upload-queue] ${storeErr instanceof Error ? storeErr.message : storeErr}`); }
+        console.error(`[process-upload-queue] Experimental v2 diagnosis for "${clip.clipSlug}" failed (clip itself is still ready): ${diagErr instanceof Error ? diagErr.message : diagErr}`);
+        await queueFailureNotification();
+      } finally {
+        try { await markClipAnalysisFinished(clip.videoClipId); }
+        catch (finishErr) { console.error(`[process-upload-queue] ${finishErr instanceof Error ? finishErr.message : finishErr}`); }
+      }
       return true;
     }
 

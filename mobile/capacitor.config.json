@@ -1,8 +1,5 @@
 {
   "appId": "com.hitterloop.coach",
   "appName": "HitterLoop",
-  "webDir": "../coach",
-  "android": {
-    "allowMixedContent": true
-  }
+  "webDir": "../coach"
 }

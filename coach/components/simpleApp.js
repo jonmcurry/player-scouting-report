@@ -5,6 +5,7 @@ import { acceptedVideoUpload, VIDEO_UPLOAD_HELP } from "./uploadPolicy.js";
 import { deleteClip } from "./clipDeletion.js";
 import { demoShowcase } from "./demoShowcase.js";
 import { captureModeHtml, captureSummaryHtml } from "./captureGuide.js";
+import { experimentalReportHtml, experimentalStillPending, seekTarget } from "./experimentalReport.js";
 
 const root = document.getElementById("simpleRoot");
 const message = document.getElementById("simpleMessage");
@@ -127,7 +128,7 @@ async function showHome() {
     ${await queueBanner()}
     ${home.progress?.current ? `<button class="simple-row simple-card" data-action="progress" type="button"><span><strong>Working on ${esc(home.progress.current.title ?? home.progress.current.concept.replaceAll("_", " "))}</strong><small>See progress</small></span><span aria-hidden="true">›</span></button>` : ""}
     <section class="simple-card"><h2>Recent at-bats</h2>${home.feed?.length ? home.feed.map((item) =>
-      `<button class="simple-row" ${item.status === "deletion_pending" ? `data-retry-delete="${esc(item.id)}" data-entry-id="${esc(item.entryId)}"` : `data-clip="${esc(item.id)}"`} type="button"><span><strong>${esc(item.headline ?? statusText(item.status))}</strong><small>${esc(shortDate(item.date))} · ${item.kind === "practice" ? "Practice" : "Game"}</small></span><span class="simple-progress-percent">${esc(processingProgressText(item))}</span></button>`).join("")
+      `<button class="simple-row" ${item.status === "deletion_pending" ? `data-retry-delete="${esc(item.id)}" data-entry-id="${esc(item.entryId)}"` : `data-clip="${esc(item.id)}"`} type="button"><span><strong>${esc(item.headline ?? statusText(item.status))}</strong><small>${esc(shortDate(item.date))} · ${item.kind === "practice" ? "Practice" : "Game"}${item.experimental ? " · Experimental" : ""}</small></span><span class="simple-progress-percent">${esc(processingProgressText(item))}</span></button>`).join("")
       : `<p>Film an at-bat to get your first report.</p><button class="simple-action link" data-action="guide" type="button">How to film</button>`}</section>`;
   scheduleHomeRefresh();
 }
@@ -212,6 +213,15 @@ async function showReport(clipId, token = null, preloaded = null) {
   state.report = { ...data, clipId };
   setTab("report");
   const report = data.report;
+  // Experimental v2 clips have their own report; normal reports are unchanged.
+  if (data.experimental) {
+    const canAct = !state.shared && !state.demo;
+    root.innerHTML = `${experimentalReportHtml(data, { esc, canAct, pendingText: pendingReportText(data) })}
+      ${canAct ? `<div class="simple-actions"><button class="simple-action secondary" data-action="home" type="button">Back to Home</button>
+      <button class="simple-action secondary" data-action="delete" type="button">Delete at-bat</button></div>` : ""}`;
+    if (experimentalStillPending(data)) scheduleReportRefresh(clipId, token);
+    return;
+  }
   if (report.state === "no_swing") {
     root.innerHTML = `<span class="simple-eyebrow">At-bat report</span><h1>No swing to analyze in this at-bat.</h1>
       ${data.videoUrl ? `<video class="simple-video" src="${esc(data.videoUrl)}" controls playsinline></video>` : ""}
@@ -278,7 +288,8 @@ function scheduleReportRefresh(clipId, token) {
       const data = await reportApi(state.selected, clipId, token);
       if (!current()) return;
       const progressNode = document.getElementById("processingProgress");
-      const stillPending = !["ready", "no_swing"].includes(data.report.state) && !["ready", "failed"].includes(data.status);
+      const stillPending = data.experimental ? experimentalStillPending(data)
+        : !["ready", "no_swing"].includes(data.report.state) && !["ready", "failed"].includes(data.status);
       if (!stillPending || !progressNode) { await showReport(clipId, token, data); return; }
       state.report = { ...data, clipId };
       progressNode.textContent = pendingReportText(data);
@@ -484,7 +495,7 @@ async function share(scope) {
 }
 
 root.addEventListener("click", async (event) => {
-  const target = event.target.closest("[data-action],[data-player],[data-clip],[data-retry-delete]");
+  const target = event.target.closest("[data-action],[data-player],[data-clip],[data-retry-delete],[data-see-event],[data-hide-issue]");
   if (!target) return;
   try {
     if (target.dataset.player) {
@@ -507,6 +518,18 @@ root.addEventListener("click", async (event) => {
       return;
     }
     if (target.dataset.clip) { await showReport(target.dataset.clip, state.shared ? params.get("share") : null); return; }
+    if (target.dataset.seeEvent) {
+      // Pause on the event's own source frame so the moment stays on screen.
+      const video = document.getElementById("reportVideo");
+      const at = seekTarget(state.report?.experimental, target.dataset.seeEvent);
+      if (video && at !== null) { video.pause(); await seekTo(video, at); video.scrollIntoView({ block: "center" }); }
+      return;
+    }
+    if (target.dataset.hideIssue) {
+      const { error } = await supabase.functions.invoke("hide-simple-issue", { body: { issueId: target.dataset.hideIssue } });
+      if (error) throw error;
+      await showReport(state.report.clipId); say("Observation hidden for this report."); return;
+    }
     switch (target.dataset.action) {
       case "record": choiceSheet(); break;
       case "guide": guideSheet(); break;
@@ -566,6 +589,11 @@ root.addEventListener("click", async (event) => {
         const { error } = await supabase.rpc("dismiss_simple_focus", { p_player_id: state.selected });
         if (error) throw error;
         state.home = await reportApi(state.selected); await showProgress(); break;
+      }
+      case "retry-experimental": {
+        const { error } = await supabase.rpc("retry_experimental_v2_clip", { p_clip_id: state.report.clipId });
+        if (error) throw error;
+        say("Analysis queued again."); await showReport(state.report.clipId); break;
       }
       case "share-report": await share("report"); break;
       case "share-progress": await share("progress"); break;

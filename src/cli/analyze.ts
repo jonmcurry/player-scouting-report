@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import fs from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { EvidenceShadowHandle, ShadowTransmission } from "./evidenceShadow.js";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -16,6 +16,19 @@ import { findPlayerId, loadCheckpointSlugToId, upsertChecklistScore } from "../s
 import { getSupabaseClient } from "../services/db/supabaseClient.js";
 import { refreshPlayerFocus } from "../services/development/focusRepository.js";
 import { enqueueReportReady, reportHasShownFix } from "../services/notifications/outbox.js";
+import { qualifiedResult, type V2Qualification } from "../services/engine/v2Coaching.js";
+
+/** Development-only v2 engine coaching (M4). Absent on every production run. */
+export interface V2RunOptions {
+  /** Event ids findings may cite (the v2 package's supported events). */
+  supportedEvents: string[];
+  /** render-v2 evidence addendum, appended to the unchanged production prompt. */
+  addendum: string;
+  qualify: (result: SwingAnalysisResult) => V2Qualification;
+  /** Records qualification, including withheld outcomes that create no analysis run. */
+  record?: (qualification: V2Qualification) => void | Promise<void>;
+  stored?: (args: { result: SwingAnalysisResult; analysisRunId: string; issueIds: Array<string | null> }) => void | Promise<void>;
+}
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg"]);
 const TILT_EXCLUSIONS = [
@@ -126,6 +139,7 @@ export async function buildAnalysisInput(args: {
 
 async function createAnalysisRun(args: {
   playerId: string; videoClipId: string | null; result: SwingAnalysisResult; input: AnalysisInput;
+  manifestExtra?: Record<string, unknown>;
 }): Promise<string> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.from("analysis_runs").insert({
@@ -138,7 +152,7 @@ async function createAnalysisRun(args: {
     analysis_policy_version: ANALYSIS_POLICY_VERSION,
     knowledge_version: args.input.knowledgeVersion,
     pipeline_version: args.input.swing.pipelineVersion,
-    input_manifest: buildInputManifest(args.input),
+    input_manifest: args.manifestExtra ? { ...buildInputManifest(args.input), ...args.manifestExtra } : buildInputManifest(args.input),
     no_action_needed: args.result.noActionNeeded,
     no_action_reason: args.result.noActionReason,
     summary: args.result.summary,
@@ -167,12 +181,21 @@ export async function analyzeAndSync(
   // Runs strictly after every legacy write, readable mark, focus refresh and
   // notification below, and can neither throw into nor alter them.
   evidenceShadow: Pick<EvidenceShadowHandle, "afterRun"> | null = null,
+  v2: V2RunOptions | null = null,
 ): Promise<void> {
   const playerId = await findPlayerId(teamSlug, playerSlug);
   const input = await buildAnalysisInput({ teamSlug, playerSlug, playerId, framesDir, fallbackPitchContext: pitchContext, videoClipId, pipelineVersion, extraExclusions });
+  // v2 only: findings must cite supplied events (validated before anything is stored).
+  if (v2) input.swing.v2Evidence = { supportedEvents: [...v2.supportedEvents] };
   let transmission: ShadowTransmission | undefined;
   let result: SwingAnalysisResult;
-  if (claudeDraftPath) {
+  if (v2) {
+    // Only the CLI analyzers carry the evidence addendum; Gemini and draft files are never used for v2.
+    if (claudeDraftPath || !localCli) throw new Error("V2_PROVIDER_UNSUPPORTED");
+    const opts = { evidenceAddendum: v2.addendum };
+    console.log(`Running experimental v2 analysis via the local ${localCli === "agy" ? "agy" : "claude"} CLI on ${framesDir}...`);
+    result = localCli === "agy" ? await analyzeSwingViaAgy(framesDir, input, opts) : await analyzeSwingViaClaudeCli(framesDir, input, opts);
+  } else if (claudeDraftPath) {
     console.log(`Loading Claude-drafted analysis from ${claudeDraftPath} (Gemini not called)...`);
     result = validateSwingAnalysisResult(JSON.parse(fs.readFileSync(claudeDraftPath, "utf-8")), {
       source: "claude", aiModel: "claude-draft-file", ...validationContext(input), availableBases: ["video"],
@@ -196,7 +219,20 @@ export async function analyzeAndSync(
 
   // Both backends and draft files reach this point only after the same strict runtime validator.
   // Consequently malformed output has made zero database writes.
-  const analysisRunId = await createAnalysisRun({ playerId, videoClipId, result, input });
+  let manifestExtra: Record<string, unknown> | undefined;
+  if (v2) {
+    // Experimental pre-storage qualification: only findings whose cited evidence holds up are stored.
+    const qualification = v2.qualify(result);
+    await v2.record?.(qualification);
+    if (qualification.withheld) {
+      console.log(`Experimental v2 analysis withheld (${qualification.withheld}); nothing stored.`);
+      return;
+    }
+    manifestExtra = { v2_experimental_qualification: { version: qualification.version, label: qualification.label,
+      decisions: qualification.decisions } };
+    result = qualifiedResult(result, qualification);
+  }
+  const analysisRunId = await createAnalysisRun({ playerId, videoClipId, result, input, manifestExtra });
   // Keep the full validated response beside the inputs it came from. Checklist
   // drafts for a checkpoint a coach already reviewed are (correctly) not
   // written to checklist_scores, so without this a coach could never see what
@@ -225,8 +261,13 @@ export async function analyzeAndSync(
   const existingKeys = new Set((existing ?? []).filter((r) => r.review_status !== "draft")
     .map((r) => r.finding_key).filter(Boolean));
   const freshIssues = result.issues.filter((i) => !existingKeys.has(findingIdentity(i, videoClipId)));
+  // Preassign v2 ids so even two findings with the same concept/phase remain
+  // aligned to the response regardless of the database's RETURNING order.
+  const candidateIds = new Map(v2 ? freshIssues.map(i => [i, randomUUID()] as const) : []);
+  const insertedIds = new Map<string, string>();
   if (freshIssues.length) {
     const rows = freshIssues.map((i) => ({
+      ...(v2 ? { id: candidateIds.get(i)! } : {}),
       player_id: playerId, issue: i.issue, seen_in_at_bats: i.seenInAtBats, likely_cause: i.likelyCause,
       effect: i.effect, evidence: i.evidence, coaching_cue: i.coachingCue, suggested_drill: i.suggestedDrill ?? null,
       look_for_next: i.lookForNext, confidence: i.confidence, phase: i.phase ?? null, video_clip_id: videoClipId,
@@ -236,8 +277,9 @@ export async function analyzeAndSync(
       knowledge_claim_ids: i.knowledgeClaimIds, suggest_priority: i.suggestPriority,
       finding_key: findingIdentity(i, videoClipId),
     }));
-    const { error } = await supabase.from("issues").insert(rows);
+    const { data: inserted, error } = await supabase.from("issues").insert(rows).select("id, finding_key");
     if (error) throw new Error(`Inserting ${result.source}-drafted issues: ${error.message}`);
+    for (const row of inserted ?? []) insertedIds.set(row.id, row.finding_key);
   }
 
   if (result.comps.length) {
@@ -259,16 +301,26 @@ export async function analyzeAndSync(
     if (error) throw new Error(`Inserting drill recommendations: ${error.message}`);
   }
 
+  // v2: the experimental result is recorded before the clip is marked readable, so a failure here
+  // leaves no readable clip behind a "failed" result.
+  await v2?.stored?.({ result, analysisRunId,
+    issueIds: result.issues.map(i => {
+      const id = candidateIds.get(i);
+      return id && insertedIds.get(id) === findingIdentity(i, videoClipId) ? id : null;
+    }) });
   if (videoClipId && result.summary !== null) {
     const { error } = await supabase.from("video_clips").update({ swing_detection_state: "readable" }).eq("id", videoClipId);
     if (error) throw new Error(`Marking validated swing readable: ${error.message}`);
-    await refreshPlayerFocus(playerId, videoClipId);
-    try {
-      await enqueueReportReady(supabase, playerId, videoClipId, reportHasShownFix(freshIssues));
-    } catch (notificationError) {
-      // A notification problem must not turn a stored, readable report into
-      // a false analysis failure. Delivery can reconcile the durable report.
-      console.error(`Report ready, but its notification could not be queued: ${notificationError instanceof Error ? notificationError.message : notificationError}`);
+    // Experimental runs neither move focus nor announce a report.
+    if (!v2) {
+      await refreshPlayerFocus(playerId, videoClipId);
+      try {
+        await enqueueReportReady(supabase, playerId, videoClipId, reportHasShownFix(freshIssues));
+      } catch (notificationError) {
+        // A notification problem must not turn a stored, readable report into
+        // a false analysis failure. Delivery can reconcile the durable report.
+        console.error(`Report ready, but its notification could not be queued: ${notificationError instanceof Error ? notificationError.message : notificationError}`);
+      }
     }
   }
   if (evidenceShadow) {

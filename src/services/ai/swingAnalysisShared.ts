@@ -91,7 +91,7 @@ If no meaningful mechanical issue is supported, return noActionNeeded=true, noAc
 export const SWING_ANALYSIS_SYSTEM_PROMPT = ANALYSIS_POLICY;
 
 export interface ChecklistDraft { checkpointSlug: string; score: Score; notes: string }
-export interface IssueDraft {
+export interface IssueDraft extends V2Citation {
   issue: string;
   seenInAtBats: string;
   likelyCause: string;
@@ -111,7 +111,11 @@ export interface IssueDraft {
 }
 export interface CompDraft { compName: string; cue: string }
 export interface DrillDraft { title: string; description: string }
-export interface StrengthDraft { text: string; evidence: string; phase: (typeof ISSUE_PHASES)[number] }
+export const V2_CLAIM_TYPES = ["direct_observation", "qualified_interpretation"] as const;
+export type V2ClaimType = (typeof V2_CLAIM_TYPES)[number];
+/** Present only on development-only v2 engine runs (validated against AnalysisInput.swing.v2Evidence). */
+export interface V2Citation { supportingEvents?: string[]; claimType?: V2ClaimType }
+export interface StrengthDraft extends V2Citation { text: string; evidence: string; phase: (typeof ISSUE_PHASES)[number] }
 export interface SwingAnalysisResult {
   /** Absent only for historical draft files made before the simplified report. */
   summary: string | null;
@@ -140,15 +144,30 @@ const stringArray = (v: unknown, where: string): string[] => {
 
 /** The per-run facts validateSwingAnalysisResult checks a response against, derived from the exact
  * AnalysisInput the prompt was rendered from. Every analyzer path passes this. */
-export function validationContext(input: AnalysisInput): { allowedKnowledgeClaimIds: string[]; availableBases: (typeof ISSUE_BASES)[number][]; evidence: ValidationEvidence } {
+export function validationContext(input: AnalysisInput): { allowedKnowledgeClaimIds: string[]; availableBases: (typeof ISSUE_BASES)[number][]; evidence: ValidationEvidence; v2Evidence?: { supportedEvents: string[] } } {
   return {
     allowedKnowledgeClaimIds: input.knowledgeClaimIds,
     availableBases: ["video", ...(Object.keys(input.swing.metrics).length ? ["metric" as const] : []), ...(input.swing.reconstructionSupplied ? ["reconstruction" as const] : [])],
     evidence: { pitch: input.pitch, atBatResult: input.atBatResult ?? null, frameNames: input.swing.frameNames, claimExclusions: input.knowledgeClaimExclusions },
+    // Spread only when present so production contexts stay exactly as before.
+    ...(input.swing.v2Evidence ? { v2Evidence: input.swing.v2Evidence } : {}),
   };
 }
 
-export function validateSwingAnalysisResult(raw: unknown, options: { source: DraftSource; aiModel: string; aiModelVersion?: string | null; allowedKnowledgeClaimIds?: string[]; availableBases?: (typeof ISSUE_BASES)[number][]; evidence: ValidationEvidence; requireSimplifiedReport?: boolean }): SwingAnalysisResult {
+/** v2 runs only: every finding cites supplied events and declares its claim type. Throws, never repairs. */
+function v2Citation(entry: Record<string, unknown>, where: string, supported: ReadonlySet<string>): Required<V2Citation> {
+  const events = entry.supportingEvents;
+  if (!Array.isArray(events) || events.length === 0 || events.some((e) => typeof e !== "string")) {
+    throw new Error(`${where}.supportingEvents must be a non-empty array of event ids`);
+  }
+  if (new Set(events).size !== events.length) throw new Error(`${where}.supportingEvents must not repeat an event`);
+  if (events.some((e) => !supported.has(e as string))) throw new Error(`${where}.supportingEvents cites an event that was not supplied`);
+  if (!V2_CLAIM_TYPES.includes(entry.claimType as V2ClaimType)) throw new Error(`${where}.claimType is invalid`);
+  return { supportingEvents: [...events] as string[], claimType: entry.claimType as V2ClaimType };
+}
+
+export function validateSwingAnalysisResult(raw: unknown, options: { source: DraftSource; aiModel: string; aiModelVersion?: string | null; allowedKnowledgeClaimIds?: string[]; availableBases?: (typeof ISSUE_BASES)[number][]; evidence: ValidationEvidence; requireSimplifiedReport?: boolean; v2Evidence?: { supportedEvents: string[] } }): SwingAnalysisResult {
+  const v2Supported = options.v2Evidence ? new Set(options.v2Evidence.supportedEvents) : null;
   if (!isRecord(raw)) throw new Error("AI response must be a JSON object");
   if (typeof raw.noActionNeeded !== "boolean") throw new Error("AI response.noActionNeeded must be boolean");
   if (raw.noActionReason !== null && typeof raw.noActionReason !== "string") throw new Error("AI response.noActionReason must be string or null");
@@ -167,7 +186,7 @@ export function validateSwingAnalysisResult(raw: unknown, options: { source: Dra
     const phase = stringField(entry, "phase", `strengths[${i}]`);
     if (!text || !evidence) throw new Error(`strengths[${i}] needs text and visible evidence`);
     if (!ISSUE_PHASES.includes(phase as StrengthDraft["phase"]) || (phasesSupplied && !phasesSupplied.has(phase))) throw new Error(`strengths[${i}].phase has no supplied still`);
-    return { text, evidence, phase: phase as StrengthDraft["phase"] };
+    return { text, evidence, phase: phase as StrengthDraft["phase"], ...(v2Supported ? v2Citation(entry, `strengths[${i}]`, v2Supported) : {}) };
   });
   if (!Array.isArray(raw.issues)) throw new Error("AI response.issues must be an array");
   for (const key of ["checklist", "comps", "compNotes", "drills"] as const) if (raw[key] !== undefined && !Array.isArray(raw[key])) throw new Error(`AI response.${key} must be an array`);
@@ -219,6 +238,7 @@ export function validateSwingAnalysisResult(raw: unknown, options: { source: Dra
       contextExplainsIt: entry.contextExplainsIt as boolean, emergencySwingSuspected: entry.emergencySwingSuspected as boolean,
       // Stored exactly as produced; contextExplainsIt + suggestPriority together is rejected in semanticValidation.ts.
       knowledgeClaimIds, suggestPriority: entry.suggestPriority as boolean,
+      ...(v2Supported ? v2Citation(entry, where, v2Supported) : {}),
     };
   });
   const comps = compsRaw.map((entry, i): CompDraft => {

@@ -36,6 +36,9 @@ export interface SwingEvidence {
   metrics: Record<string, unknown>;
   reconstructionSupplied: boolean;
   excludedMeasurements: { field: string; reason: string }[];
+  /** Development-only v2 engine runs: the event ids findings may cite. Absent on every production run,
+   * where validation and outputs are unchanged. */
+  v2Evidence?: { supportedEvents: string[] };
 }
 
 export interface AnalysisInput {

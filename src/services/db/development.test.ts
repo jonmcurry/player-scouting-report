@@ -11,14 +11,24 @@
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import childProcess, { execFileSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { PassThrough, Writable } from "node:stream";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import "dotenv/config";
 import { getSupabaseClient } from "./supabaseClient.js";
 import { analyzeAndSync } from "../../cli/analyze.js";
+import { buildV2EvidencePackage, renderV2Addendum, type V2EvidencePackage } from "../ai/v2EvidencePackage.js";
+import { syntheticArtifacts, syntheticImages } from "../ai/v2EvidencePackage.fixtures.js";
+import { qualifyV2Findings, type V2Decision, type V2Qualification } from "../engine/v2Coaching.js";
+import { experimentalResult, storedExperimentalResult, upsertExperimentalV2Result } from "./experimentalV2Results.js";
+
+if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(process.env.SUPABASE_URL ?? "").hostname)) {
+  throw new Error("Development integration tests require a local Supabase URL");
+}
 
 const suffix = `${Date.now()}`;
 const password = "TestPass123!dev";
@@ -374,4 +384,140 @@ test("re-running AI analysis replaces unreviewed drafts but never a coach-review
   } finally {
     fs.rmSync(file, { force: true });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Experimental v2 coaching (M4): pre-storage qualification with synthetic data
+// and an in-memory claude CLI double only. Uses player B so player A's counts
+// above are unaffected.
+// ---------------------------------------------------------------------------
+
+test("v2 analysis stores only qualified findings, records every decision and withholds an unsupported summary", async (t) => {
+  const clip = must(await svc.from("video_clips").insert({ game_log_entry_id: gameEntryB,
+    clip_slug: `v2-m5-${suffix}`, status: "ready" }).select("id").single(), "experimental clip") as { id: string };
+  const base = experimentalResult(clip.id);
+  await upsertExperimentalV2Result(base);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `v2-db-${suffix}-`));
+  const envKeys = ["CLAUDE_CLI_DATA_CONFIRMED", "CLAUDE_CLI_MODEL"] as const;
+  const saved = Object.fromEntries(envKeys.map((k) => [k, process.env[k]]));
+  t.after(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    for (const k of envKeys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+  });
+  process.env.CLAUDE_CLI_DATA_CONFIRMED = "true";
+  process.env.CLAUDE_CLI_MODEL = "synthetic-model";
+  t.mock.method(console, "log", () => {});
+  t.mock.method(console, "warn", () => {});
+  const images = syntheticImages(dir, [["phase_load.png", "phase_still", "load", 3], ["phase_contact.png", "phase_still", "contact", 8],
+    ["phase_follow_through.png", "phase_still", "follow_through", 10]]);
+  const a = syntheticArtifacts();
+  const built = await buildV2EvidencePackage({ videoClipId: "synthetic-clip", sourceSha256: "a".repeat(64), imagesDir: dir, images,
+    metrics: a.metrics, frameMap: a.frameMap, batPath: a.batPath, pose2d: a.pose2d, tracks: a.tracks });
+  assert.ok(built.ok);
+  const pkg = (built as { pkg: V2EvidencePackage }).pkg;
+
+  let reply: unknown = null;
+  t.mock.method(childProcess, "spawn", () => {
+    const child = new EventEmitter() as childProcess.ChildProcessWithoutNullStreams;
+    child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.kill = () => true;
+    child.stdin = new Writable({ write(_chunk, _e, done) { done(); } });
+    queueMicrotask(() => {
+      child.stdout.emit("data", JSON.stringify({ is_error: false, result: JSON.stringify(reply), modelUsage: { "synthetic-model-id": {} } }));
+      child.emit("close", 0);
+    });
+    return child;
+  });
+  const finding = (issue: string, evidence: string) => ({ issue, seenInAtBats: "This swing", likelyCause: "Front side may lead the turn",
+    effect: "It may pull the barrel off line", evidence, coachingCue: "Stay closed", lookForNext: "A closed front shoulder",
+    confidence: "medium", phase: "contact", concept: "timing", basis: "video", contextExplainsIt: false, emergencySwingSuspected: false,
+    knowledgeClaimIds: [], suggestPriority: false, supportingEvents: ["impact_estimate"], claimType: "qualified_interpretation" });
+  const strength = { text: "Balanced load", evidence: "phase_load shows weight centered", phase: "load",
+    supportingEvents: ["load_peak_estimate"], claimType: "direct_observation" };
+  const response = (issues: unknown[], summary = "A steady experimental swing.") =>
+    ({ noActionNeeded: false, noActionReason: null, summary, strengths: [strength], issues });
+  const recorded: V2Qualification[] = [];
+  const storedCallbacks: Array<{ analysisRunId: string; issueIds: Array<string | null> }> = [];
+  const v2 = { supportedEvents: pkg.supportedEvents, addendum: renderV2Addendum(pkg).text,
+    qualify: (r: Parameters<typeof qualifyV2Findings>[0]) => qualifyV2Findings(r, pkg),
+    record: async (q: V2Qualification) => {
+      recorded.push(q);
+      if (q.withheld) await upsertExperimentalV2Result({ ...base, outcome: "withheld",
+        reason_codes: ["SUMMARY_UNSUPPORTED_CLAIM", ...q.decisions.flatMap(d => d.reasons)] });
+    },
+    stored: async (args: { result: Parameters<typeof qualifyV2Findings>[0]; analysisRunId: string; issueIds: Array<string | null> }) => {
+      storedCallbacks.push(args);
+      await upsertExperimentalV2Result(storedExperimentalResult(base, recorded.at(-1)!, args.result, args.analysisRunId, args.issueIds));
+    } };
+  const run = () => analyzeAndSync(teamB.slug, playerB.slug, dir, "No pitch/result details provided.", false, null, "claude", clip.id, null, [], null, v2);
+  const experimental = async () => must(await svc.from("experimental_v2_results").select("*").eq("video_clip_id", clip.id).single(), "experimental result");
+  type Run = { no_action_needed: boolean; no_action_reason: string | null; strengths: unknown[];
+    input_manifest: { v2_experimental_qualification?: { label: string; decisions: V2Decision[] } } };
+  const runs = async () => must(await svc.from("analysis_runs").select("no_action_needed, no_action_reason, input_manifest, strengths, created_at")
+    .eq("player_id", playerB.id).order("created_at"), "runs") as Run[];
+
+  // 1. One supported and one numeric finding: only the supported one is stored; every decision is recorded.
+  reply = response([finding("Experimental: front shoulder opens early", "phase_contact shows the front shoulder turned"),
+    finding("Experimental: bat drags", "The bat reached 45 mph")]);
+  await run();
+  const firstExperimental = await experimental();
+  assert.equal(firstExperimental.outcome, "findings");
+  assert.equal(firstExperimental.analysis_run_id, storedCallbacks[0]!.analysisRunId);
+  assert.equal(firstExperimental.findings[1].issueId, storedCallbacks[0]!.issueIds[0]);
+  assert.equal(firstExperimental.suppressed_count, 1);
+  const playerFocus = must(await svc.from("player_focus").select("id").eq("player_id", playerB.id), "experimental focus");
+  assert.equal(playerFocus.length, 0, "experimental runs never refresh focus");
+  const issues = must(await svc.from("issues").select("issue, review_status").eq("player_id", playerB.id), "v2 issues") as { issue: string; review_status: string }[];
+  assert.deepEqual(issues, [{ issue: "Experimental: front shoulder opens early", review_status: "draft" }]);
+  let stored = await runs();
+  assert.equal(stored.length, 1);
+  assert.equal(stored[0]!.no_action_needed, false);
+  assert.equal(stored[0]!.strengths.length, 1);
+  const q = stored[0]!.input_manifest.v2_experimental_qualification!;
+  assert.equal(q.label, "experimental_qualification");
+  assert.deepEqual(q.decisions.map((d) => [d.kind, d.displayed, d.reasons]),
+    [["strength", true, []], ["issue", true, []], ["issue", false, ["NUMERIC_CLAIM"]]]);
+
+  // 2. Every issue suppressed: stored as no-action-needed with the plain reason, never an empty "needs attention".
+  reply = response([finding("Experimental: rotates early", "She rotated 30 early")]);
+  await run();
+  stored = await runs();
+  assert.equal(stored.length, 2);
+  assert.deepEqual([stored[1]!.no_action_needed, stored[1]!.no_action_reason],
+    [true, "No finding met the experimental evidence requirements for this swing."]);
+  assert.equal((await experimental()).outcome, "insufficient_evidence");
+
+  // 3. An unknown-outcome claim is already rejected by the unchanged production validator: nothing stored.
+  reply = response([finding("Experimental: hands drift", "phase_contact shows the hands away")], "She squared it up for a line drive.");
+  await assert.rejects(run(), /failed analysis validation/);
+  assert.equal(recorded.length, 2, "rejected before qualification");
+  // 4. A summary the production validator allows but v2 cannot support withholds the run: no analysis run,
+  // no issue; M5 persists only the withheld outcome and reason codes.
+  reply = response([finding("Experimental: hands drift", "phase_contact shows the hands away")], "Her load lasted about 1 second.");
+  await run();
+  assert.equal((await runs()).length, 2, "a withheld run writes no analysis_runs row");
+  const left = must(await svc.from("issues").select("issue").eq("player_id", playerB.id), "v2 issues after") as unknown[];
+  assert.equal(left.length, 1);
+  assert.deepEqual([recorded.length, recorded[2]!.withheld, recorded[2]!.decisions[0]!.kind], [3, "SUMMARY_UNSUPPORTED_CLAIM", "summary"]);
+  assert.equal((await experimental()).outcome, "withheld");
+  assert.equal(storedCallbacks.length, 2, "withheld runs do not invoke stored");
+
+  // A protected issue leaves a null slot; the next inserted id must retain its result index.
+  must(await svc.from("issues").update({ review_status: "hidden" }).eq("id", storedCallbacks[0]!.issueIds[0]), "hide experimental issue");
+  reply = response([finding("Experimental: front shoulder opens early", "phase_contact shows the front shoulder turned"),
+    { ...finding("Experimental: balance shifts", "phase_contact shows the torso leaning"), concept: "posture" }]);
+  await run();
+  assert.equal(storedCallbacks[2]!.issueIds[0], null);
+  assert.ok(storedCallbacks[2]!.issueIds[1]);
+  assert.deepEqual((await experimental()).findings.filter((f: { kind: string }) => f.kind === "issue")
+    .map((f: { index: number; issueId: string }) => [f.index, f.issueId]), [[1, storedCallbacks[2]!.issueIds[1]]]);
+  reply = response([
+    { ...finding("Experimental: torso leans", "phase_contact shows the torso leaning"), concept: "posture" },
+    { ...finding("Experimental: head tilts", "phase_contact shows the head tilted"), concept: "posture" },
+  ]);
+  await run();
+  const ids = storedCallbacks[3]!.issueIds;
+  assert.ok(ids[0] && ids[1] && ids[0] !== ids[1], "same-key findings retain distinct inserted ids");
+  const aligned = must(await svc.from("issues").select("id, issue").in("id", ids), "aligned issues") as { id: string; issue: string }[];
+  assert.equal(aligned.find(i => i.id === ids[0])!.issue, "Experimental: torso leans");
+  assert.equal(aligned.find(i => i.id === ids[1])!.issue, "Experimental: head tilts");
 });

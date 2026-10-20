@@ -15,11 +15,14 @@ import { practiceEvidence } from "../../../src/services/development/progressPrac
 import { storedProgress } from "../../../src/services/development/progressView.ts";
 import { sharedProgressPayload, sharedReportPayload } from "../../../src/services/development/sharedSimplePayload.ts";
 import { belongsToRun, hasIssueEvidence, hasReportEvidence, latestRunsByClip } from "../../../src/services/development/latestRuns.ts";
+import { buildExperimentalReport, type ExperimentalIssueRow, type ExperimentalV2Row } from "../../../src/services/development/experimentalV2Report.ts";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 const notFound = () => reply({ error: "Report not found." }, 404);
+// PostgREST's "table not in the schema cache" (verified locally); Postgres' undefined_table.
+const experimentalTableMissing = (error: { code?: string }) => error.code === "PGRST205" || error.code === "42P01";
 // The worker marks a clip ready at 99% and finishes at 100% once AI diagnosis is
 // done. Until then it is still processing, not an unreadable result - unless the
 // worker went quiet past the stale-claim window, so a crash can't pin it here.
@@ -183,6 +186,16 @@ Deno.serve(async (request) => {
     if (deletionError) throw deletionError;
     const deletingIds = new Set((deletionRows ?? []).map((row) => row.clip_id));
     const { clips, recent, feedClips } = selectVisibleClips(allClips ?? [], allRecent ?? [], deletingIds, shared);
+    const experimentalIdsToRead = [...new Set([...feedClips, ...clips, ...recent].map(c => c.id).concat(clipId ? [clipId] : []))];
+    const { data: experimentalRows, error: experimentalError } = !demo && experimentalIdsToRead.length
+      ? await service.from("experimental_v2_results").select("video_clip_id").in("video_clip_id", experimentalIdsToRead)
+      : { data: [], error: null };
+    // A database without the development-only 00067 table has no experimental clips; any other
+    // read error fails closed.
+    if (experimentalError && !experimentalTableMissing(experimentalError)) throw experimentalError;
+    const experimentalIds = new Set((experimentalRows ?? []).map(r => r.video_clip_id));
+    // Development-only experimental results never leave through a share link.
+    if (shared && clipId && experimentalIds.has(clipId)) return notFound();
     const { data: focusRuns, error: focusRunError } = (recent ?? []).length
       ? await service.from("analysis_runs").select("id, video_clip_id, summary, strengths, created_at")
         .in("video_clip_id", (recent ?? []).map((clip) => clip.id))
@@ -201,6 +214,7 @@ Deno.serve(async (request) => {
     const findings = new Map<string, Finding[]>();
     const invalidFocusClips = new Set<string>();
     for (const row of focusIssues ?? []) {
+      if (experimentalIds.has((row as unknown as { video_clip_id: string }).video_clip_id)) continue;
       const run = latestRun.get(row.video_clip_id);
       if (!hasReportEvidence(run) || row.analysis_run_id !== run?.id) continue;
       if (!hasIssueEvidence({ ...row, coachingCue: row.coaching_cue, lookForNext: row.look_for_next })) {
@@ -215,7 +229,7 @@ Deno.serve(async (request) => {
     }
     const swings: ReadableSwing[] = (recent ?? []).map((clip) => ({ id: clip.id, serial: clip.readable_game_serial,
       date: (clip.game_log_entries as unknown as { date: string }).date,
-      sessionType: "game", readable: hasReportEvidence(latestRun.get(clip.id)) && !invalidFocusClips.has(clip.id),
+      sessionType: "game", readable: !experimentalIds.has(clip.id) && hasReportEvidence(latestRun.get(clip.id)) && !invalidFocusClips.has(clip.id),
       findings: findings.get(clip.id) ?? [] }));
     const storedHistory = (focusRows ?? []).filter((row) => row.ended_at !== null).map(asFocus);
     const computed = advanceFocus(swings, storedCurrent ? asFocus(storedCurrent) : null,
@@ -230,7 +244,7 @@ Deno.serve(async (request) => {
     const progress = { current, status: visible.status, windowSize: visible.windowSize,
       history: visible.history.map((row) => ({ concept: row.concept, status: row.status,
       startedAt: row.startedAt, endedAt: row.endedAt })), thenClipId: thenClip?.id ?? null,
-      nowClipId: (recent ?? []).find((clip) => hasReportEvidence(latestRun.get(clip.id)) && !invalidFocusClips.has(clip.id))?.id ?? null };
+      nowClipId: (recent ?? []).find((clip) => !experimentalIds.has(clip.id) && hasReportEvidence(latestRun.get(clip.id)) && !invalidFocusClips.has(clip.id))?.id ?? null };
     const { data: practiceClips, error: practiceError } = await service.from("video_clips")
       .select("id, created_at, game_log_entries!inner(player_id, session_type)")
       .eq("game_log_entries.player_id", playerId).eq("game_log_entries.session_type", "practice")
@@ -241,7 +255,12 @@ Deno.serve(async (request) => {
       : { data: [], error: null };
     if (practiceDeletionError) throw practiceDeletionError;
     const deletedPracticeIds = new Set((practiceDeletions ?? []).map((row) => row.clip_id));
-    const visiblePractice = (practiceClips ?? []).filter((clip) => !deletedPracticeIds.has(clip.id));
+    const { data: experimentalPractice, error: experimentalPracticeError } = !demo && (practiceClips ?? []).length
+      ? await service.from("experimental_v2_results").select("video_clip_id").in("video_clip_id", practiceClips!.map(c => c.id))
+      : { data: [], error: null };
+    if (experimentalPracticeError && !experimentalTableMissing(experimentalPracticeError)) throw experimentalPracticeError;
+    const experimentalPracticeIds = new Set((experimentalPractice ?? []).map(r => r.video_clip_id));
+    const visiblePractice = (practiceClips ?? []).filter((clip) => !deletedPracticeIds.has(clip.id) && !experimentalPracticeIds.has(clip.id));
     const { data: practiceRuns, error: practiceRunError } = visiblePractice.length
       ? await service.from("analysis_runs").select("id, video_clip_id, created_at, summary, strengths")
         .in("video_clip_id", visiblePractice.map((clip) => clip.id))
@@ -302,7 +321,7 @@ Deno.serve(async (request) => {
       .map((issue) => issue.video_clip_id));
     // A failed storage delete leaves a retryable audit row. Authorized users
     // need one recovery action in the feed; share viewers never see it.
-    const feed = feedClips.map((clip) => {
+    const feed = feedClips.filter((clip) => !(shared && experimentalIds.has(clip.id))).map((clip) => {
       const entry = clip.game_log_entries as unknown as { date: string; session_type: string; result_simple: string | null };
       const newest = newestRuns.get(clip.id);
       const summary = hasReportEvidence(newest) && !invalidFeedClips.has(clip.id) ? newest!.summary : null;
@@ -311,6 +330,7 @@ Deno.serve(async (request) => {
         : invalidFeedClips.has(clip.id) ? { status: "unreadable", headline: null }
         : feedAnalysisPresentation(clip.status, clip.swing_detection_state, summary ?? null);
       return { id: clip.id, entryId: clip.game_log_entry_id, date: entry.date, kind: entry.session_type, result: entry.result_simple,
+        ...(!shared && !demo && experimentalIds.has(clip.id) ? { experimental: true } : {}),
         status: deletingIds.has(clip.id) ? "deletion_pending" : presentation.status,
         processingProgress: clip.processing_progress,
         headline: deletingIds.has(clip.id) ? "Video deletion needs another try."
@@ -349,6 +369,25 @@ Deno.serve(async (request) => {
       service.from("drill_library").select("id, name, target_tags, best_for, is_active, curation_status, min_age, sport, home_friendly, equipment, phase, requires_screen, weighted_or_overspeed, instructions, cue, looks_right_when, common_mistakes, demo_url, demo_timestamp, source_credit").eq("is_active", true),
     ]);
     if (runError || issueError || drillError) throw runError ?? issueError ?? drillError;
+    let experimental;
+    if (!shared && !demo) {
+      const { data: experimentalRow, error: experimentalRowError } = await service.from("experimental_v2_results")
+        .select("video_clip_id, engine, pipeline_version, outcome, reason_codes, events, findings, suppressed_count, analysis_run_id, retry_eligible")
+        .eq("video_clip_id", clipId).maybeSingle();
+      if (experimentalRowError && !experimentalTableMissing(experimentalRowError)) throw experimentalRowError;
+      if (experimentalRow) {
+        // Bind strengths to the persisted run even if a later unrelated run exists.
+        const { data: experimentalRun, error: experimentalRunError } = experimentalRow.analysis_run_id
+          ? await service.from("analysis_runs").select("id, summary, strengths").eq("id", experimentalRow.analysis_run_id)
+            .eq("video_clip_id", clipId).maybeSingle()
+          : { data: null, error: null };
+        if (experimentalRunError) throw experimentalRunError;
+        experimental = buildExperimentalReport({ row: experimentalRow as ExperimentalV2Row,
+          clipStatus: ((c) => analysisPending(c) ? "processing" : c.status)(
+            clip as unknown as { status: string; processing_progress: number | null; claimed_at: string | null }),
+          issues: (rows ?? []) as unknown as ExperimentalIssueRow[], run: experimentalRun });
+      }
+    }
     const issues: ReportIssue[] = (rows ?? []).filter((row) => belongsToRun(row, run)).map((row) => ({
       id: row.id, concept: row.concept ?? "", phase: row.phase, basis: row.basis ?? "", confidence: row.confidence,
       contextExplainsIt: row.context_explains_it ?? false, emergencySwingSuspected: row.emergency_swing_suspected ?? false,
@@ -428,6 +467,9 @@ Deno.serve(async (request) => {
       entryClipIds: (entryClips ?? []).map((row) => row.id) }), playerName: identity,
       sport: team.sport === "baseball" || team.sport === "softball" ? team.sport : null,
       report: shared ? sharedReportPayload(report, sharedText) : report,
+      // A v2 clip's findings are only ever shown through the labelled experimental block, so this
+      // later key replaces the production-shaped report for v2 clips.
+      ...(experimental ? { report: { state: "experimental" }, experimental } : {}),
       status: analysisPending(clip) ? "processing" : clip.status,
       processingProgress: clip.processing_progress, videoUrl, mediaPath, contactTime,
       ...(shared ? {} : { progress }) });
