@@ -33,7 +33,7 @@ test("findings show claim type, the supporting moment and a See it action at the
   assert.match(html, /Qualified interpretation/);
   assert.match(html, /Direct observation/);
   assert.match(html, /data-see-event="impact_estimate"/);
-  assert.match(html, /Estimated impact \(not confirmed contact\)/);
+  assert.match(html, /Estimated hitting moment/);
   assert.doesNotMatch(html, /See it · Contact\b/);
   assert.match(html, /data-hide-issue="11111111-1111-4111-8111-111111111111"/);
   assert.equal(seekTarget(experimental(), "impact_estimate"), 0.283333);
@@ -93,4 +93,14 @@ test("a findings report whose issues were all hidden says so; held-back lead-in 
 test("text from the report is escaped", () => {
   const html = render(experimental({ summary: "<img src=x onerror=alert(1)>" }));
   assert.doesNotMatch(html, /<img src=x/);
+});
+
+test("issue headings reflect the displayed issue count and the swing action stays available", () => {
+  const one = experimental();
+  const single = experimentalReportHtml({ status: "ready", experimental: one, videoUrl: "https://example.com/video" }, { esc });
+  assert.match(single, /One thing to work on/);
+  assert.match(single, /Watch the swing/);
+  const multiple = experimentalReportHtml({ status: "ready", experimental: { ...one, findings: [...one.findings, ...one.findings] } }, { esc });
+  assert.match(multiple, /Something to work on/);
+  assert.doesNotMatch(multiple, /One thing to work on/);
 });

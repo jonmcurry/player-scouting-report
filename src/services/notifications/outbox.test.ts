@@ -43,3 +43,17 @@ test("failure and focus copy stay within their single player event", () => {
   assert.match(deliveries.find((row) => row.eventIds.includes("failure"))!.body, /couldn't analyze Maya/);
   assert.match(deliveries.find((row) => row.eventIds.includes("focus"))!.body, /2 of the last 5/);
 });
+
+test("single and grouped report-ready notifications never infer praise from a missing fix", () => {
+  for (const flags of [[true], [false], [null], [undefined], [false, false], [true, false]]) {
+    const events: PendingNotificationEvent[] = flags.map((reportHasFix, i) => ({
+      id: `event-${i}`, eventKind: "report_ready", playerId: "synthetic", reportHasFix,
+    }));
+    const deliveries = buildNotificationDeliveries(events, new Map(events.map((event) => [event.id, ["recipient"]])),
+      new Map([["synthetic", "Maya"]]));
+    assert.equal(deliveries.length, 1);
+    assert.equal(deliveries[0]!.body, flags.length > 1 ? "2 at-bat reports are ready for Maya."
+      : flags[0] ? "Maya's at-bat report is ready: 1 thing to work on." : "Maya's at-bat report is ready.");
+    for (const delivery of deliveries) assert.doesNotMatch(delivery.body, /looking good/i);
+  }
+});

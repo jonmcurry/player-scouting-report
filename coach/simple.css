@@ -3,9 +3,9 @@
 .simple-brand { font:700 1.6rem var(--font-display); text-decoration:none; color:var(--text-1); }
 .simple-top button { min-width:48px; min-height:48px; padding:0 12px; color:var(--text-1); background:var(--surface-2); border:1px solid var(--border); border-radius:10px; }
 .simple-main { max-width:720px; margin:auto; padding:20px 16px 110px; }
-.simple-main h1,.simple-main h2 { font-family:var(--font-display); text-transform:uppercase; letter-spacing:.02em; }
+.simple-main h1,.simple-main h3 { font-family:var(--font-display); text-transform:uppercase; letter-spacing:.02em; }
 .simple-main h1 { font-size:2rem; margin:12px 0 18px; }
-.simple-main h2 { font-size:1.3rem; margin:0 0 12px; }
+.simple-main h3 { font-size:1.3rem; line-height:1.2; margin:0 0 12px; }
 .simple-eyebrow { color:var(--brand-text); text-transform:uppercase; font-size:.75rem; font-weight:700; letter-spacing:.08em; }
 .simple-card { background:var(--surface-1); border:1px solid var(--border); border-radius:16px; padding:16px; margin:12px 0; }
 .simple-card p { line-height:1.5; margin:8px 0; }
@@ -23,6 +23,10 @@
 .simple-roster-row { display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border); }
 .simple-roster-row .simple-row { flex:1; border:0; }
 .simple-roster-row .simple-action { flex:0 0 auto; }
+/* Coach roster row: badge, then name and summary filling the row, then the chevron. */
+.simple-roster-row .simple-row { justify-content:flex-start; }
+.simple-roster-row .simple-row > span:not(.jersey-badge) { flex:1; min-width:0; }
+.simple-roster-row .simple-row .bt-status-chip { margin-top:var(--space-1); }
 .simple-invite-link { width:100%; min-height:48px; margin:12px 0; }
 .simple-switcher { display:flex; gap:8px; overflow:auto; margin:0 0 20px; }
 .simple-switcher button { flex:0 0 auto; min-height:48px; border-radius:24px; padding:0 18px; }
@@ -33,7 +37,8 @@
 .simple-dialog { width:min(calc(100vw - 16px),520px); max-height:85vh; margin:auto auto 0; padding:20px; background:var(--surface-1); color:var(--text-1); border:1px solid var(--border-strong); border-radius:20px 20px 0 0; }
 .simple-dialog::backdrop { background:var(--scrim); }
 .simple-dialog label { display:block; margin:12px 0; }
-.simple-dialog select { width:100%; min-height:48px; margin-top:5px; }
+.simple-dialog select,
+.simple-dialog label > input:not([type="checkbox"]) { display:block; width:100%; min-height:48px; margin-top:5px; }
 .simple-chip-row { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
 .simple-chip-row button { min-height:48px; border-radius:24px; padding:0 16px; }
 .simple-chip-row [aria-pressed="true"] { background:var(--brand-fill); color:white; }
@@ -46,13 +51,16 @@
 .simple-compare figure { margin:0; min-width:0; }
 .simple-compare video { width:100%; min-width:0; aspect-ratio:9/16; max-height:320px; object-fit:contain; background:black; border-radius:10px; }
 .simple-compare figcaption { color:var(--text-2); margin-top:4px; }
-.simple-strength { color:var(--success); }
+.simple-strength-list { list-style:none; padding:0; margin:var(--space-2) 0; display:grid; gap:var(--space-2); }
+.simple-strength-item { display:flex; align-items:flex-start; gap:var(--space-2); color:var(--text-1); line-height:1.5; }
+.simple-strength-item .bt-icon { flex:none; color:var(--success); margin-top:.25em; }
 .simple-cue { font:600 1.5rem/1.25 var(--font-display); color:var(--text-1); }
 .simple-drill summary { min-height:48px; display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; font-weight:700; }
 .simple-drill summary small { display:block; margin-top:6px; color:var(--text-2); font-weight:400; line-height:1.4; }
 .simple-drill summary::-webkit-details-marker { display:none; }
 .simple-drill[open] summary { margin-bottom:12px; }
-.simple-status { display:inline-block; padding:6px 12px; border-radius:100px; background:var(--success-subtle); color:var(--success); font-weight:700; }
+.simple-status { border-radius:var(--radius-pill); }
+.simple-status.bt-status-neutral { background:var(--surface-3); color:var(--text-1); }
 .simple-setting { display:flex !important; align-items:flex-start; gap:12px; padding:12px 0; }
 .simple-setting input { min-width:24px; min-height:24px; margin:12px; accent-color:var(--brand-fill); }
 .simple-setting small { display:block; margin-top:4px; color:var(--text-2); line-height:1.4; }
@@ -77,3 +85,31 @@
 #simpleMessage:not(:empty) { background:var(--surface-2); border-radius:10px; padding:12px; margin-bottom:12px; }
 .simple-nav[hidden] { display:none; }
 @media (min-width:700px) { .simple-dialog { margin:auto; border-radius:20px; } }
+
+.simple-appbar { display:flex; align-items:center; gap:var(--space-2); min-height:56px; margin-bottom:var(--space-4); }
+.simple-appbar > div { min-width:0; overflow-wrap:anywhere; }
+.simple-main .simple-appbar h1 { font:600 1.375rem/1.2 var(--font-display); text-transform:none; letter-spacing:normal; margin:0; }
+.simple-appbar p { font:400 .875rem/1.4 var(--font-body); color:var(--text-2); margin:var(--space-1) 0 0; }
+.simple-appbar .bt-icon-button { flex:none; width:48px; height:48px; }
+.simple-action.destructive { background:var(--danger-fill); color:var(--on-brand); border-color:var(--danger-fill); }
+.simple-app .bt-snackbar-host { bottom:calc(76px + env(safe-area-inset-bottom)); }
+
+/* Consumer section headings retain the compact eyebrow role. */
+.simple-main h2 { font:700 .75rem/1.4 var(--font-body); text-transform:uppercase; letter-spacing:.08em; color:var(--brand-text); margin:0 0 var(--space-2); }
+/* A report's state title (Analyzing…, unavailable, no swing) keeps the Cue role, like the experimental title. */
+.simple-main h2.simple-cue { font:600 1.5rem/1.25 var(--font-display); text-transform:none; letter-spacing:normal; color:var(--text-1); margin:0 0 var(--space-3); }
+.simple-main > section { margin-top:var(--space-6); }
+.simple-main h1 { line-height:1.1; }
+.simple-disclosure summary { justify-content:space-between; gap:var(--space-3); list-style:none; }
+.simple-disclosure summary::-webkit-details-marker { display:none; }
+.simple-disclosure-summary { display:block; color:var(--text-2); font:400 .875rem/1.4 var(--font-body); margin-top:var(--space-1); }
+.simple-disclosure-chevron { flex:none; transition:transform var(--motion-fast) var(--ease-out); }
+.simple-disclosure[open] > summary > .simple-disclosure-chevron,
+.simple-drill[open] > summary > .simple-disclosure-chevron { transform:rotate(180deg); }
+.simple-safety-note { padding:var(--space-3); margin:var(--space-3) 0; border:1px solid var(--warning); border-radius:12px; background:var(--warning-subtle); color:var(--text-1); line-height:1.4; }
+.simple-action:disabled { opacity:.5; cursor:default; }
+@media (prefers-reduced-motion: reduce) {
+  .simple-disclosure-chevron { transition:none; }
+  .simple-disclosure[open] > summary > .simple-disclosure-chevron,
+  .simple-drill[open] > summary > .simple-disclosure-chevron { transform:none; }
+}

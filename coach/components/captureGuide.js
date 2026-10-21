@@ -1,6 +1,6 @@
 // Game/backstop and open-side practice guidance. Camera framing helps but is
 // never described as calibrated or as a guarantee that analysis will work.
-import { disclosure } from "./ui.js";
+import { disclosure, icon } from "./ui.js";
 
 const BASE = ["Get the whole body and bat in frame through contact.",
   "Hold the phone still and sideways.",
@@ -51,8 +51,9 @@ export function captureGuideHtml({ open = false, sport = null } = {}) {
 
 export function captureSummaryHtml(summary, { canCorrect = false } = {}) {
   const correction = canCorrect ? `<button class="simple-action link" data-action="correct-capture-view" type="button">Correct camera view</button>` : "";
-  if (!summary || summary.state === "pending") return `<details class="simple-card"><summary>Capture check</summary><p>Capture check is still pending.</p></details>`;
-  if (summary.state === "needs_recheck") return `<details class="simple-card"><summary>Capture check</summary><p>The camera view was corrected. A new check is needed before using it for comparisons.</p>${correction}</details>`;
+  const disclosureStart = (line) => `<details class="simple-card simple-disclosure"><summary><span>About this video<small class="simple-disclosure-summary">${esc(line)}</small></span>${icon("chevron-down", { className: "simple-disclosure-chevron" })}</summary>`;
+  if (!summary || summary.state === "pending") return `${disclosureStart("Check still pending")}<p>Capture check is still pending.</p>${correction}</details>`;
+  if (summary.state === "needs_recheck") return `${disclosureStart("Camera view corrected · new check needed")}<p>The camera view was corrected. A new check is needed before using it for comparisons.</p>${correction}</details>`;
   const state = summary.state === "checked" ? "Video and swing visibility checked." : "Video facts checked; swing visibility is still unavailable.";
   const guidance = { whole_hitter: "Keep the whole hitter, head to feet, in frame.",
     bat_arc: "Leave room for the full bat arc.", brighter_light: "Move to brighter, even light.",
@@ -62,8 +63,10 @@ export function captureSummaryHtml(summary, { canCorrect = false } = {}) {
   const visibility = { visible: "visible", partial: "partly visible", unavailable: "not clear" };
   const body = visibility[summary.bodyVisibility] ?? visibility.unavailable;
   const bat = visibility[summary.batVisibility] ?? visibility.unavailable;
-  return `<details class="simple-card"><summary>Capture check</summary><p>${esc(state)} Camera view: ${esc(summary.profile ?? "Unknown")}.</p>
-    ${summary.state === "checked" ? `<p>At contact: hitter ${body}; bat ${bat}.</p>` : ""}
+  const profile = MODE[summary.profile]?.label ?? summary.profile ?? "Unknown";
+  const line = `Camera view: ${profile} · Hitter ${body} · Bat ${bat}`;
+  return `${disclosureStart(line)}<p>${esc(state)} Camera view: ${esc(profile)}.</p>
+    ${summary.state === "checked" ? `<p>At the estimated hitting moment: hitter ${body}; bat ${bat}.</p>` : ""}
     ${recommendations.length ? `<ul>${recommendations.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>`
       : `<p>No specific filming change identified from this check.</p>`}${correction}</details>`;
 }

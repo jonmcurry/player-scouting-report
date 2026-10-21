@@ -33,6 +33,10 @@
 //      real device at some other dev's home network.
 import { getDemoConfig } from "./demoConfig.js";
 
+// No public host is configured. Local overrides must pass publicAppLink validation.
+export const PUBLIC_APP_ORIGIN = (typeof window !== "undefined"
+  ? window.__HITTERLOOP_LOCAL_CONFIG__?.publicAppOrigin : undefined) ?? "";
+
 const PROD_SUPABASE_URL = "";
 const PROD_SUPABASE_ANON_KEY = "";
 

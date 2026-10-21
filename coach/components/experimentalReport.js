@@ -1,3 +1,4 @@
+import { icon } from "./ui.js";
 // Experimental v2 engine report (development-only, M5). Pure rendering from the
 // `experimental` block of get-simplified-report: no network, no provider
 // confidence, nothing presented as validated. Normal reports never reach here.
@@ -7,7 +8,7 @@ export const HIDDEN_AFTER_FEEDBACK = "An observation from this swing was hidden 
 
 const EVENT_LABELS = Object.freeze({
   stance_set: "Stance set", load_peak_estimate: "Load", foot_plant: "Foot plant",
-  impact_estimate: "Estimated impact (not confirmed contact)", extension: "Extension", finish: "Finish",
+  impact_estimate: "Estimated hitting moment", extension: "Extension", finish: "Finish",
 });
 const CLAIM_LABELS = Object.freeze({ direct_observation: "Direct observation", qualified_interpretation: "Qualified interpretation" });
 
@@ -61,16 +62,16 @@ function seeIt(esc, experimental, eventId) {
     aria-label="See ${esc(eventLabel(event))} at ${esc(clock(at))}">See it · ${esc(eventLabel(event))}</button>`;
 }
 
-function findingCard(esc, experimental, finding, firstName, canAct) {
+function findingCard(esc, experimental, finding, firstName, canAct, issueCount) {
   // The read model sends cited events as objects; ids are accepted too.
   const moments = (finding.events ?? []).map((event) => seeIt(esc, experimental, typeof event === "string" ? event : event?.id)).join("");
   const claim = `<span class="simple-claim" data-claim="${esc(finding.claimType)}">${esc(claimLabel(finding.claimType))}</span>`;
   if (finding.kind === "strength") {
-    return `<section class="simple-card"><span class="simple-eyebrow">What looked good</span>${claim}
-      <p>✓ ${esc(finding.text)}</p><p class="simple-muted">${esc(finding.evidence)}</p><div class="simple-actions">${moments}</div></section>`;
+    return `<section class="simple-card"><h2>What looked good</h2>${claim}
+      <p class="simple-strength-item">${icon("check")}<span>${esc(finding.text)}</span></p><p class="simple-muted">${esc(finding.evidence)}</p><div class="simple-actions">${moments}</div></section>`;
   }
-  return `<section class="simple-card"><span class="simple-eyebrow">Something to work on</span>${claim}
-    <h2>${esc(finding.issue)}</h2><p>${esc(finding.evidence)}</p>
+  return `<section class="simple-card"><h2>${issueCount === 1 ? "One thing to work on" : "Something to work on"}</h2>${claim}
+    <h3>${esc(finding.issue)}</h3><p>${esc(finding.evidence)}</p>
     ${finding.coachingCue ? `<p>Say to ${esc(firstName)}:</p><p class="simple-cue">“${esc(finding.coachingCue)}”</p>` : ""}
     ${finding.lookForNext ? `<p><strong>Next time, watch for:</strong> ${esc(finding.lookForNext)}</p>` : ""}
     <div class="simple-actions">${moments}${canAct && finding.id ? `<button class="simple-action secondary" data-hide-issue="${esc(finding.id)}" type="button">Doesn't look right</button>` : ""}</div></section>`;
@@ -88,10 +89,10 @@ export function experimentalReportHtml(data, { esc, canAct = false, pendingText 
   const strengths = findings.filter((item) => item.kind === "strength");
   const reasons = pending ? [] : experimental.reasons ?? [];
   const events = pending ? [] : experimental.events ?? [];
-  return `<span class="simple-eyebrow">At-bat report</span>
+  return `
     <p class="simple-experimental" role="note">${esc(EXPERIMENTAL_LABEL)}</p>
-    <h1>${esc(copy.title)}</h1>
-    ${data.videoUrl ? `<div class="simple-video-wrap"><video id="reportVideo" class="simple-video" src="${esc(data.videoUrl)}" controls playsinline preload="metadata"></video></div>` : ""}
+    <p class="simple-cue">${esc(copy.title)}</p>
+    ${data.videoUrl ? `<div class="simple-video-wrap"><video id="reportVideo" class="simple-video" src="${esc(data.videoUrl)}" controls playsinline preload="metadata"></video>${seekTarget(experimental, "impact_estimate") !== null ? `<button class="simple-action link" data-action="jump-contact" type="button">Watch the swing</button>` : ""}</div>` : ""}
     <section class="simple-card"><p>${esc(copy.body)}</p>
       ${pending ? `<p id="processingProgress" class="simple-muted">${esc(pendingText)}</p>` : ""}
       ${reasons.length && experimental.suppressedCount > 0 && ["findings", "insufficient_evidence", "no_supported_issue"].includes(outcome)
@@ -100,9 +101,9 @@ export function experimentalReportHtml(data, { esc, canAct = false, pendingText 
       ${!pending && experimental.summary ? `<p>${esc(experimental.summary)}</p>` : ""}
       ${canAct && !pending && experimental.retryEligible ? `<button class="simple-action primary" data-action="retry-experimental" type="button">Try the analysis again</button>` : ""}</section>
     ${outcome === "findings" && issues.length === 0 ? `<section class="simple-card"><p>${esc(HIDDEN_AFTER_FEEDBACK)}</p></section>` : ""}
-    ${issues.map((item) => findingCard(esc, experimental, item, firstName, canAct)).join("")}
-    ${strengths.map((item) => findingCard(esc, experimental, item, firstName, canAct)).join("")}
-    ${events.length ? `<section class="simple-card"><span class="simple-eyebrow">Swing moments</span>
+    ${issues.map((item) => findingCard(esc, experimental, item, firstName, canAct, issues.length)).join("")}
+    ${strengths.map((item) => findingCard(esc, experimental, item, firstName, canAct, issues.length)).join("")}
+    ${events.length ? `<section class="simple-card"><h2>Swing moments</h2>
       <p class="simple-muted">Moments the experimental engine located in the original video.</p>
       <div class="simple-actions">${events.map((event) => seeIt(esc, experimental, event.id)).join("")}</div></section>` : ""}`;
 }

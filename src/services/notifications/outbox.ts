@@ -80,7 +80,7 @@ export function buildNotificationDeliveries(events: PendingNotificationEvent[], 
     if (group.kind === "report_ready") {
       const body = group.events.length > 1
         ? `${group.events.length} at-bat reports are ready for ${name}.`
-        : `${name}'s at-bat report is ready: ${group.events[0]!.reportHasFix ? "1 thing to work on." : "looking good."}`;
+        : `${name}'s at-bat report is ready${group.events[0]!.reportHasFix ? ": 1 thing to work on." : "."}`;
       return { recipientId: group.recipientId, playerId: group.playerId, eventIds, idempotencyKey, body };
     }
     if (group.kind === "analysis_failed") return { recipientId: group.recipientId, playerId: group.playerId, eventIds, idempotencyKey,

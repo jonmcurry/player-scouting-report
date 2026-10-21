@@ -114,6 +114,31 @@ This is the canonical record of the existing frontend, not a redesign brief. The
 - The simplified page has a live status message area, warning-colored error text, and in-card empty/error copy. Public report and family pages show skeleton blocks or centered report states while content loads or cannot be shown. Admin uses plain muted empty-state text, coral error text, and direct form feedback.
 - Coach and admin disabled buttons use 50% opacity and a non-interactive cursor. Selected statuses and processing states use both wording/icons and color in the shared coach primitives; older screens still contain color-heavy score and heatmap displays. Reduced-motion settings suppress the coach stylesheet's animations.
 
+## Consumer route standards (UI-PR3)
+
+The simplified Home, report (including experimental), and Progress routes use these approved consumer roles. Shared coach and legacy scales remain as documented above.
+
+| Role | Font and treatment | Size / line height |
+|---|---|---|
+| Display (Home h1 only) | Oswald 700, uppercase, 0.02em | 2rem / 1.1 |
+| Title (app bar h1) | Oswald 600 | 1.375rem / 1.2 |
+| Section (h2) | Inter 700, uppercase, 0.08em, `--brand-text` | 0.75rem / 1.4 |
+| Issue (h3) | Oswald, uppercase, existing issue title size | 1.3rem / 1.2 |
+| Cue | Oswald 600 | 1.5rem / 1.25 |
+| Body | Inter 400 | 1rem / 1.5 |
+| Meta | Inter 500 | 0.875rem / 1.4 |
+| Caption | Inter 400 | 0.8125rem / 1.4 |
+
+Consumer radii are cards 16px, buttons 12px, chips 999px, and sheet top corners 20px. Card padding is 16px, card gap 12px, and section gap 24px, using the existing spacing ladder. Each view has one h1; section h2 headings precede issue h3 titles. Strength text uses `--text-1` with the shared check icon in `--success`.
+
+Progress uses existing `bt-status-chip` classes: Improving and Looks fixed are success; Early read, Checking, Still showing up, No clear pattern, and unknown statuses are neutral (`--surface-3` with `--text-1`). Meaning always appears in text. Brand fill is never a text colour; primary fills use white. Do not put `--text-3` or danger text on surface-3.
+
+About this video and drill disclosures use native details/summary with a visible shared chevron-down icon. About this video keeps its descriptive summary visible while collapsed. Expanded chevrons rotate 180 degrees; reduced motion disables rotation and transition. Summary targets are at least 48px high. How to film puts the warning-bordered, warning-subtle safety note first, immediately after its title.
+
+### Coach Team and Player screens (UI-PR4)
+
+Coaches use Team / Record / Progress; parents retain Home / Record / Progress. Team roster rows use the existing small jersey badge, player name, latest at-bat summary line, shared chevron and a separate overflow button. Latest-at-bat status uses the existing neutral or warning chips; focus remains server-owned in Progress. Team has no counts, filters, averages or review badges. Player uses the consumer app bar and shared Home feed, followed by a Parents card with linked guardians, pending invites, and existing secondary/destructive actions. Legacy coach tools are available only through the explicit Settings compatibility link.
+
 ## Existing conflicts requiring a product decision
 
 - The simplified route and the shared coach shell use different navigation models (Home/Record/Progress versus Team/Add/Review), heading scale, and card radius. The shared palette is the current common convention. Choosing one navigation or typography system across those routes is a product decision; this document preserves both as implemented.

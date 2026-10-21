@@ -22,7 +22,7 @@ test("read model allowlists fields, labels estimates and binds findings to evide
   assert.equal(report.label, "Experimental analysis — not yet validated");
   assert.equal(report.findings.length, 2);
   assert.equal(report.findings[1]!.claimLabel, "Qualified interpretation");
-  assert.equal(report.events[0]!.label, "Estimated impact moment");
+  assert.equal(report.events[0]!.label, "Estimated hitting moment");
   assert.equal(report.events[0]!.estimate, true);
   assert.equal(report.events[0]!.seekS, 1.02);
   assert.doesNotMatch(JSON.stringify(report), /confidence|private|prompt|path/);

@@ -31,19 +31,21 @@ test("simplified feed does not call a completed upload pending", () => {
 test("background refreshes never override navigation or restart a playing video", () => {
   const app = read("components/simpleApp.js");
   const home = app.slice(app.indexOf("async function refreshHome"), app.indexOf("function drillCard"));
-  assert.match(home, /if \(state\.tab !== "home" \|\| state\.selected !== playerId\) return;/);
+  assert.match(home, /if \(!feedShowing\(\) \|\| state\.selected !== playerId\) return;/);
   const report = app.slice(app.indexOf("function scheduleReportRefresh"), app.indexOf("async function loadCoachAnalysisAction"));
   assert.match(report, /if \(!current\(\)\) return;/);
   assert.match(report, /progressNode\.textContent =/);
-  const del = app.slice(app.indexOf('case "delete":'), app.indexOf("delete_simple_at_bat", app.indexOf('case "delete":')));
+  const del = app.slice(app.indexOf('async function deleteReport('), app.indexOf("function stopReportRefresh"));
   assert.match(del, /stopReportRefresh\(\);/);
 });
 
 test("simplified in-progress reports can delete the whole at-bat", () => {
   const app = read("components/simpleApp.js");
-  const pending = app.slice(app.indexOf('if (report.state !== "ready")'), app.indexOf('root.innerHTML = `<span class="simple-eyebrow">At-bat report</span><h1>${esc(data.playerName)}'));
+  const pending = app.slice(app.indexOf('if (report.state !== "ready")'), app.indexOf('root.innerHTML = `${reportAppBar(data, clipId)}', app.indexOf('if (report.state !== "ready")') + 200));
   assert.match(pending, /data-action="delete"/);
-  assert.match(app, /Delete this at-bat and all its videos\?/);
+  assert.match(app, /Delete this at-bat\?/);
+  // Targets are a frozen snapshot taken when Delete is tapped (UI-PR4 integration check).
+  assert.match(app, /const report = Object\.freeze\(\{ clipId: state\.report\.clipId/);
   assert.match(app, /state\.report\.entryClipIds/);
   assert.match(app, /delete_simple_at_bat/);
 });
@@ -156,13 +158,13 @@ test("new pages and modules are precached and cache-stamped", () => {
   assert.ok(sw.includes('"./assets/icons.svg"'), "SVG icon sprite is in sw.js ASSETS");
 });
 
-test("Android Back delegates to overlay history without adding @capacitor/app", () => {
+test("Android Back keeps overlay history and uses the approved App plugin", () => {
   const root = path.resolve(coach, "..");
   const activity = fs.readFileSync(path.join(root, "mobile/android/app/src/main/java/com/hitterloop/coach/MainActivity.java"), "utf8");
   const mobilePackage = JSON.parse(fs.readFileSync(path.join(root, "mobile/package.json"), "utf8"));
   assert.match(activity, /#btOverlayHost \.bt-overlay/);
   assert.match(activity, /history\.back\(\)/);
-  assert.equal(mobilePackage.dependencies?.["@capacitor/app"], undefined);
+  assert.equal(mobilePackage.dependencies?.["@capacitor/app"], "6.0.3");
 });
 
 test("every page has an empty state for its main list (no blank cards)", () => {
@@ -558,12 +560,13 @@ test("simplified reports keep confirmed no-swing separate from detector uncertai
   assert.match(simple, /report\.state === "no_swing"/);
   assert.match(simple, /No swing to analyze in this at-bat\./);
   assert.match(simple, /The result choice did not decide whether a swing happened\./);
-  assert.match(simple, /We couldn't analyze this video/);
+  assert.match(simple, /unavailablePresentation\(data\)/);
+  assert.match(read("components/simplePresentation.js"), /We couldn't analyze this video/);
 });
 
 test("new simplified share URLs contain only the token while old links still open", () => {
   const simple = read("components/simpleApp.js");
-  assert.match(simple, /url\.searchParams\.set\("share", token\)/);
+  assert.match(simple, /publicAppLink\(PUBLIC_APP_ORIGIN, "simple.html", \{ share: token \}\)/);
   assert.doesNotMatch(simple, /url\.searchParams\.set\("(?:player|clip)"/);
   assert.match(simple, /state\.selected = params\.get\("player"\)/);
   assert.match(simple, /document\.querySelector\("\.simple-brand"\)\.removeAttribute\("href"\)/);
@@ -671,4 +674,16 @@ test("performance lab is private, gated from analysis, and precached", () => {
   assert.match(lab, /get_performance_analysis/);
   assert.match(lab, /export_performance_analysis/);
   assert.match(lab, /isDemoMode\(\)/);
+});
+
+test("the service worker caches every module the simplified app imports, so it starts offline", () => {
+  const sw = read("sw.js");
+  const seen = new Set();
+  const visit = (rel) => {
+    if (seen.has(rel)) return;
+    seen.add(rel);
+    for (const [, spec] of read(rel).matchAll(/from "(\.\.?\/[^"]+\.js)"/g)) visit(path.posix.normalize(path.posix.join(path.posix.dirname(rel), spec)));
+  };
+  visit("components/simpleApp.js");
+  for (const rel of seen) assert.ok(sw.includes(`"./${rel}"`), `sw.js does not cache ./${rel}`);
 });

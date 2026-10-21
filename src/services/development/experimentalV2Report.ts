@@ -76,7 +76,7 @@ const headlines: Record<ExperimentalOutcome, string> = {
   analysis_failed: "Experimental analysis did not finish.",
 };
 const labels: Record<string, string> = { stance_set: "Stance set", load_peak_estimate: "Estimated load peak",
-  foot_plant: "Foot plant", impact_estimate: "Estimated impact moment", extension: "Extension", finish: "Finish" };
+  foot_plant: "Foot plant", impact_estimate: "Estimated hitting moment", extension: "Extension", finish: "Finish" };
 // A withheld run's text reasons come from its summary or no-action reason, not from a finding.
 const summaryReasons: Record<string, string> = {
   NUMERIC_CLAIM: "The summary stated a measurement the analysis cannot support.",

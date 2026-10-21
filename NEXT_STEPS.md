@@ -1,3 +1,16 @@
+### UI-PR4 implementation handoff (2026-10-21)
+
+- Coach shell is Team / Record / Progress (parents keep Home / Record / Progress). Team: roster rows (jersey badge, latest game at-bat date, Analyzing / Couldn't analyze chip from ONE batched `game_log_entries` read), Import players (reused `rosterImportSheet.js`), Add player, per-row overflow (Invite parent, Cancel pending invites). Player screen: parent Home content plus a Parents card (linked guardians with Remove, pending invites with Cancel, Invite parent). Progress has a player chip switcher for coaches. Settings adds Team details (sport, level), a team switcher for multi-team coaches, and "Legacy coach tools" (`index.html?legacy=1`). No default link to `team.html`/`player.html` remains in the simplified app.
+- Delete confirmation now snapshots frozen target IDs before the dialog; a confirmed delete returns to where the report was opened (coach Player screen, parent Home).
+- Verified 2026-10-21 on emulator-5554 with fictional accounts (coach, empty-team coach, linked parent) and synthetic media: Team -> Player -> report -> Back chains, overflow/sheet/confirm Back, add/import, upload lands on the player's screen, parent sees no coach UI, parent data-layer probe returns zero coach rows and denied coach RPCs/inserts, legacy route still reaches `team.html`. Visual QA at 360x640 and 412x915. Gemini: no blocking findings.
+- Open gaps (legacy-only until parity): Player Context editing, Delete player, share-link management (UI-PR5). Roster focus line needs a batched server-side roster summary read (backend item; not invented client-side). The feed is not date-sorted (server order; T1-14 feed rows). Team switching reloads the page.
+
+### UI-PR3 implementation handoff (2026-10-20)
+
+- Report/disclosure polish and failed-delete correctness implemented locally on top of uncommitted UI-PR1/UI-PR2. Own clip deletes last; failures preserve the report; hide feedback uses a Back-aware reason sheet; report video errors have one automatic URL refresh.
+- Verified 2026-10-20 on emulator-5554 with fictional data: delete cancel, Back with the confirmation open, server 500, transport failure, partial sibling failure, offline, repeated taps and the experimental report all stay on the report; only a fully confirmed delete navigates Home. Visual QA at 360x640 and 412x915. Gemini: no blocking findings after fixes.
+- Open judgment calls: the filming checklist still says "through contact" (a filming instruction, not an estimated event); multi-strength experimental reports repeat one "What looked good" h2 per strength card. No version bump, staging, publication, or deployment yet.
+
 ## Prioritized outstanding work from `docs/SIMPLIFIED_APP_SPEC.md` (updated 2026-10-08)
 
 This is the current work order. **Critical** items block inviting families or a hosted release;

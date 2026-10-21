@@ -50,3 +50,17 @@ test("capture states remain secondary and suggestions are escaped and capped", (
   assert.match(checked, /whole hitter/);
   assert.match(checked, /<details/);
 });
+
+test("every summary state has an always-visible description, chevron, and coach correction", () => {
+  for (const state of [null, "pending", "needs_recheck", "partial", "checked", "unknown"]) {
+    const html = captureSummaryHtml(state && { state, profile: "game_backstop", bodyVisibility: "visible", batVisibility: "partial" }, { canCorrect: true });
+    const summary = html.match(/<summary>([\s\S]*?)<\/summary>/)[1];
+    assert.match(summary, /About this video/);
+    assert.match(summary, /icons.svg#chevron-down/);
+    assert.match(summary, /class="simple-disclosure-summary">[^<]+<\/small>/);
+    assert.match(html, /data-action="correct-capture-view"/);
+    assert.doesNotMatch(html, /contact/i);
+    assert.doesNotMatch(captureSummaryHtml(state && { state }), /correct-capture-view/);
+  }
+  assert.match(captureSummaryHtml({ state: "checked", profile: "game_backstop", bodyVisibility: "visible", batVisibility: "partial" }), /Camera view: Game \/ backstop · Hitter visible · Bat partly visible/);
+});

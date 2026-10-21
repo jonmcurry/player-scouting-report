@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.56.0] - 2026-10-21
+
+UI-PR1 to UI-PR4 of the October UI/UX redesign, recorded together.
+
+### Added
+
+- Simplified coach shell (UI-PR4): coaches get Team / Record / Progress, while parents keep Home / Record / Progress. Team lists players with a jersey badge, latest game at-bat date and an "Analyzing" or "Couldn't analyze" chip, loaded in one batched read. It also offers Import players (the existing importer), Add player, and a per-player menu to invite a parent or cancel pending invites.
+- Coach Player screen: the player's feed and focus plus a Parents card with linked guardians (Remove), pending invites (Cancel) and Invite parent. Coach Progress has a player switcher; coach Settings adds team sport and level, a team switcher, and a "Legacy coach tools" link to `index.html?legacy=1`.
+- Android Back handling through the approved `@capacitor/app` 6.0.3 plugin (UI-PR2): Back closes the open dialog or sheet first, then returns through in-app screens with scroll restored, then exits.
+- Report app bar with a date and session title and a back button; snackbar feedback above the bottom navigation.
+- "Doesn't look right" opens a reason sheet (Not what happened, Wrong kid in video, Other) on the normal and experimental reports.
+
+### Changed
+
+- Truthful report copy (UI-PR1): "One thing to work on", "Estimated hitting moment" and "Watch the swing" for estimated events, specific reasons when a video can't be analyzed, and friendly errors that never show raw server text. Report-ready notifications no longer say "looking good".
+- Report styling (UI-PR3): semantic headings, strengths with a check icon, neutral or success Progress status chips, "About this video" disclosure with a collapsed summary, and the How to film safety note shown first.
+- A report video that fails to load re-fetches its link once, then offers Try again; the "Refresh video" button is gone.
+- Share and invite links are only created for a configured public HTTPS origin. None is configured in this build, so both say they aren't set up yet and create no token.
+- The simplified app no longer links to the legacy `team.html` / `player.html` by default. Player details editing, player deletion and share-link management remain in the legacy screens.
+
+### Fixed
+
+- A failed at-bat deletion keeps the report and video on screen with a friendly message and Delete enabled again; only a fully confirmed deletion leaves the report. Repeated taps start one deletion, the confirmed targets can't change during a background refresh, and a partial failure says which part didn't finish.
+- The offline service worker now caches the experimental report module, so the simplified app can start without a connection.
+
 ## [0.55.0] - 2026-10-20
 
 ### Added

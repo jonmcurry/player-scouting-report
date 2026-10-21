@@ -1,12 +1,82 @@
 # HitterLoop v2: Mobile UI/UX Redesign and Product Experience Audit
 
-- **Status:** Design specification for review. Nothing in this document is implemented.
-- **Date:** 2026-10-12
+- **Status:** Design specification. As of 0.55.0 nothing below is implemented in the standard report; M5's experimental v2 report partly overlaps (§0.3), and UI-PR1 is in progress (§0.4).
+- **Date:** 2026-10-12 (status update §0: 2026-10-20)
 - **Repository state audited:** `master` at `fa9b652`, version `0.52.2` (Android `versionCode` 74), with uncommitted PR5/PR6 work in the tree. That work was not read for UI purposes and was not touched.
 - **Inputs:** [`HITTERLOOP_FORENSIC_AUDIT.md`](HITTERLOOP_FORENSIC_AUDIT.md) (`F-xx`), [`HITTERLOOP_V2_IMPLEMENTATION_PLAN.md`](HITTERLOOP_V2_IMPLEMENTATION_PLAN.md) (`S0-xx`, `S1-xx`, `D1-D9`, `H1-H13`), [`ENGINE_BASELINE.md`](ENGINE_BASELINE.md), [`PRIVACY_SAFEGUARDS.md`](PRIVACY_SAFEGUARDS.md), [`DRILL_CURATION.md`](DRILL_CURATION.md), `NEXT_STEPS.md`, `DESIGN.md`, and [`docs/SIMPLIFIED_APP_SPEC.md`](../SIMPLIFIED_APP_SPEC.md), the approved product direction.
 - **Rendered evidence:** 14 Android emulator screenshots captured on 2026-10-12 from a debug build of `0.52.2` on a local Supabase stack. The screens covered are Home, the at-bat report, Record, How to film, Progress, Settings, Invite parent, the legacy Team screen, and the legacy player page. The screenshots are local only (untracked `screenshots/`). They are not reproduced here because they show a real player's surname and a real invitation token. The video player showed a broken-media icon because the local storage emulator was not running, so video playback was **not** visually verified.
 - **Audience:** the product owner, the independent GPT-6 reviewer, and Codex as the implementing agent. Gemini/AGY does code and visual QA.
 - **Scope:** read-only audit. The only file this audit writes is this specification.
+
+## 0. Status update for 0.55.0 (2026-10-20)
+
+The design below is unchanged. This section records what changed in the code since the audit, so the
+roadmap can be executed without re-auditing.
+
+### 0.1 Decision status (§17)
+
+| ID | Status | Basis |
+|---|---|---|
+| D-1 | **Owner approval** for the heading rename ("One thing to fix" → "One thing to work on") and the full §8.3 wording review. **Safe default in UI-PR1:** the §8.3 `none_found` and strengths copy replaces today's copy, because today's copy is untrue in some cases (P5; "from this angle"). The heading is not renamed. | P5; CLAUDE.md truth rules |
+| D-2 | **Partly resolved:** the rule that family copy never says "contact" for an estimate is binding (plan §3.5, §7.3 rule) and is already followed by the M5 experimental report. **Owner approval** for the final parent wording and for one term across both reports (M5 says "Estimated impact (not confirmed contact)"; this spec recommends "Estimated hitting moment"). **Safe default in UI-PR1:** this spec's recommendation, in the standard report only. | Plan §3.5; M5 |
+| D-3 | **Owner approval.** Not used by UI-PR1 (T1-14 is later). | — |
+| D-4 | **Owner approval.** Needed before UI-PR4. | — |
+| D-5 | **Owner approval.** Status quo: no coach review (`SIMPLIFIED_APP_SPEC.md` §1/§4 removed the approval workflow). Needed before UI-PR8. | Simplified spec |
+| D-6 | **Owner approval.** Tier 2. | — |
+| D-7 | **Owner/release decision.** Blocks the origin value in UI-PR2; UI-PR2 can ship fail-closed before it. | §13.1 |
+| D-8 | **Deferred** by this spec's own recommendation (until retention H8); confirm. | §17 |
+| D-9 | **Owner approval.** Tier 3. | — |
+| D-10 | **Owner approval** for the standard report. M5 already shows "See it" for estimated events, but only behind the development-only `ENGINE_V2_AI` opt-in and the "Experimental analysis — not yet validated" label. | M5 |
+| D-11 | **Owner approval** (new dependency). Needed for UI-PR2. | — |
+
+### 0.2 Source references at 0.55.0 (`96d0d17`)
+
+Line numbers in §2-§16 refer to `0.52.2`. Current locations (before UI-PR1):
+
+| Ref | 0.55.0 location |
+|---|---|
+| P1 "looking good." | `src/services/notifications/outbox.ts:83` |
+| P2 share / invite links from `location.href` | `coach/components/simpleApp.js:491` / `:571` |
+| P3 raw transport error | `simpleApp.js:83` (`reportApi`), `:766` (`start` catch) |
+| P4 "Jump to contact" | `simpleApp.js:172` (`contactMarker`) |
+| P5 "Nothing clear to fix" | `simpleApp.js:259`; fix selection `src/services/development/reportAssembly.ts:86` |
+| P8 failure copy | `reportAssembly.ts:45` (`plainFailureReason`); unreadable branch `simpleApp.js:235` |
+| P9 Capture check `<details>` | `coach/components/captureGuide.js:54` |
+| P11 `say()` / `#simpleMessage` | `simpleApp.js:38` |
+| P12 status pill | `coach/simple.css:55` (`.simple-status`) |
+| P14 "Refresh video" | `simpleApp.js:251` |
+| P16 `confirm()` delete | `simpleApp.js:601` |
+| P17 roster row text | `simpleApp.js:103` |
+| P7 / T1-16 legacy `team.html` link | `simpleApp.js:105` |
+| T1-17 safety note | `simpleApp.js:407` (`guideSheet`) |
+| T1-18 hide call without reason | `simpleApp.js:529` |
+| P20 "Child" placeholder | `simpleApp.js:735` |
+| Analysis hold / 404 / contact time | `supabase/functions/get-simplified-report/index.ts:30` / `:23` / `:434` |
+| Coach analysis gate | `simpleApp.js:307` |
+
+### 0.3 What M5 already provides (experimental v2 clips only)
+
+M5 (0.55.0) added a separate report for clips analysed by the development-only v2 engine
+(`coach/components/experimentalReport.js`, `src/services/development/experimentalV2Report.ts`). It is
+behind `ANALYSIS_ENGINE=v2-exp` and is never shown for standard reports.
+
+| This spec | M5 coverage |
+|---|---|
+| §7.3 estimate terminology | Partial: "Estimated impact (not confirmed contact)"; never "contact" |
+| §7.4 Show me / moments | Partial: "See it" seeks to each event's source frame (frame-exact on the Android WebView); no marker row, no ½× replay |
+| §8.1 states | Partial: processing, not assessable (with plain reasons), analysis not enabled, findings, insufficient evidence, no supported issue, withheld, failed (with retry); never presented as a verified clean swing |
+| §8.2 presentation contract | Not used: M5 returns its own `experimental` block. UI-PR6 should unify the two rather than keep parallel contracts. |
+| §8.1 row 6 retry | M5 adds a coach/guardian retry RPC for experimental clips only (`retry_experimental_v2_clip`); the standard report still has none |
+| §9.10 share links | v2 clips are excluded from share links (404) |
+| Everything in Tier 1 | Not covered |
+
+### 0.4 UI-PR1 interpretation
+
+§8.1 row 6 gives every `status === "failed"` clip the title "Something went wrong on our side.". Some
+failures are properties of the video (for example "We couldn't find the batter clearly."), where that
+title would be untrue. UI-PR1 therefore uses the §9.11 title ("We couldn't analyze this swing" + reason +
+filming tip) for capture-related failure reasons, "We couldn't analyze this video" + reason for the
+3-minute limit, and "Something went wrong on our side." only for unknown failures. Wording review: D-1.
 
 ## How to read this document
 
