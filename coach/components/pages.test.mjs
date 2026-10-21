@@ -41,7 +41,7 @@ test("background refreshes never override navigation or restart a playing video"
 
 test("simplified in-progress reports can delete the whole at-bat", () => {
   const app = read("components/simpleApp.js");
-  const pending = app.slice(app.indexOf('if (report.state !== "ready")'), app.indexOf('root.innerHTML = `${reportAppBar(data, clipId)}', app.indexOf('if (report.state !== "ready")') + 200));
+  const pending = app.slice(app.indexOf('if (!["supported_finding", "no_supported_issue", "limited"].includes(presentation?.analysisState))'), app.indexOf('  const shownFix ='));
   assert.match(pending, /data-action="delete"/);
   assert.match(app, /Delete this at-bat\?/);
   // Targets are a frozen snapshot taken when Delete is tapped (UI-PR4 integration check).
@@ -557,7 +557,7 @@ test("the public demo opens the simplified read-only experience", () => {
 test("simplified reports keep confirmed no-swing separate from detector uncertainty", () => {
   const simple = read("components/simpleApp.js");
   assert.match(simple, /no_swing: "No swing"/);
-  assert.match(simple, /report\.state === "no_swing"/);
+  assert.match(simple, /presentation\?\.analysisState === "no_swing"/);
   assert.match(simple, /No swing to analyze in this at-bat\./);
   assert.match(simple, /The result choice did not decide whether a swing happened\./);
   assert.match(simple, /unavailablePresentation\(data\)/);

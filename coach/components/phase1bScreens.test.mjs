@@ -196,9 +196,11 @@ test("Task 2b: a reviewed finding whose clip was deleted says who removed the vi
   assert.match(deletion, /if \(isDemoMode\(\)\) \{[\s\S]{0,300}?from\("video_clips"\)\.delete\(\)/);
 
   const directDeletes = coachSources().flatMap(directTableDeletes).sort();
+  assert.match(read("components/simpleApp.js"), /await deleteClipsForPlayer\(id\);[\s\S]{0,300}?from\("players"\)\.delete\(\)/);
   assert.deepEqual(directDeletes, [
     "components/clipDeletion.js:video_clips",
     "components/practicePage.js:game_log_entries",
+    "components/simpleApp.js:players",
     "player.html:game_log_entries",
     "player.html:players",
   ], "new direct deletion sites must be routed through and covered by the audited helper");

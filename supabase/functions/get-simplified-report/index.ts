@@ -1,3 +1,4 @@
+import { baselinePresentation, experimentalPresentation } from "../../../src/services/development/reportPresentation.ts";
 // One read boundary for the simplified report. A caller supplies either their
 // own JWT or one revocable share token. All private reads happen after the
 // player-specific authorization check.
@@ -13,7 +14,7 @@ import { selectVisibleClips } from "./visibility.ts";
 import { selectDrills } from "../../../src/services/development/drillSelection.ts";
 import { practiceEvidence } from "../../../src/services/development/progressPractice.ts";
 import { storedProgress } from "../../../src/services/development/progressView.ts";
-import { sharedProgressPayload, sharedReportPayload } from "../../../src/services/development/sharedSimplePayload.ts";
+import { sharedProgressPayload, sharedReportPayload, sharedPresentation } from "../../../src/services/development/sharedSimplePayload.ts";
 import { belongsToRun, hasIssueEvidence, hasReportEvidence, latestRunsByClip } from "../../../src/services/development/latestRuns.ts";
 import { buildExperimentalReport, type ExperimentalIssueRow, type ExperimentalV2Row } from "../../../src/services/development/experimentalV2Report.ts";
 
@@ -370,6 +371,7 @@ Deno.serve(async (request) => {
     ]);
     if (runError || issueError || drillError) throw runError ?? issueError ?? drillError;
     let experimental;
+    let storedIssueFindings: { hidden?: boolean; review_status?: string }[] = [];
     if (!shared && !demo) {
       const { data: experimentalRow, error: experimentalRowError } = await service.from("experimental_v2_results")
         .select("video_clip_id, engine, pipeline_version, outcome, reason_codes, events, findings, suppressed_count, analysis_run_id, retry_eligible")
@@ -382,6 +384,13 @@ Deno.serve(async (request) => {
             .eq("video_clip_id", clipId).maybeSingle()
           : { data: null, error: null };
         if (experimentalRunError) throw experimentalRunError;
+        const issueRows = (rows ?? []) as unknown as { id: string; analysis_run_id: string | null; review_status: string | null }[];
+        storedIssueFindings = ((experimentalRow.findings ?? []) as { kind: string; issueId: string | null }[])
+          .filter((f) => f.kind === "issue")
+          .map((f) => {
+            const issue = issueRows.find((i) => i.id === f.issueId && i.analysis_run_id === experimentalRow.analysis_run_id);
+            return { review_status: issue?.review_status ?? undefined };
+          });
         experimental = buildExperimentalReport({ row: experimentalRow as ExperimentalV2Row,
           clipStatus: ((c) => analysisPending(c) ? "processing" : c.status)(
             clip as unknown as { status: string; processing_progress: number | null; claimed_at: string | null }),
@@ -433,6 +442,9 @@ Deno.serve(async (request) => {
     if (phaseError) throw phaseError;
     const contactTime = phases?.[0]?.time_s == null ? null
       : phases[0].time_s + (demo ? clip.demo_media_offset_s ?? 0 : 0);
+    const responseStatus = analysisPending(clip) ? "processing" : clip.status;
+    const presentation = experimental ? experimentalPresentation({ report: experimental, storedIssueFindings })
+      : baselinePresentation({ status: responseStatus, report, issues });
     if (shared && report.state === "ready") {
       report.summary = sharedText(report.summary);
       report.strengths = report.strengths.map(sharedText);
@@ -470,7 +482,8 @@ Deno.serve(async (request) => {
       // A v2 clip's findings are only ever shown through the labelled experimental block, so this
       // later key replaces the production-shaped report for v2 clips.
       ...(experimental ? { report: { state: "experimental" }, experimental } : {}),
-      status: analysisPending(clip) ? "processing" : clip.status,
+      presentation: shared ? sharedPresentation(presentation) : presentation,
+      status: responseStatus,
       processingProgress: clip.processing_progress, videoUrl, mediaPath, contactTime,
       ...(shared ? {} : { progress }) });
   } catch (error) {

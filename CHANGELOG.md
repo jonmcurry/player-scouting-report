@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.57.0] - 2026-10-21
+
+UI-PR5 to UI-PR7.1 of the October UI/UX redesign, recorded together.
+
+### Added
+
+- Coach share-link management (UI-PR5): Settings > Shared links lists the links the coach created, grouped Active / Expired or turned off, with a confirmed "Turn off" through the existing revoke RPC. The list read never selects link tokens. Creating new links still needs a configured public HTTPS origin, which this build doesn't have.
+- Player details on the coach Player screen (UI-PR5): edit name, jersey, age band, bats and throws (the player's link name is unchanged), and Delete player. Deletion removes each clip through the existing audited clip deletion first and only then the player, stopping if any clip remains.
+- Clip-only report links (UI-PR5): a coach link with `?clip=` and no player resolves the player through one permission-checked read; unknown or other-team clips stay on Team.
+- A versioned report presentation contract (UI-PR6), computed on the server for normal and experimental reports and limited to an allowlist in shared links. The app renders one of processing, supported finding, no supported issue, limited, insufficient evidence, unable to analyze, no swing or technical failure, and falls back to a no-claim state when the contract is missing or invalid.
+
+### Changed
+
+- Reports distinguish "nothing found" from "couldn't see it clearly": when issues exist but none is shown, the report says "We noticed something, but couldn't see it clearly enough to recommend a change." Hidden-after-feedback, withheld evidence and limited experimental analyses each get their own copy instead of reading as a clean swing (UI-PR6, UI-PR7).
+- Experimental report moments are labelled Set-up, Load (estimated), Front foot down, Estimated hitting moment, Extension and Finish. "See it" has an accessible name that includes its visible text; after seeking it pauses the video, moves focus to it, and announces the moment through a hidden live region (UI-PR7). Its frame-exact source seeking is unchanged.
+- Normal reports no longer navigate by stored swing timestamps (UI-PR7.1), because those times are positions in the analyzed window, not in the original upload (wrong for long trimmed uploads, approximate otherwise). The video opens at its natural start with "Play video", native controls and ½ speed; the automatic seek, the estimated-moment marker and "Watch the swing" are gone from coach, parent, shared-link and demo reports. Progress "Then vs. now" plays both videos side by side without timestamp alignment. The experimental "Watch the swing" uses only experimental event timing.
+
 ## [0.56.0] - 2026-10-21
 
 UI-PR1 to UI-PR4 of the October UI/UX redesign, recorded together.

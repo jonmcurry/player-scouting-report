@@ -92,6 +92,10 @@ function reportFor(clip, playerId, basePath) {
     mediaPath: clip.mediaPath,
     videoUrl: mediaUrl(basePath, clip.mediaPath),
     contactTime: clip.contactTime,
+    presentation: { version: 1, engine: "baseline", engineOutcome: "ready",
+      analysisState: clip.fix ? "supported_finding" : "no_supported_issue", fixState: clip.fix ? "shown" : "none_found",
+      strengthsState: clip.strengths.length ? "shown" : "none_found", summaryState: "shown",
+      familyReason: null, limited: false, reasonCodes: [], momentLabel: null },
     report: {
       state: "ready",
       summary: clip.summary,

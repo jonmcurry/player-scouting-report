@@ -371,6 +371,21 @@ A coach currently lands in the simplified Home for one player, with a roster car
 
 Sources: the plan's `EventLocalisation.rawPtsS` (§3.3), `frame_map.json` (S0-05), `issues.claim_decision` (S0-09), and H6/U3 for attestation. Strength phases exist today (`ReportRun.strengths[].phase`, `reportAssembly.ts:17`) but are dropped from the payload (`:94`), and raw PTS per phase is not mapped (plan §3.7).
 
+#### 7.4.1 Evidence inventory at UI-PR7 (2026-10-21) [FACT]
+
+| Source | What it holds | Original-source frame reference? | Usable for "Show me"? |
+|---|---|---|---|
+| `swing_phases` (baseline: stance, load, stride, contact, extension, follow-through) | `frame`, `time_s` | **No.** `time_s` is analyzed-frame index ÷ fps inside the video the pose pipeline analyzed (`detect_2d.py` `t = i / fps`), stored unchanged (`ingestPhases.ts`). Uploads ≥ 60 s are trimmed by Stage 0 to a 12 s window whose start (`trim_start_s`) exists only in the worker's ephemeral `stage0.json` and is never stored in the database or report payload; high-fps clips may be decimated; phone video is variable frame rate; a nonzero container start is not adjusted. | No |
+| INST-1 `frame_map.json` (baseline runs) | Verified raw PTS per analyzed frame (content-matched, `verified`/`unmappable`) | Yes, while the run's working files exist | No: not persisted for baseline runs |
+| `clip_evidence_assessments.events` | `EventLocalisation` (`rawPtsS`, status) | Yes, by design | No: written only by evidence shadow mode (off, not activated), service-role only, and S0-09 keeps assessment signals out of family payloads |
+| Experimental v2 `events` (`experimental_v2_results`) | Event id, `timeS`, `seekS` from the engine's own PyAV frame map | Yes: `seekS` is the frame's absolute PTS + half a frame (measured on the Android WebView); nonzero-start uploads are refused (`SOURCE_START_OFFSET_UNSUPPORTED`) | Yes, already: "See it" per finding and in Swing moments |
+
+**Decision for UI-PR7:** normal (baseline) reports show **no** "Show me" control. No finding has a mapped source moment, and D-10 also withholds estimated moments from parents until the event's V2 passes (the reliability catalog is empty). Never fall back to `contactTime` for a finding. The experimental "See it" is the evidence-linked moment; UI-PR7 applies §7.4's accessible name, focus and announcement rules to it and marks engine estimates explicitly ("Estimated hitting moment", "Load (estimated)"), without changing its frame-exact seek.
+
+**Resolved in UI-PR7.1:** the baseline "Watch the swing" button, the estimated-moment marker, the automatic seek on open and the Progress "Then vs. now" alignment all used the analyzed-window `contactTime` on the raw upload. For uploads of 60 s or more (trimmed by Stage 0) that moment landed in the wrong place; for shorter clips it was approximate (VFR, nonzero start). UI-PR7.1 removed all of them from normal reports (coach, parent, shared link, demo). The video now opens at its natural start with a "Play video" button and native controls; the baseline presentation's `momentLabel` is `null`. The server still returns `contactTime` (no payload change), but no normal-report code reads it. Restoring a moment needs the provenance below.
+
+**Unlocking baseline "Show me" later** needs: persisted source-frame provenance per phase (e.g. INST-1 verified `raw_pts_s`), the enforcement read path that is allowed to expose it (S0-11), and, for parents, a passing V2 status per event (D-10).
+
 ---
 
 ## 8. Analysis state and presentation contracts
@@ -414,7 +429,7 @@ interface ReportPresentation {
 - `fixState: "hidden_after_feedback"` when any issue is hidden;
 - `fixState: "not_confident"` when issues exist but `shownFix` returned null;
 - `"none_found"` only when the current run stored zero mechanical issues;
-- `momentLabel: "impact_estimate"` always, since the baseline has no confirmed contact.
+- `momentLabel: null` for the baseline (UI-PR7.1): its phase times are not source-frame positions (§7.4.1). Experimental v2 sets `"impact_estimate"` only when the engine emitted that event.
 
 `withheld_evidence`, `limited`, and `legacy_safe_only` arrive with S0-11/S1-12.
 
@@ -982,7 +997,7 @@ flowchart TD
 | `legacy_safe_only` | §8.1 row 8 | Planned (D2, S1-12) | Plan |
 | Per-claim `displayable`, withheld parts | Limited analysis line | Planned (`issues.claim_decision`, S0-09/S0-11) | Plan. **Gap:** the plan defines decisions but not a family-facing list of withheld parts. `limitedParts` is new. |
 | Evidence moments (`rawPtsS` per event, identity status) | Show me, moment markers | Planned (S0-05 frame map, §3.3 `EventLocalisation`); strength `phase` stored but not returned | Plan + new payload field |
-| `momentLabel` | Marker copy | Baseline is always `impact_estimate` (plan §3.5) | Trivial now; `contact_confirmed` needs Stage 2 |
+| `momentLabel` | Marker copy | Baseline is `null` since UI-PR7.1 (no source-frame timing, §7.4.1); experimental `impact_estimate` | Trivial now; `contact_confirmed` needs Stage 2 |
 | Coach attestation with `reviewed_with_video` | §9.6, "From your coach" | No | Plan U3/H6 (decision pending) |
 | Hide reason for "Doesn't look right" | Spec §5.5 reasons | **Yes** (backend accepts it); the client sends none | `hide-simple-issue/index.ts:14-25` |
 | Share-link list for the creator | §9.10 | Revoke RPC exists; a list read does not | `00047` |

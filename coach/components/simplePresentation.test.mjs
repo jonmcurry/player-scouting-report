@@ -5,11 +5,14 @@ import vm from "node:vm";
 import { createNavigation, initNavigation } from "./simpleNavigation.js";
 import * as guardianAdmin from "./guardianAdmin.js";
 import { icon } from "./ui.js";
-import { experimentalReportHtml, experimentalStillPending } from "./experimentalReport.js";
+import { experimentalReportHtml, experimentalStillPending, seekTarget, eventLabel } from "./experimentalReport.js";
 import * as presentation from "./simplePresentation.js";
+import { baselinePresentation, experimentalPresentation } from "../../dist/services/development/reportPresentation.js";
+import { demoShowcase } from "./demoShowcase.js";
 import { plainFailureReason } from "../../dist/services/development/reportAssembly.js";
-const { REPORT_COPY: copy, fixNoneCopy, strengthsNoneCopy, momentLabels, unavailablePresentation,
+const { REPORT_COPY: copy, fixNoneCopy, strengthsNoneCopy, unavailablePresentation,
   userErrorMessage, describeFunctionsError, reportFetchFailure } = presentation;
+const unavailableFromServer = input => unavailablePresentation({ presentation: baselinePresentation({ ...input, issues: [] }) });
 const httpError = (status) => Object.assign(new Error("Edge Function returned a non-2xx status code"), {
   name: "FunctionsHttpError", context: new Response(JSON.stringify({ error: "private server detail" }), { status }),
 });
@@ -17,16 +20,14 @@ const captureCases = [["batter", "batter missing"], ["swing", "no swing"], ["sho
 
 test("frozen copy and empty sections use the approved wording", () => {
   assert.ok(Object.isFrozen(copy));
-  assert.ok(Object.isFrozen(momentLabels));
   assert.equal(fixNoneCopy(), "We didn't see one clear thing to work on in this swing. One video can't show everything; patterns show up over 3+ game at-bats.");
   assert.equal(strengthsNoneCopy(), "Nothing stood out clearly enough to call out in this swing.");
-  assert.deepEqual(momentLabels, { button: "Watch the swing", marker: "Estimated hitting moment" });
 });
 
 test("capture failures match server copy and offer filming guidance without findings", () => {
   for (const [key, internal] of captureCases) {
     assert.equal(copy[key], plainFailureReason(internal));
-    assert.deepEqual(unavailablePresentation({ status: "failed", report: { reason: copy[key], summary: "must not escape" } }), {
+    assert.deepEqual(unavailableFromServer({ status: "failed", report: { reason: copy[key], summary: "must not escape" } }), {
       kind: "unavailable_evidence", title: "We couldn't analyze this swing", reason: copy[key], showFilmingTip: true,
     });
   }
@@ -34,22 +35,22 @@ test("capture failures match server copy and offer filming guidance without find
 
 test("duration and unknown technical failures do not blame capture", () => {
   assert.equal(copy.duration, plainFailureReason("3-minute upload limit"));
-  assert.deepEqual(unavailablePresentation({ status: "failed", report: { reason: copy.duration } }), {
+  assert.deepEqual(unavailableFromServer({ status: "failed", report: { reason: copy.duration } }), {
     kind: "failed_technical", title: "We couldn't analyze this video", reason: copy.duration, showFilmingTip: false,
   });
   for (const reason of [undefined, "private runtime detail", copy.unavailableReason]) {
-    assert.deepEqual(unavailablePresentation({ status: "failed", report: { reason } }), {
+    assert.deepEqual(unavailableFromServer({ status: "failed", report: { reason } }), {
       kind: "failed_technical", title: "Something went wrong on our side.",
       reason: "We couldn't finish analyzing this video.", showFilmingTip: false,
     });
   }
 });
 
-test("ready but unreadable reports retain the plain reason and fallback", () => {
+test("ready but unreadable reports use the contract fallback rather than legacy reason text", () => {
   for (const reason of [copy.batter, undefined, ""]) {
-    assert.deepEqual(unavailablePresentation({ status: "ready", report: { state: "unreadable", reason } }), {
+    assert.deepEqual(unavailableFromServer({ status: "ready", report: { state: "unreadable", reason } }), {
       kind: "unavailable_evidence", title: "We couldn't analyze this swing",
-      reason: reason || "We couldn't analyze this video.", showFilmingTip: true,
+      reason: "We couldn't analyze this video.", showFilmingTip: true,
     });
   }
 });
@@ -100,9 +101,9 @@ test("diagnostics contain only a fixed function name and valid HTTP status", () 
 });
 
 test("presentation copy emits no confirmed-moment, transport, or certainty language", () => {
-  const output = [copy, momentLabels, fixNoneCopy(), strengthsNoneCopy(), ...captureCases.map(([key]) =>
-    unavailablePresentation({ status: "failed", report: { reason: copy[key] } })),
-    unavailablePresentation({ status: "failed", report: {} }), userErrorMessage(httpError(500)), reportFetchFailure()];
+  const output = [copy, fixNoneCopy(), strengthsNoneCopy(), ...captureCases.map(([key]) =>
+    unavailableFromServer({ status: "failed", report: { reason: copy[key] } })),
+    unavailableFromServer({ status: "failed", report: {} }), userErrorMessage(httpError(500)), reportFetchFailure()];
   assert.doesNotMatch(JSON.stringify(output), /contact|Edge Function|confidence|%/i);
 });
 
@@ -110,13 +111,13 @@ test("presentation copy emits no confirmed-moment, transport, or certainty langu
 async function appHarness({ shared = true, online = true, error = httpError(404), data = null } = {}) {
   const nodes = new Map();
   const node = (id) => {
-    if (!nodes.has(id)) nodes.set(id, { innerHTML: "", insertAdjacentHTML(_position, html) { this.innerHTML += html; }, hidden: false, listeners: {}, addEventListener(event, callback) { this.listeners[event] = callback; }, removeAttribute() {}, setAttribute() {}, after(element) { this.afterNode = element; }, load() {}, showModal() { this.open = true; }, close() { this.open = false; }, appendChild() {} });
+    if (!nodes.has(id)) nodes.set(id, { innerHTML: "", querySelectorAll: () => [], insertAdjacentHTML(_position, html) { this.innerHTML += html; }, hidden: false, listeners: {}, addEventListener(event, callback) { this.listeners[event] = callback; }, removeAttribute() {}, setAttribute() {}, after(element) { this.afterNode = element; }, load() {}, showModal() { this.open = true; }, close() { this.open = false; }, appendChild() {} });
     return nodes.get(id);
   };
   const warnings = []; const listeners = []; const snacks = []; const rpcs = []; const confirms = []; let reloads = 0;
   const source = (await readFile(new URL("./simpleApp.js", import.meta.url), "utf8"))
     .replace(/^import[\s\S]*?from "[^"\n]+";\r?\n/gm, "").replace(/start\(\);\s*$/, "");
-  const sandbox = { ...presentation, ...guardianAdmin, icon, experimentalReportHtml, experimentalStillPending, createNavigation, initNavigation, PUBLIC_APP_ORIGIN: "",
+  const sandbox = { ...presentation, ...guardianAdmin, icon, experimentalReportHtml, experimentalStillPending, seekTarget, eventLabel, createNavigation, initNavigation, PUBLIC_APP_ORIGIN: "",
     captureModeHtml: () => "Synthetic guide", showSnackbar: (text) => snacks.push(text), topOverlayId: () => null,
     iconButton: (icon, label, { attrs }) => `<button aria-label="${label}" ${attrs}></button>`,
     confirmDialog: async (options) => { confirms.push(options); return false; }, Error, URL, URLSearchParams, console: { warn: (value) => warnings.push(value) },
@@ -166,6 +167,7 @@ test("standard unavailable rendering preserves video and Delete, and only captur
   for (const [status, reason, tip] of [["failed", copy.batter, true], ["failed", copy.duration, false],
     ["failed", "unknown", false], ["ready", copy.unavailableReason, true]]) {
     h.sandbox.payload = { status, videoUrl: "https://example.invalid/synthetic.mp4", report: { state: "unreadable", reason } };
+    h.sandbox.payload.presentation = baselinePresentation({ ...h.sandbox.payload, issues: [] });
     await vm.runInContext('showReport("synthetic", null, payload)', h.sandbox);
     const html = h.node("simpleRoot").innerHTML;
     assert.match(html, /<h1>/);
@@ -176,7 +178,7 @@ test("standard unavailable rendering preserves video and Delete, and only captur
   }
 });
 
-test("Watch the swing seeks half a second early, clamps at zero, and plays", async () => {
+test("Experimental Watch the swing seeks half a second early, clamps at zero, and plays", async () => {
   const h = await appHarness();
   const video = h.node("reportVideo");
   let at = 0; let plays = 0;
@@ -187,7 +189,7 @@ test("Watch the swing seeks half a second early, clamps at zero, and plays", asy
     at = value; queueMicrotask(() => video.listeners.seeked?.());
   } });
   for (const [time, expected] of [[2, 1.5], [0.2, 0]]) {
-    vm.runInContext(`state.report = { contactTime: ${time} };`, h.sandbox);
+    vm.runInContext(`state.report = { experimental: { events: [{ id: "impact_estimate", seekS: ${time} }] } };`, h.sandbox);
     await h.node("simpleRoot").listeners.click({ target: { closest: () => ({ dataset: { action: "jump-contact" } }) } });
     assert.equal(at, expected);
   }
@@ -233,7 +235,7 @@ test("delete uses the shared destructive confirmation and cancel performs no RPC
 test("report app bars use feed date/kind, preserve player subtitle, and omit back for shares", async () => {
   const h = await appHarness();
   vm.runInContext('state.shared = false; state.home = { feed: [{ id: "clip", date: "2026-10-11", kind: "practice" }] };', h.sandbox);
-  h.sandbox.payload = { playerName: "Synthetic Player", status: "ready", report: { state: "no_swing" } };
+  h.sandbox.payload = { playerName: "Synthetic Player", status: "ready", presentation: baselinePresentation({ status: "ready", report: { state: "no_swing" } }), report: { state: "no_swing" } };
   await vm.runInContext('showReport("clip", null, payload)', h.sandbox);
   assert.match(h.node("simpleRoot").innerHTML, /Oct 11 · Practice/);
   assert.match(h.node("simpleRoot").innerHTML, /Back to Home/);
@@ -289,7 +291,8 @@ test("only improving and looks_fixed receive a success tone", () => {
 });
 
 const clickAction = (h, dataset, sheet = false) => h.node(sheet ? "captureSheet" : "simpleRoot").listeners.click({ target: { closest: () => ({ dataset }) } });
-const readyPayload = (fix = true) => ({ playerName: "Synthetic Player", status: "ready", videoUrl: "https://example.invalid/video", report: {
+const withPresentation = payload => ({ ...payload, presentation: baselinePresentation({ ...payload, issues: [] }) });
+const readyPayload = (fix = true) => withPresentation({ playerName: "Synthetic Player", status: "ready", videoUrl: "https://example.invalid/video", report: {
   state: "ready", summary: "Synthetic summary", strengths: ["Synthetic strength"], drills: [],
   fix: fix ? { id: "issue", issue: "Synthetic issue", evidence: "Synthetic evidence", coachingCue: "Cue", lookForNext: "Next" } : null,
 } });
@@ -561,12 +564,174 @@ test("a failed automatic URL fetch presents Try again without looping", async ()
 
 
 const syntheticPlayers = [{ id: "p", name: "Maya Sample", jersey_number: "12", slug: "maya-sample" }, { id: "q", name: "Alex Sample", jersey_number: "", slug: "alex-sample" }];
+const shareFixture = { id: "link", share_scope: "report", players: { name: "Maya Sample" }, created_at: "2026-10-10", expires_at: "2099-01-08", video_clips: { game_log_entries: { date: "2026-10-14" } }, token: "NEVER_RENDER_SECRET" };
+test("share rows classify expiry boundary, revocation, missing clip and unknown player without tokens", () => {
+  const now = "2026-10-21";
+  assert.equal(presentation.shareLinkState(shareFixture, now), "active");
+  assert.equal(presentation.shareLinkState({ expires_at: now }, now), "expired");
+  assert.equal(presentation.shareLinkState({ expires_at: now, revoked_at: "2026-10-12" }, now), "turned_off");
+  const format = (date) => new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const rows = presentation.shareLinkRows([shareFixture, { ...shareFixture, expires_at: "2026-01-08", video_clips: null }, { ...shareFixture, share_scope: "progress", players: null, revoked_at: "2026-10-12" }], now, format);
+  assert.equal(rows[0].title, "At-bat report · Maya Sample · Oct 14");
+  assert.equal(rows[0].supporting, "Shared Oct 10 · Expires Jan 8");
+  assert.deepEqual(rows[0].chip, { label: "Active", tone: "success" });
+  assert.equal(rows[1].title, "At-bat report · Maya Sample");
+  assert.equal(rows[1].supporting, "Expired Jan 8");
+  assert.equal(rows[2].title, "Progress · Unknown player");
+  assert.equal(rows[2].supporting, "Turned off Oct 12");
+  assert.equal(presentation.shareLinkRows([{ ...shareFixture, players: null, video_clips: { game_log_entries: {} } }], now, format)[0].title, "At-bat report · Unknown player");
+  assert.doesNotMatch(JSON.stringify(rows), /NEVER_RENDER_SECRET/);
+});
+test("Shared links uses one creator-only token-free read, sections, empty/error and Settings Back", async () => {
+  const h = await coachHarness();
+  const calls = database(h, { player_share_links: { data: [shareFixture, { ...shareFixture, id: "old", revoked_at: "2026-10-12" }] } });
+  await vm.runInContext('settingsSheet();', h.sandbox);
+  assert.match(h.node("captureSheet").innerHTML, /data-action="shared-links"/);
+  await h.node("captureSheet").listeners.click({ target: { closest: () => ({ dataset: { action: "shared-links" } }) } });
+  const reads = calls.filter((c) => c.table === "player_share_links");
+  assert.equal(reads.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(reads[0].methods)), [["select", "id, player_id, share_scope, video_clip_id, created_at, expires_at, revoked_at, players(name), video_clips(game_log_entries(date, session_type))"], ["eq", "created_by", "coach"], ["not", "share_scope", "is", null], ["order", "created_at", { ascending: false }], ["limit", 50]]);
+  assert.doesNotMatch(reads[0].methods[0][1], /token/);
+  const html = h.node("captureSheet").innerHTML;
+  assert.doesNotMatch(html, /NEVER_RENDER_SECRET/);
+  assert.match(html, /<h3>Active/); assert.match(html, /Expired or turned off/);
+  assert.equal((html.match(/data-action="turn-off-link"/g) ?? []).length, 1);
+  assert.equal(vm.runInContext('navigation.decision().name', h.sandbox), "settings");
+  await vm.runInContext('navigation.pop({ state: { hl: "sheet", name: "settings" } })', h.sandbox);
+  assert.match(h.node("captureSheet").innerHTML, />Settings</);
+  database(h); await vm.runInContext('sharedLinksSheet()', h.sandbox);
+  assert.match(h.node("captureSheet").innerHTML, /You haven't shared any links yet/);
+  database(h, { player_share_links: { error: new Error("private SQL") } });
+  await vm.runInContext('sharedLinksSheet()', h.sandbox);
+  assert.match(h.node("captureSheet").innerHTML, /Couldn't load shared links. Try again./);
+  assert.doesNotMatch(h.node("captureSheet").innerHTML, /private SQL/);
+});
+test("parent, demo and shared viewers cannot render or run coach management", async () => {
+  for (const setup of ['state.role = "parent"', 'state.demo = true', 'state.shared = true']) {
+    const h = await coachHarness(); const calls = database(h);
+    h.sandbox.getDemoConfig = () => ({ returnUrl: "/" });
+    h.sandbox.action = { dataset: { linkId: "link" } };
+    vm.runInContext(setup, h.sandbox);
+    await vm.runInContext('settingsSheet()', h.sandbox);
+    assert.doesNotMatch(h.node("captureSheet").innerHTML, /data-action="shared-links"/);
+    await vm.runInContext('sharedLinksSheet(); turnOffLink(action); deletePlayer(action); editPlayerId = "p"; editPlayerSheet(); savePlayerDetails(action); openCoachClip("clip")', h.sandbox);
+    assert.equal(vm.runInContext('playerDetailsCard("p")', h.sandbox), "");
+    assert.equal(calls.some((c) => ["player_share_links", "players", "video_clips"].includes(c.table)), false);
+    assert.equal(h.rpcs.length, 0);
+  }
+});
+test("Turn off confirms, ignores repeats, reloads, cancels and handles errors safely", async () => {
+  const h = await coachHarness(); const calls = database(h, { player_share_links: { data: [shareFixture] } });
+  await vm.runInContext('sharedLinksSheet()', h.sandbox);
+  h.sandbox.action = { dataset: { linkId: "link" } };
+  h.sandbox.action.dataset.action = "turn-off-link";
+  await h.node("captureSheet").listeners.click({ target: { closest: () => h.sandbox.action } });
+  assert.equal(h.rpcs.length, 0);
+  assert.equal(h.confirms[0].title, "Turn off this link?");
+  let release; h.sandbox.confirmDialog = () => new Promise((r) => { release = r; });
+  const pending = vm.runInContext('turnOffLink(action)', h.sandbox);
+  await vm.runInContext('turnOffLink(action)', h.sandbox);
+  assert.equal(h.sandbox.action.disabled, true); release(true); await pending;
+  assert.equal(h.rpcs.length, 1); assert.equal(h.rpcs[0][0], "revoke_simple_share_link");
+  assert.equal(h.rpcs[0][1].p_link_id, "link");
+  assert.equal(calls.filter((c) => c.table === "player_share_links").length, 2);
+  assert.equal(h.snacks.at(-1), "Link turned off.");
+  h.sandbox.confirmDialog = async () => true;
+  h.sandbox.supabase.rpc = async () => ({ error: new Error("private") });
+  await vm.runInContext('turnOffLink(action)', h.sandbox);
+  assert.equal(h.snacks.at(-1), "Couldn't turn off the link. Try again.");
+  assert.equal(h.sandbox.action.disabled, false);
+});
+test("Player details summary, required fields, prefill, scoped payload without slug and friendly error", async () => {
+  assert.equal(presentation.playerDetailsSummary({ jersey_number: "8", age_band: "8-10", bats: "R", throws: "R" }), "#8 · Age 8–10 · Bats right · Throws right");
+  assert.match(presentation.playerDetailsSummary({}), /Age band unknown · Bats unknown · Throws unknown/);
+  const h = await coachHarness(); const calls = database(h, { players: { data: syntheticPlayers } });
+  await vm.runInContext('navigation.openPlayer("p")', h.sandbox);
+  const html = h.node("simpleRoot").innerHTML;
+  assert.ok(html.indexOf('id="playerDetailsCard"') > html.indexOf('id="parentsCard"'));
+  vm.runInContext('editPlayerId = "p"; editPlayerSheet()', h.sandbox);
+  assert.match(h.node("captureSheet").innerHTML, /value="Maya Sample"/);
+  h.sandbox.action = {};
+  for (const id of ["Name", "Jersey", "Age", "Bats", "Throws"]) h.node(`editPlayer${id}`).value = "";
+  h.sandbox.action.dataset = { action: "save-player-details" };
+  await h.node("captureSheet").listeners.click({ target: { closest: () => h.sandbox.action } });
+  assert.equal(h.node("editPlayerError").textContent, "Enter a player name.");
+  h.node("editPlayerName").value = " Updated ";
+  await vm.runInContext('savePlayerDetails(action)', h.sandbox);
+  assert.equal(h.node("editPlayerError").textContent, "Enter a jersey number.");
+  h.node("editPlayerJersey").value = "8"; h.node("editPlayerAge").value = "8-10"; h.node("editPlayerBats").value = "S"; h.node("editPlayerThrows").value = "L";
+  await vm.runInContext('savePlayerDetails(action)', h.sandbox);
+  const update = calls.find((c) => c.methods[0][0] === "update");
+  assert.deepEqual(JSON.parse(JSON.stringify(update.methods)), [["update", { name: "Updated", jersey_number: "8", age_band: "8-10", bats: "S", throws: "L" }], ["eq", "id", "p"], ["eq", "team_id", "team"]]);
+  assert.equal(h.snacks.at(-1), "Player details saved.");
+  vm.runInContext('editPlayerSheet()', h.sandbox);
+  database(h, { players: { error: new Error("private") } });
+  await vm.runInContext('savePlayerDetails(action)', h.sandbox);
+  assert.equal(h.node("editPlayerError").textContent, "Couldn't save player details. Try again.");
+});
+test("Delete player cancels, fails closed per phase, snapshots targets and ignores repeats", async () => {
+  for (const outcome of ["cancel", "clip", "row", "success"]) {
+    const h = await coachHarness(); const clips = []; const navigation = [];
+    const calls = database(h, { players: (call) => call.methods[0][0] === "delete" && outcome === "row" ? { error: new Error("private") } : { data: syntheticPlayers } });
+    h.sandbox.action = {}; h.sandbox.navigate = (tab) => navigation.push(tab);
+    vm.runInContext('navigation.goTab = async (tab) => navigate(tab)', h.sandbox);
+    let release; h.sandbox.confirmDialog = (options) => { h.confirms.push(options); return new Promise((r) => { release = r; }); };
+    h.sandbox.deleteClipsForPlayer = async (id) => { clips.push(id); if (outcome === "clip") throw new Error("private"); };
+    const pending = vm.runInContext('deletePlayer(action)', h.sandbox);
+    const replacement = { disabled: true, textContent: "Deleting…" };
+    h.node("simpleRoot").querySelectorAll = () => [replacement];
+    await vm.runInContext('deletePlayer(action); state.selected = "q"', h.sandbox);
+    release(outcome !== "cancel"); await pending;
+    assert.equal(h.confirms.length, 1); assert.equal(h.confirms[0].title, "Delete Maya Sample?");
+    assert.deepEqual(clips, outcome === "cancel" ? [] : ["p"]);
+    const deletes = calls.filter((c) => c.methods[0][0] === "delete");
+    assert.equal(deletes.length, ["row", "success"].includes(outcome) ? 1 : 0);
+    if (deletes.length) assert.deepEqual(deletes[0].methods, [["delete"], ["eq", "id", "p"], ["eq", "team_id", "team"]]);
+    assert.deepEqual(navigation, outcome === "success" ? ["home"] : []);
+    if (outcome === "clip") assert.equal(h.snacks.at(-1), "Couldn't delete all of this player's videos, so the player wasn't deleted. Try again.");
+    if (outcome === "row") assert.equal(h.snacks.at(-1), "Videos were deleted, but the player couldn't be removed. Try again.");
+    if (outcome === "success") assert.equal(h.snacks.at(-1), "Player deleted.");
+    assert.equal(h.sandbox.action.disabled, false);
+    assert.equal(replacement.disabled, false);
+  }
+});
+test("start resolves coach clip-only links once through RLS; invalid links never guess from feed", async () => {
+  for (const outcome of ["resolved", "missing", "foreign", "error", "parent", "invalid-player", "empty-roster"]) {
+    const h = await coachHarness();
+    h.sandbox.supabase.auth.getSession = async () => ({ data: { session: { user: { id: "user" } } } });
+    const calls = database(h, {
+      coach_team_access: { data: outcome === "parent" ? [] : [{ team_id: "team", teams: { name: "Fictional Team" } }] },
+      players: { data: outcome === "empty-roster" ? [] : syntheticPlayers }, player_guardians: { data: [{ player_id: "p", consent_version: "v" }] },
+      user_settings: { data: { notify_reports: false } },
+      video_clips: outcome === "error" ? { error: new Error("private") } : { data: outcome === "missing" ? null : { id: "clip", game_log_entries: { player_id: outcome === "foreign" ? "foreign" : "q" } } },
+    });
+    h.sandbox.supabase.rpc = async () => ({ data: "v" });
+    h.sandbox.localStorage = { getItem: () => "1" }; h.sandbox.drainCaptureQueue = () => {};
+    h.sandbox.homePayload.feed = [{ id: "clip", status: "ready" }];
+    h.sandbox.payload = { clipId: "clip", playerName: "Alex Sample", status: "ready", presentation: baselinePresentation({ status: "ready", report: { state: "no_swing" } }), report: { state: "no_swing" } };
+    vm.runInContext('params.delete("share"); params.set("clip", "clip"); reportApi = async (id, clip) => clip ? payload : homePayload; loadCaptureSummary = async () => {};', h.sandbox);
+    if (outcome === "invalid-player") vm.runInContext('params.set("player", "foreign")', h.sandbox);
+    await vm.runInContext('start()', h.sandbox);
+    const reads = calls.filter((c) => c.table === "video_clips");
+    assert.equal(reads.length, outcome === "parent" ? 0 : 1);
+    if (reads.length) assert.deepEqual(reads[0].methods, [["select", "id, game_log_entries!inner(player_id)"], ["eq", "id", "clip"], ["maybeSingle"]]);
+    if (["resolved", "invalid-player"].includes(outcome)) {
+      assert.equal(vm.runInContext('navigation.view.hl', h.sandbox), "report");
+      assert.equal(vm.runInContext('navigation.view.parent.playerId', h.sandbox), "q");
+      await vm.runInContext('navigation.pop({ state: navigation.view.parent })', h.sandbox);
+      assert.equal(vm.runInContext('navigation.view.hl', h.sandbox), "player");
+    } else {
+      assert.equal(vm.runInContext('navigation.view.hl', h.sandbox), "tab");
+      if (outcome !== "parent") assert.equal(h.snacks.at(-1), "That at-bat isn't available.");
+    }
+  }
+});
 function database(h, responses = {}) {
   const calls = [];
   h.sandbox.supabase.from = (table) => {
     const call = { table, methods: [] }; calls.push(call);
     const query = { then(resolve, reject) { return Promise.resolve(typeof responses[table] === "function" ? responses[table](call) : responses[table] ?? { data: [], error: null }).then(resolve, reject); } };
-    for (const method of ["select", "eq", "in", "order", "is", "gt", "insert", "update", "maybeSingle"]) query[method] = (...args) => { call.methods.push([method, ...args]); return query; };
+    for (const method of ["select", "eq", "in", "order", "is", "gt", "insert", "update", "delete", "not", "limit", "maybeSingle"]) query[method] = (...args) => { call.methods.push([method, ...args]); return query; };
     return query;
   };
   return calls;
@@ -653,7 +818,7 @@ test("Add player validates, maps duplicates and reloads the roster with unique s
   await vm.runInContext('savePlayer(saveButton)', h.sandbox);
   const insert = calls[0].methods.find(([m]) => m === "insert")[1];
   assert.equal(insert.slug, "maya-sample-2"); assert.equal(insert.team_id, "team");
-  assert.ok(calls.some((c) => c.methods.some(([m, columns]) => m === "select" && columns === "id, name, jersey_number, slug")));
+  assert.ok(calls.some((c) => c.methods.some(([m, columns]) => m === "select" && columns === "id, name, jersey_number, slug, age_band, bats, throws")));
   assert.equal(button.disabled, false); assert.equal(h.snacks.at(-1), "Player added.");
 });
 
@@ -743,7 +908,7 @@ test("start keeps role precedence, labels Team/Home, and opens coach player/repo
     h.sandbox.supabase.rpc = async () => ({ data: "v" });
     h.sandbox.localStorage = { getItem: () => "1" }; h.sandbox.drainCaptureQueue = () => {};
     h.sandbox.homePayload.feed = []; // Deep links must also open reports older than the feed window.
-    h.sandbox.payload = { clipId: "clip", playerName: "Maya Sample", status: "ready", report: { state: "no_swing" } };
+    h.sandbox.payload = { clipId: "clip", playerName: "Maya Sample", status: "ready", presentation: baselinePresentation({ status: "ready", report: { state: "no_swing" } }), report: { state: "no_swing" } };
     vm.runInContext('params.delete("share"); params.set("player", "p"); params.set("clip", "clip"); reportApi = async (id, clip) => clip ? payload : homePayload; loadCaptureSummary = async () => {};', h.sandbox);
     await vm.runInContext('start()', h.sandbox);
     assert.equal(vm.runInContext('state.role', h.sandbox), coach ? "coach" : "parent");
@@ -827,4 +992,342 @@ test("an empty coach account's Progress says to add a player without fetching", 
   assert.match(h.node("simpleRoot").innerHTML, /Add a player to see progress\./);
   assert.match(h.node("simpleRoot").innerHTML, /Fixture Team/);
   assert.equal(calls, 0);
+});
+
+test("Shared links with no active link says so and still lists expired or turned-off links", async () => {
+  const h = await coachHarness();
+  database(h, { player_share_links: { data: [{ ...shareFixture, id: "old", revoked_at: "2026-10-12" }] } });
+  await vm.runInContext('settingsSheet()', h.sandbox);
+  await vm.runInContext('sharedLinksSheet()', h.sandbox);
+  const html = h.node("captureSheet").innerHTML;
+  assert.match(html, /No active links\./);
+  assert.match(html, /Expired or turned off/);
+  assert.doesNotMatch(html, /data-action="turn-off-link"/);
+});
+
+test("a deleted player is reported as deleted even if the roster refresh afterwards fails", async () => {
+  const h = await coachHarness(); const navigation = [];
+  database(h, { players: (call) => call.methods[0][0] === "select" && h.sandbox.afterDelete ? { error: new Error("private") } : { data: syntheticPlayers } });
+  h.sandbox.action = {}; h.sandbox.navigate = (tab) => navigation.push(tab);
+  vm.runInContext('state.selected = "p"; navigation.goTab = async (tab) => navigate(tab)', h.sandbox);
+  h.sandbox.confirmDialog = async () => true;
+  h.sandbox.deleteClipsForPlayer = async () => { h.sandbox.afterDelete = true; };
+  await vm.runInContext('deletePlayer(action)', h.sandbox);
+  assert.deepEqual(navigation, ["home"]);
+  assert.equal(h.snacks.at(-1), "Player deleted.");
+  assert.equal(vm.runInContext('state.players.some((p) => p.id === "p")', h.sandbox), false);
+});
+test("Add player and Edit details show readable age-band labels and keep the stored values", async () => {
+  const h = await coachHarness(); database(h, { players: { data: syntheticPlayers } });
+  for (const open of ['addPlayerSheet()', 'editPlayerId = "p"; editPlayerSheet()']) {
+    vm.runInContext(open, h.sandbox);
+    const html = h.node("captureSheet").innerHTML;
+    assert.match(html, /<option value="u8" >Under 8<\/option>|<option value="u8"\s*>Under 8<\/option>/);
+    assert.match(html, /value="8-10"[^>]*>8–10</);
+    assert.doesNotMatch(html, />u8</);
+  }
+});
+
+test("UI-PR6 parser validates every field, freezes copies, and rejects malformed contracts", () => {
+  const valid = readyPayload().presentation;
+  const parsed = presentation.parsePresentation(valid);
+  assert.ok(parsed); assert.ok(Object.isFrozen(parsed)); assert.ok(Object.isFrozen(parsed.reasonCodes));
+  assert.notEqual(parsed.reasonCodes, valid.reasonCodes);
+  for (const key of Object.keys(valid)) {
+    const missing = { ...valid }; delete missing[key];
+    assert.equal(presentation.parsePresentation(missing), null, key);
+    for (const bad of [undefined, {}, 42, ...(key === "reasonCodes" ? [] : [[]])]) assert.equal(presentation.parsePresentation({ ...valid, [key]: bad }), null, key);
+  }
+  for (const bad of [null, [], "ready", { ...valid, version: 2 }, { ...valid, reasonCodes: [42] }, { ...valid, reasonCodes: Array(1) },
+    { ...valid, limited: true }, { ...valid, strengthsState: "replaced_after_feedback" },
+    { ...valid, summaryState: "none_found" }, { ...valid, momentLabel: "contact_confirmed" },
+    ...["engine", "analysisState", "fixState", "strengthsState", "summaryState", "familyReason"].map(key => ({ ...valid, [key]: "invented" }))])
+    assert.equal(presentation.parsePresentation(bad), null);
+  assert.deepEqual(presentation.presentationCopy(null), { title: "This report can't be shown right now", body: "Try again later. The video is still here." });
+});
+
+test("UI-PR6 report states render contract copy, tips and actions independent of legacy state", async () => {
+  const h = await appHarness();
+  vm.runInContext('state.shared = false; loadCaptureSummary = async () => {}; loadCoachAnalysisAction = async () => {}; scheduleReportRefresh = () => {};', h.sandbox);
+  const base = readyPayload().presentation;
+  for (const [analysisState, familyReason, title, tip] of [
+    ["processing", null, "Analyzing", false], ["no_swing", null, "No swing to analyze", false],
+    ["insufficient_evidence", null, copy.unavailableTitle, true],
+    ["unable_to_analyze", "batter_unclear", copy.unavailableTitle, true],
+    ["unable_to_analyze", "swing_unclear", copy.unavailableTitle, true],
+    ["unable_to_analyze", "clip_too_short", copy.unavailableTitle, true],
+    ["unable_to_analyze", "video_blurry", copy.unavailableTitle, true],
+    ["unable_to_analyze", "duration_limit", copy.durationTitle, false],
+    ["unable_to_analyze", "not_enabled", copy.unavailableTitle, false],
+    ["technical_failure", "unknown", copy.technicalTitle, false],
+    ["supported_finding", null, "Synthetic issue", false],
+    ["no_supported_issue", null, "One thing to work on", false],
+    ["limited", null, "Limited analysis:", false],
+  ]) {
+    h.sandbox.payload = { ...readyPayload(), presentation: { ...base, analysisState, familyReason, limited: analysisState === "limited" } };
+    await vm.runInContext('showReport("clip", null, payload)', h.sandbox);
+    const html = h.node("simpleRoot").innerHTML;
+    assert.ok(html.includes(title), analysisState); assert.match(html, /<video/); assert.match(html, /Delete at-bat/);
+    assert.equal(html.includes("How to film next time"), tip, analysisState);
+    assert.equal(html.includes("How it went"), ["supported_finding", "no_supported_issue", "limited"].includes(analysisState));
+    assert.equal(html.includes('class="simple-status-line" role="note"'), analysisState === "limited");
+  }
+  for (const invalid of [undefined, null, {}, { ...base, analysisState: "invented" }]) {
+    h.sandbox.payload = { ...readyPayload(), presentation: invalid };
+    await vm.runInContext('showReport("clip", null, payload)', h.sandbox);
+    const html = h.node("simpleRoot").innerHTML;
+    assert.ok(html.includes(presentation.PRESENTATION_COPY.fallbackTitle)); assert.ok(html.includes(presentation.PRESENTATION_COPY.fallbackBody));
+    assert.match(html, /<video/); assert.match(html, /Delete at-bat/); assert.doesNotMatch(html, /How it went|Synthetic issue|What looked good|How to film next time/);
+  }
+});
+
+test("UI-PR6 sections use fix and strength states; shared viewers have no write controls", async () => {
+  const h = await appHarness();
+  vm.runInContext('loadCaptureSummary = async () => {}; loadCoachAnalysisAction = async () => {};', h.sandbox);
+  for (const shared of [false, true]) for (const fixState of ["shown", "none_found", "not_confident", "hidden_after_feedback", "withheld_evidence"]) {
+    h.sandbox.payload = readyPayload();
+    h.sandbox.payload.presentation = { ...h.sandbox.payload.presentation, fixState, strengthsState: "none_found" };
+    vm.runInContext(`state.shared = ${shared}`, h.sandbox);
+    await vm.runInContext('showReport("clip", null, payload)', h.sandbox);
+    const html = h.node("simpleRoot").innerHTML;
+    assert.ok(html.includes(copy.strengthsNone)); assert.doesNotMatch(html, /Synthetic strength/);
+    if (fixState === "shown") assert.match(html, /Synthetic issue/);
+    else {
+      assert.ok(html.includes(fixState === "none_found" ? copy.fixNone : presentation.PRESENTATION_COPY[fixState]));
+      assert.doesNotMatch(html, /Synthetic issue|Drills that can help|hide-fix/);
+    }
+    if (shared) assert.doesNotMatch(html, /Delete at-bat|>Share<|Doesn't look right/);
+  }
+});
+
+test("UI-PR6 experimental copy distinguishes hidden from unavailable moments and preserves outcomes", () => {
+  const esc = value => String(value ?? "");
+  for (const outcome of ["processing", "findings", "no_supported_issue", "insufficient_evidence", "withheld", "not_assessable", "analysis_not_enabled", "analysis_failed"]) {
+    const exp = { outcome, findings: outcome === "findings" ? [{ kind: "issue", issue: "Synthetic finding", id: "issue" }] : [], events: [], reasons: [], suppressedCount: 0 };
+    const p = experimentalPresentation({ report: exp });
+    const html = experimentalReportHtml({ experimental: exp, presentation: p, status: "ready" }, { esc, canAct: false });
+    assert.ok(html.includes(presentation.outcomeCopy(outcome).title));
+    assert.doesNotMatch(html, /data-hide-issue|Delete|>Share</);
+  }
+  for (const [storedIssueFindings, phrase] of [[[{ review_status: "hidden" }], "An observation was hidden after feedback"], [[], "swing moment it cited isn't available"]]) {
+    const exp = { outcome: "findings", findings: [], events: [], reasons: [], suppressedCount: 1 };
+    const p = experimentalPresentation({ report: exp, storedIssueFindings });
+    const html = experimentalReportHtml({ experimental: exp, presentation: p, status: "ready" }, { esc });
+    assert.ok(html.includes(phrase)); assert.match(html, /class="simple-status-line" role="note"/);
+    assert.ok(html.indexOf("simple-experimental") < html.indexOf("simple-status-line"));
+    if (!storedIssueFindings.length) assert.doesNotMatch(html, /hidden after feedback/);
+    const fallback = experimentalReportHtml({ experimental: exp, status: "ready" }, { esc });
+    // Without presentation the client can't tell why no issue is visible, so it claims nothing.
+    assert.match(fallback, /This swing's experimental result can't be shown\./);
+    assert.doesNotMatch(fallback, /What the evidence supports|hidden after feedback/);
+  }
+});
+
+test("UI-PR6 all demo reports carry valid presentation matching their existing sections", () => {
+  const previous = globalThis.location;
+  globalThis.location = { origin: "https://example.test" };
+  try {
+    for (const data of Object.values(demoShowcase("demo", "/demo/").reports)) {
+      const p = presentation.parsePresentation(data.presentation);
+      assert.ok(p); assert.equal(p.engine, "baseline");
+      assert.equal(p.fixState, data.report.fix ? "shown" : "none_found");
+      assert.equal(p.analysisState, data.report.fix ? "supported_finding" : "no_supported_issue");
+      assert.equal(p.strengthsState, data.report.strengths.length ? "shown" : "none_found");
+    }
+  } finally { globalThis.location = previous; }
+});
+
+test("UI-PR7 not_confident uses the approved copy", () => {
+  assert.equal(presentation.PRESENTATION_COPY.not_confident, "We noticed something, but couldn't see it clearly enough to recommend a change.");
+});
+
+test("UI-PR7 baseline reports ignore injected moments and phases in every fix state and viewer", async () => {
+  const h = await appHarness();
+  vm.runInContext('loadCaptureSummary = async () => {}; loadCoachAnalysisAction = async () => {};', h.sandbox);
+  const moments = [{ event: "foot_plant", rawPtsS: 1, seekS: 1, identity: "verified" }];
+  for (const viewer of ["coach", "parent", "shared", "demo"]) {
+    vm.runInContext(`state.role = "${viewer === "coach" ? "coach" : "parent"}"; state.shared = ${viewer === "shared"}; state.demo = ${viewer === "demo"};`, h.sandbox);
+    for (const analysisState of ["supported_finding", "no_supported_issue", "limited"]) {
+      for (const fixState of ["shown", "none_found", "not_confident", "hidden_after_feedback", "withheld_evidence", "not_applicable"]) {
+        const payload = readyPayload();
+        payload.contactTime = 2;
+        payload.moments = moments;
+        payload.report.moments = moments;
+        payload.report.strengths = [{ text: "Synthetic strength", phase: "load", moments }];
+        Object.assign(payload.report.fix, { phase: "foot_plant", moments });
+        Object.assign(payload.presentation, { analysisState, fixState, limited: analysisState === "limited" });
+        h.node("reportVideo").currentTime = 3;
+        h.sandbox.payload = payload;
+        await vm.runInContext('showReport("clip", null, payload)', h.sandbox);
+        const html = h.node("simpleRoot").innerHTML;
+        assert.doesNotMatch(html, /Show me|See it|data-see-event/, `${viewer}/${analysisState}/${fixState}`);
+        assert.doesNotMatch(html, /jump-contact|simple-contact-track|Watch the swing|Estimated hitting moment/);
+        assert.match(html, /class="simple-action link" data-action="play-video"[^>]*>Play video/);
+        assert.equal(h.node("reportVideo").currentTime, 3);
+        assert.equal(h.node("reportVideo").listeners.loadedmetadata, undefined);
+      }
+    }
+  }
+});
+
+// Use the real seekTo with a media mock that supports multiple listeners, like a video.
+function momentVideo(h) {
+  const video = h.node("reportVideo");
+  const events = new Map();
+  const calls = [];
+  Object.assign(video, {
+    readyState: 1, duration: 5, currentTime: 0, error: null,
+    addEventListener(type, fn) { if (!events.has(type)) events.set(type, new Set()); events.get(type).add(fn); },
+    removeEventListener(type, fn) { events.get(type)?.delete(fn); },
+    emit(type) { for (const fn of [...(events.get(type) ?? [])]) fn(); },
+    pause() { calls.push("pause"); },
+    scrollIntoView(options) { calls.push(["scroll", options.block]); },
+    focus(options) { calls.push(["focus", options.preventScroll]); },
+    load() { this.error = null; this.currentTime = 0; },
+  });
+  h.node("seekAnnouncement").textContent = ""; h.node("simpleMessage").textContent = "";
+  h.sandbox.momentReport = { clipId: "clip", experimental: { events: [{ id: "load_peak_estimate", seekS: 1.125 }] } };
+  vm.runInContext('state.tab = "report"; state.report = momentReport;', h.sandbox);
+  return { video, calls };
+}
+
+test("UI-PR7 See it pauses at the exact seek target, then scrolls, focuses and announces", async () => {
+  const h = await appHarness();
+  const { video, calls } = momentVideo(h);
+  const pending = clickAction(h, { seeEvent: "load_peak_estimate" });
+  assert.equal(video.currentTime, 1.125);
+  assert.deepEqual(calls, ["pause"]);
+  assert.equal(h.node("seekAnnouncement").textContent, "");
+  video.emit("seeked"); await pending; await new Promise((r) => setTimeout(r, 80));
+  assert.deepEqual(calls, ["pause", ["scroll", "center"], ["focus", true]]);
+  assert.equal(h.node("seekAnnouncement").textContent, "Video paused at load (estimated)"); assert.equal(h.node("simpleMessage").textContent, "");
+  assert.deepEqual(h.snacks, []);
+  const { experimentalReportHtml: render } = await import("./experimentalReport.js");
+  assert.match(render({ status: "ready", experimental: { outcome: "processing", events: [], findings: [], reasons: [] } }, { esc: String }), /id="seekAnnouncement" class="simple-sr-only" role="status" aria-live="polite"/);
+});
+
+test("UI-PR7 invalid, absent and failed seeks never announce, focus or add error text", async () => {
+  for (const failure of ["existing-error", "seek-error", "setter-error", "missing", NaN, Infinity, -1, null, undefined]) {
+    const h = await appHarness();
+    const { video, calls } = momentVideo(h);
+    if (failure === "existing-error") video.error = { code: 3 };
+    if (failure === "setter-error") Object.defineProperty(video, "currentTime", { get: () => 0, set: () => { throw new Error("seek failed"); } });
+    if (typeof failure !== "string") h.sandbox.momentReport.experimental.events[0].seekS = failure;
+    const pending = clickAction(h, { seeEvent: failure === "missing" ? "absent" : "load_peak_estimate" });
+    if (failure === "seek-error") video.emit("error");
+    await pending;
+    assert.ok(calls.every(call => call === "pause"), String(failure));
+    assert.equal(h.node("seekAnnouncement").textContent, "");
+    assert.equal(h.node("simpleMessage").textContent, "");
+    assert.deepEqual(h.snacks, []);
+  }
+});
+
+test("UI-PR7 See it retains exact seeking and accessibility after the automatic URL refresh", async () => {
+  const h = await appHarness();
+  const { video, calls } = momentVideo(h);
+  let fetches = 0;
+  h.sandbox.reportApi = async () => { fetches++; return { videoUrl: "https://example.invalid/refreshed" }; };
+  vm.runInContext('prepareReportVideo("clip", "share-token")', h.sandbox);
+  video.error = { code: 2 };
+  video.emit("error"); await new Promise(setImmediate);
+  assert.equal(fetches, 1);
+  assert.equal(video.src, "https://example.invalid/refreshed");
+  assert.equal(h.node("reportVideo"), video);
+  const pending = clickAction(h, { seeEvent: "load_peak_estimate" });
+  assert.equal(video.currentTime, 1.125);
+  video.emit("seeked"); await pending; await new Promise((r) => setTimeout(r, 80));
+  assert.deepEqual(calls, ["pause", ["scroll", "center"], ["focus", true]]);
+  assert.equal(h.node("seekAnnouncement").textContent, "Video paused at load (estimated)"); assert.equal(h.node("simpleMessage").textContent, "");
+  assert.equal(fetches, 1);
+});
+
+test("UI-PR7 a second See it tap on the same moment is announced again", async () => {
+  const h = await appHarness();
+  const { video } = momentVideo(h);
+  for (let tap = 0; tap < 2; tap += 1) {
+    const pending = clickAction(h, { seeEvent: "load_peak_estimate" });
+    video.currentTime = 0; video.emit("seeked"); await pending;
+    assert.equal(h.node("seekAnnouncement").textContent, "", "cleared before re-announcing");
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(h.node("seekAnnouncement").textContent, "Video paused at load (estimated)");
+  }
+});
+test("UI-PR7.1 Play video resumes, restarts ended videos, and swallows interrupted play", async () => {
+  const h = await appHarness();
+  const video = h.node("reportVideo");
+  let plays = 0;
+  Object.assign(video, { currentTime: 2.75, ended: false, play: async () => { plays++; } });
+  await clickAction(h, { action: "play-video" });
+  assert.equal(video.currentTime, 2.75);
+  video.ended = true;
+  await clickAction(h, { action: "play-video" });
+  assert.equal(video.currentTime, 0);
+  assert.equal(plays, 2);
+  video.play = async () => { throw new Error("interrupted"); };
+  await clickAction(h, { action: "play-video" });
+  assert.deepEqual(h.snacks, []);
+});
+
+test("UI-PR7.1 jump-contact ignores baseline times and missing experimental targets", async () => {
+  const h = await appHarness();
+  const video = h.node("reportVideo");
+  video.currentTime = 4;
+  video.play = () => { assert.fail("must not play"); };
+  for (const report of [{ contactTime: 2 }, { contactTime: 2, experimental: { events: [] } }]) {
+    h.sandbox.payload = report;
+    vm.runInContext('state.report = payload', h.sandbox);
+    await clickAction(h, { action: "jump-contact" });
+    assert.equal(video.currentTime, 4);
+  }
+  assert.deepEqual(h.snacks, []);
+});
+
+test("UI-PR7.1 Progress plays from zero, pauses and resumes without baseline alignment for every viewer", async () => {
+  for (const viewer of ["coach", "parent", "shared", "demo"]) {
+    const h = await appHarness();
+    const videos = [h.node("thenVideo"), h.node("nowVideo")];
+    const plays = [];
+    for (const [index, video] of videos.entries()) Object.assign(video, {
+      currentTime: 0, paused: true, ended: false, readyState: 1, duration: 10,
+      removeEventListener() {},
+      play: async () => { plays.push([index, video.currentTime]); video.paused = false; },
+      pause: () => { video.paused = true; },
+    });
+    h.sandbox.payload = { playerName: "Synthetic", progress: { status: "early_read", current: null, history: [],
+      thenVideo: { url: "then.mp4", contactTime: 3 }, nowVideo: { url: "now.mp4", contactTime: 7 } } };
+    vm.runInContext(`state.role = "${viewer === "coach" ? "coach" : "parent"}"; state.shared = ${viewer === "shared"}; state.demo = ${viewer === "demo"}; state.home = payload`, h.sandbox);
+    await vm.runInContext('showProgress()', h.sandbox);
+    const html = h.node("simpleRoot").innerHTML;
+    assert.match(html, /Watch the two videos side by side\. Camera views and timing can differ\./);
+    assert.match(html, /Refresh videos/);
+    assert.doesNotMatch(html, /estimated hitting moment/i);
+    for (const video of videos) {
+      assert.equal(video.currentTime, 0);
+      assert.equal(video.listeners.timeupdate, undefined);
+      assert.equal(video.listeners.loadedmetadata, undefined);
+    }
+    const button = { dataset: { action: "play-compare" } };
+    const click = () => h.node("simpleRoot").listeners.click({ target: { closest: () => button } });
+    await click();
+    assert.deepEqual(plays, [[0, 0], [1, 0]]);
+    assert.equal(button.textContent, "Pause both");
+    videos[0].currentTime = 1; videos[1].currentTime = 1.2;
+    await click();
+    assert.ok(videos.every(video => video.paused));
+    assert.equal(button.textContent, "Play together");
+    await click();
+    assert.deepEqual(plays.slice(2), [[0, 1], [1, 1.2]]);
+    await click();
+    videos[0].ended = true;
+    for (const video of videos) {
+      let at = video.currentTime;
+      Object.defineProperty(video, "currentTime", { get: () => at, set: value => {
+        at = value; queueMicrotask(() => video.listeners.seeked?.());
+      } });
+    }
+    await click();
+    assert.deepEqual(plays.slice(4), [[0, 0], [1, 0]]);
+    assert.deepEqual(h.snacks, []);
+  }
 });

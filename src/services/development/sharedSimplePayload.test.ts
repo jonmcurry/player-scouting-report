@@ -55,3 +55,28 @@ test("shared focus and fix concepts pass through identity redaction", () => {
     drills: [] } as unknown as ReturnType<typeof assembleReport>;
   assert.equal(sharedReportPayload(report, (text) => text.replaceAll("Private Team", "the team")).fix?.concept, "the team");
 });
+
+test("shared presentation copies exactly the contract and drops reason codes and extras", async () => {
+  const { sharedPresentation } = await import("./sharedSimplePayload.ts");
+  const { baselinePresentation } = await import("./reportPresentation.ts");
+  const source = baselinePresentation({ status: "ready", report: { state: "ready", summary: "Swing", strengths: [], fix: null }, issues: [] });
+  const result = sharedPresentation({ ...source, reasonCodes: ["PRIVATE"], privateNote: "private" } as typeof source);
+  assert.deepEqual(result, source);
+  assert.deepEqual(Object.keys(result).sort(), ["version", "engine", "engineOutcome", "analysisState", "fixState", "strengthsState", "summaryState", "familyReason", "limited", "reasonCodes", "momentLabel"].sort());
+});
+
+test("shared presentation has parity for every baseline branch", async () => {
+  const { sharedPresentation } = await import("./sharedSimplePayload.ts");
+  const { baselinePresentation, FAILURE_FAMILY_REASONS } = await import("./reportPresentation.ts");
+  const ready = { state: "ready", summary: "Swing", strengths: [], fix: null };
+  for (const input of [
+    ...["pending", "processing"].map(status => ({ status })),
+    ...Object.keys(FAILURE_FAMILY_REASONS).map(reason => ({ status: "failed", report: { reason } })),
+    ...["no_swing", "unreadable"].map(state => ({ status: "ready", report: { state } })),
+    ...[[], [{ hidden: true }], [{ hidden: false }]].map(issues => ({ status: "ready", report: ready, issues })),
+    { status: "ready", report: { ...ready, fix: {}, strengths: ["Visible strength"] }, issues: [] }, null,
+  ]) {
+    const p = baselinePresentation(input);
+    assert.deepEqual(sharedPresentation(p), p);
+  }
+});

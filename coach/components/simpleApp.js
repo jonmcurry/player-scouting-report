@@ -7,12 +7,12 @@ import { supabase, escapeHtml, signOut } from "../shared.js";
 import { getDemoConfig, isDemoMode } from "../demoConfig.js";
 import { enqueueCapture, queuedCaptures, drainCaptureQueue } from "./captureQueue.js";
 import { acceptedVideoUpload, VIDEO_UPLOAD_HELP } from "./uploadPolicy.js";
-import { deleteClip } from "./clipDeletion.js";
+import { deleteClip, deleteClipsForPlayer } from "./clipDeletion.js";
 import { demoShowcase } from "./demoShowcase.js";
 import { captureModeHtml, captureSummaryHtml } from "./captureGuide.js";
-import { experimentalReportHtml, experimentalStillPending, seekTarget } from "./experimentalReport.js";
-import { REPORT_COPY, fixNoneCopy, strengthsNoneCopy, momentLabels, unavailablePresentation,
-  userErrorMessage, describeFunctionsError, reportFetchFailure, publicAppLink, progressTone, progressLabel, rosterSummary } from "./simplePresentation.js";
+import { experimentalReportHtml, experimentalStillPending, seekTarget, eventLabel } from "./experimentalReport.js";
+import { parsePresentation, presentationCopy, REPORT_COPY, strengthsNoneCopy, unavailablePresentation,
+  userErrorMessage, describeFunctionsError, reportFetchFailure, publicAppLink, progressTone, progressLabel, rosterSummary, shareLinkRows, playerDetailsSummary, AGE_BAND_LABELS } from "./simplePresentation.js";
 
 const root = document.getElementById("simpleRoot");
 const dialog = document.getElementById("captureDialog");
@@ -49,6 +49,10 @@ function say(text) {
   if (dialog.open && host) dialog.appendChild(host);
 }
 let deletePending = false;
+let deletePlayerPending = false;
+const shareLinkPending = new Set();
+let sharedLinksGeneration = 0;
+let editPlayerId = null;
 let hidePending = false;
 let hideContext = null;
 let retryReportVideo = null;
@@ -62,7 +66,7 @@ const navigation = createNavigation({
   renderPlayer: (playerId) => showPlayer(playerId),
   renderReport: (clipId) => showReport(clipId),
   renderSheet: (name) => ({ choice: choiceSheet, confirm: () => confirmSheet(state.files, true),
-    guide: guideSheet, settings: settingsSheet, correction: correctCaptureSheet, invite: inviteSheet, hide: hideReasonSheet, "add-player": addPlayerSheet })[name]?.(),
+    guide: guideSheet, settings: settingsSheet, correction: correctCaptureSheet, invite: inviteSheet, hide: hideReasonSheet, "add-player": addPlayerSheet, "shared-links": sharedLinksSheet, "edit-player": editPlayerSheet })[name]?.(),
   closeSheet: () => {
     const host = document.getElementById("btSnackbarHost");
     if (host?.parentElement === dialog) document.body.appendChild(host);
@@ -300,8 +304,118 @@ function playerMenu(button) {
     { label: "Cancel pending invites", icon: "x", destructive: true, onSelect: () => cancelInvites(player.id, button) },
   ] });
 }
+async function openCoachClip(clip) {
+  if (!isCoach()) return;
+  let player;
+  try {
+    const { data, error } = await supabase.from("video_clips").select("id, game_log_entries!inner(player_id)").eq("id", clip).maybeSingle();
+    player = !error && coachPlayer(data?.game_log_entries?.player_id);
+  } catch { /* Unavailable links stay on Team. */ }
+  if (!player) { say("That at-bat isn't available."); return; }
+  state.selected = player.id;
+  await navigation.openPlayer(player.id);
+  await showReport(clip);
+}
+function playerDetailsCard(id) {
+  const player = coachPlayer(id);
+  if (!player) return "";
+  return `<section class="simple-card" id="playerDetailsCard"><h2>Player details</h2><p class="simple-muted">${esc(playerDetailsSummary(player))}</p><button class="simple-action secondary" data-action="edit-player" type="button">Edit details</button><button class="simple-action destructive" data-action="delete-player" type="button" ${deletePlayerPending ? "disabled" : ""}>${deletePlayerPending ? "Deleting…" : "Delete player"}</button></section>`;
+}
+function editPlayerSheet() {
+  const player = coachPlayer(editPlayerId);
+  if (!player) return;
+  sheet.innerHTML = `<h2 id="simpleSheetTitle">Edit details</h2><label>Name<input id="editPlayerName" value="${esc(player.name)}" required></label><label>Jersey number<input id="editPlayerJersey" value="${esc(player.jersey_number)}" required></label>
+    ${selectField("editPlayerAge", "Age band", [["", "Unknown"], ...Object.entries(AGE_BAND_LABELS)], player.age_band ?? "")}
+    ${selectField("editPlayerBats", "Bats", [["", "Unknown"], ["L", "Left"], ["R", "Right"], ["S", "Switch"]], player.bats ?? "")}
+    ${selectField("editPlayerThrows", "Throws", [["", "Unknown"], ["L", "Left"], ["R", "Right"]], player.throws ?? "")}
+    <p class="simple-error" id="editPlayerError" role="alert"></p><button class="simple-action primary" data-action="save-player-details" type="button">Save</button><button class="simple-action link" data-action="close-sheet" type="button">Cancel</button>`;
+  openSheet("edit-player");
+}
+async function savePlayerDetails(button) {
+  const player = coachPlayer(editPlayerId);
+  if (!player || button.disabled) return;
+  const id = player.id;
+  const value = (id) => document.getElementById(id).value.trim();
+  const errorNode = document.getElementById("editPlayerError");
+  const name = value("editPlayerName"), jersey_number = value("editPlayerJersey");
+  errorNode.textContent = "";
+  if (!name) { errorNode.textContent = "Enter a player name."; return; }
+  if (!jersey_number) { errorNode.textContent = "Enter a jersey number."; return; }
+  button.disabled = true;
+  try {
+    const { error } = await supabase.from("players").update({ name, jersey_number,
+      age_band: value("editPlayerAge") || null, bats: value("editPlayerBats") || null, throws: value("editPlayerThrows") || null }).eq("id", id).eq("team_id", state.teamId);
+    if (error) throw error;
+    await navigation.dismissSheets();
+    await reloadPlayers(); await showPlayer(id); say("Player details saved.");
+  } catch { errorNode.textContent = "Couldn't save player details. Try again."; if (!dialog.open) say(errorNode.textContent); }
+  finally { button.disabled = false; }
+}
+async function deletePlayer(button) {
+  const player = coachPlayer(state.selected);
+  if (!player || deletePlayerPending) return;
+  const { id, name } = player;
+  const teamId = state.teamId;
+  deletePlayerPending = true;
+  try {
+    if (!await confirmDialog({ title: `Delete ${name}?`, message: "This deletes every at-bat and video for this player and removes linked parents, pending invites and shared links. This can't be undone.", confirmLabel: "Delete player", destructive: true })) return;
+    button.disabled = true; button.textContent = "Deleting…";
+    try { await deleteClipsForPlayer(id); }
+    catch { say("Couldn't delete all of this player's videos, so the player wasn't deleted. Try again."); return; }
+    const { error } = await supabase.from("players").delete().eq("id", id).eq("team_id", teamId);
+    if (error) { say("Videos were deleted, but the player couldn't be removed. Try again."); return; }
+    // The player is gone; a roster refresh problem must not be reported as a failed delete.
+    state.players = state.players.filter((p) => p.id !== id);
+    try { await reloadPlayers(); } catch { /* Keep the locally pruned roster. */ }
+    await navigation.goTab("home"); say("Player deleted.");
+  } catch { say("Couldn't delete the player. Try again."); }
+  finally {
+    deletePlayerPending = false;
+    // Feed refreshes can replace the original button while confirmation is open.
+    for (const control of [button, ...root.querySelectorAll('[data-action="delete-player"]')]) {
+      control.disabled = false; control.textContent = "Delete player";
+    }
+  }
+}
+async function sharedLinksSheet() {
+  if (!isCoach()) return;
+  const generation = ++sharedLinksGeneration;
+  const title = `<h2 id="simpleSheetTitle">Shared links</h2><p>Anyone with an active link can see what it shares until it expires or you turn it off.</p>`;
+  const done = `<button class="simple-action link" data-action="back" type="button">Done</button>`;
+  sheet.innerHTML = `${title}<p class="simple-muted">Loading…</p>${done}`;
+  openSheet("shared-links");
+  const current = () => isCoach() && navigation.sheet === "shared-links" && generation === sharedLinksGeneration;
+  try {
+    const { data, error } = await supabase.from("player_share_links").select("id, player_id, share_scope, video_clip_id, created_at, expires_at, revoked_at, players(name), video_clips(game_log_entries(date, session_type))")
+      .eq("created_by", state.userId).not("share_scope", "is", null).order("created_at", { ascending: false }).limit(50);
+    if (error) throw error;
+    if (!current()) return;
+    const rows = shareLinkRows(data, Date.now(), (value) => shortDate(value?.slice(0, 10)));
+    const rowHtml = (row) => `<div class="simple-row"><span><strong>${esc(row.title)}</strong><small>${esc(row.supporting)}</small><span class="bt-status-chip bt-status-${row.chip.tone}">${esc(row.chip.label)}</span></span>${row.state === "active" ? `<button class="simple-action destructive" data-action="turn-off-link" data-link-id="${esc(row.id)}" type="button" ${shareLinkPending.has(row.id) ? "disabled" : ""}>Turn off</button>` : ""}</div>`;
+    const active = rows.filter((r) => r.state === "active"), inactive = rows.filter((r) => r.state !== "active");
+    sheet.innerHTML = title + (rows.length ? `<h3>Active</h3>${active.length ? active.map(rowHtml).join("") : `<p class="simple-muted">No active links.</p>`}${inactive.length ? `<h3>Expired or turned off</h3>${inactive.map(rowHtml).join("")}` : ""}` : `<p>You haven't shared any links yet.</p>`) + done;
+  } catch { if (current()) sheet.innerHTML = `${title}<p role="alert">Couldn't load shared links. Try again.</p><button class="simple-action secondary" data-action="shared-links" type="button">Try again</button>${done}`; }
+}
+async function turnOffLink(button) {
+  const id = button.dataset.linkId;
+  if (!isCoach() || !id || shareLinkPending.has(id)) return;
+  shareLinkPending.add(id); button.disabled = true;
+  try {
+    if (!await confirmDialog({ title: "Turn off this link?", message: "Anyone who opens it will see that the link has expired or was turned off. This can't be undone.", confirmLabel: "Turn off link", destructive: true })) return;
+    const { error } = await supabase.rpc("revoke_simple_share_link", { p_link_id: id });
+    if (error) throw error;
+    say("Link turned off.");
+    if (navigation.sheet === "shared-links") await sharedLinksSheet();
+  } catch { say("Couldn't turn off the link. Try again."); }
+  finally {
+    shareLinkPending.delete(id); button.disabled = false;
+    for (const control of sheet.querySelectorAll('[data-action="turn-off-link"]')) {
+      if (control.dataset.linkId === id) control.disabled = false;
+    }
+  }
+}
 async function reloadPlayers() {
-  const { data, error } = await supabase.from("players").select("id, name, jersey_number, slug").eq("team_id", state.teamId).order("name");
+  const { data, error } = await supabase.from("players").select("id, name, jersey_number, slug, age_band, bats, throws").eq("team_id", state.teamId).order("name");
   if (error) throw error;
   state.players = data ?? [];
   if (!state.players.some((p) => p.id === state.selected)) state.selected = state.players[0]?.id ?? null;
@@ -312,7 +426,7 @@ function selectField(id, label, values, selected = "") {
 function addPlayerSheet() {
   if (!isCoach()) return;
   sheet.innerHTML = `<h2 id="simpleSheetTitle">Add player</h2><label>Name<input id="newPlayerName" required></label><label>Jersey number<input id="newPlayerJersey" required></label>
-    ${selectField("newPlayerAge", "Age band", [["", "Unknown"], ...["u8", "8-10", "11-12", "13-14", "15-18", "adult"].map((v) => [v, v])])}
+    ${selectField("newPlayerAge", "Age band", [["", "Unknown"], ...Object.entries(AGE_BAND_LABELS)])}
     ${selectField("newPlayerBats", "Bats", [["", "Unknown"], ["L", "Left"], ["R", "Right"], ["S", "Switch"]])}
     ${selectField("newPlayerThrows", "Throws", [["", "Unknown"], ["L", "Left"], ["R", "Right"]])}
     <p class="simple-error" id="addPlayerError" role="alert"></p><button class="simple-action primary" data-action="save-player" type="button">Save</button><button class="simple-action link" data-action="close-sheet" type="button">Cancel</button>`;
@@ -423,6 +537,7 @@ async function renderFeed(playerView = false) {
   if (playerView) {
     const cached = parentsCache?.playerId === playerId ? parentsCache.html : null;
     root.insertAdjacentHTML("beforeend", `<section class="simple-card" id="parentsCard"><h2>Parents</h2>${cached ?? '<p class="simple-muted">Loading…</p>'}</section>`);
+    root.insertAdjacentHTML("beforeend", playerDetailsCard(playerId));
     if (!cached) await loadParents(playerId);
   }
   scheduleHomeRefresh();
@@ -460,24 +575,6 @@ function drillCard(drill) {
     ${drill.commonMistakes?.length ? `<p><strong>Watch out for:</strong> ${esc(drill.commonMistakes.join("; "))}</p>` : ""}
     ${demo ? `<a href="${demo}" target="_blank" rel="noopener noreferrer">Watch demo${drill.demoTimestamp ? ` at ${esc(drill.demoTimestamp)}` : ""}</a>` : ""}
     ${drill.sourceCredit ? `<p class="simple-muted">Credit: ${esc(drill.sourceCredit)}</p>` : ""}</details>`;
-}
-
-function contactMarker(time) {
-  return Number.isFinite(time) && time >= 0
-    ? `<div class="simple-contact-track" aria-label="${esc(momentLabels.marker)}"><span class="simple-contact-dot" hidden></span></div>
-      <button class="simple-action link" data-action="jump-contact" type="button">${esc(momentLabels.button)}</button>` : "";
-}
-
-function prepareContactMarker(video, time) {
-  const marker = video?.parentElement?.querySelector(".simple-contact-dot");
-  if (!marker) return;
-  const place = () => {
-    if (!Number.isFinite(video.duration) || time > video.duration) return;
-    marker.style.left = `${Math.min(100, time / video.duration * 100)}%`;
-    marker.hidden = false;
-  };
-  if (video.readyState >= 1) place();
-  else video.addEventListener("loadedmetadata", place, { once: true });
 }
 
 function seekTo(video, time) {
@@ -518,7 +615,9 @@ async function showReport(clipId, token = null, preloaded = null) {
   state.report = { ...data, clipId };
   setTab("report");
   const report = data.report;
-  // Experimental v2 clips have their own report; normal reports are unchanged.
+  const presentation = parsePresentation(data.presentation);
+  const copy = presentationCopy(presentation);
+  // Experimental v2 clips retain their labelled renderer and development-only fallback.
   if (data.experimental) {
     const canAct = !state.shared && !state.demo;
     root.innerHTML = `${reportAppBar(data, clipId)}${experimentalReportHtml(data, { esc, canAct, pendingText: pendingReportText(data) })}
@@ -528,7 +627,7 @@ async function showReport(clipId, token = null, preloaded = null) {
     if (experimentalStillPending(data)) scheduleReportRefresh(clipId, token);
     return;
   }
-  if (report.state === "no_swing") {
+  if (presentation?.analysisState === "no_swing") {
     root.innerHTML = `${reportAppBar(data, clipId)}<h2 class="simple-cue">No swing to analyze in this at-bat.</h2>
       ${data.videoUrl ? `<video id="reportVideo" class="simple-video" src="${esc(data.videoUrl)}" controls playsinline></video>` : ""}
       <div class="simple-card"><p>This at-bat stays in the feed. The result choice did not decide whether a swing happened.</p></div>
@@ -539,8 +638,8 @@ async function showReport(clipId, token = null, preloaded = null) {
     loadCaptureSummary(clipId).catch(() => {});
     return;
   }
-  if (report.state !== "ready") {
-    const pending = !["ready", "failed"].includes(data.status);
+  if (!["supported_finding", "no_supported_issue", "limited"].includes(presentation?.analysisState)) {
+    const pending = presentation?.analysisState === "processing";
     const unavailable = pending ? null : unavailablePresentation(data);
     root.innerHTML = `${reportAppBar(data, clipId)}<h2 class="simple-cue">${pending ? "Analyzing…" : esc(unavailable.title)}</h2>
       <div class="simple-card"><p id="processingProgress">${pending ? esc(pendingReportText(data)) : esc(unavailable.reason)}</p>${unavailable?.showFilmingTip ? `<button class="simple-action link" data-action="guide" type="button">How to film next time</button>` : ""}</div>
@@ -553,28 +652,25 @@ async function showReport(clipId, token = null, preloaded = null) {
     if (pending) scheduleReportRefresh(clipId, token);
     return;
   }
+  const shownFix = presentation.fixState === "shown" && report?.fix;
   root.innerHTML = `${reportAppBar(data, clipId)}
+    ${copy.statusLine ? `<p class="simple-status-line" role="note">${icon("info")}<span>${esc(copy.statusLine)}</span></p>` : ""}
     ${data.videoUrl ? `<div class="simple-video-wrap"><video id="reportVideo" class="simple-video" src="${esc(data.videoUrl)}" controls playsinline preload="metadata"></video>
-      ${contactMarker(data.contactTime)}</div>
+      <button class="simple-action link" data-action="play-video" type="button">Play video</button></div>
       <div class="simple-actions"><button class="simple-action secondary" data-action="half-speed" type="button">½ speed</button></div>` : `<p class="simple-error">Video isn't available yet.</p>`}
-    <section class="simple-card"><h2>How it went</h2><p>${esc(report.summary)}</p></section>
-    <section class="simple-card"><h2>What looked good</h2>${report.strengths.length
+    ${presentation.summaryState !== "not_applicable" ? `<section class="simple-card"><h2>How it went</h2><p>${esc(report.summary)}</p></section>` : ""}
+    <section class="simple-card"><h2>What looked good</h2>${presentation.strengthsState === "shown" && report.strengths?.length
       ? `<ul class="simple-strength-list">${report.strengths.map((item) => `<li class="simple-strength-item">${icon("check")}<span>${esc(item)}</span></li>`).join("")}</ul>`
       : `<p>${esc(strengthsNoneCopy())}</p>`}</section>
-    <section class="simple-card"><h2>One thing to work on</h2>${report.fix
+    <section class="simple-card"><h2>One thing to work on</h2>${shownFix
       ? `<h3>${esc(report.fix.issue)}</h3><p>${esc(report.fix.evidence)}</p><p>Say to ${esc(data.playerName.split(" ")[0])}:</p>
         <p class="simple-cue">“${esc(report.fix.coachingCue)}”</p><p><strong>Next time, watch for:</strong> ${esc(report.fix.lookForNext)}</p>`
-      : `<p>${esc(fixNoneCopy())}</p>`}</section>
-    ${report.fix ? `<section><h2>Drills that can help</h2>${report.drills.length ? report.drills.map(drillCard).join("") : `<p>No drill for this yet.</p>`}</section>` : ""}
+      : `<p>${esc(copy.body)}</p>`}</section>
+    ${shownFix ? `<section><h2>Drills that can help</h2>${report.drills.length ? report.drills.map(drillCard).join("") : `<p>No drill for this yet.</p>`}</section>` : ""}
     ${state.shared || state.demo ? "" : `<div id="captureSummaryHost"></div>${state.role === "coach" ? '<div id="coachAnalysisHost"></div>' : ""}<div class="simple-actions"><button class="simple-action secondary" data-action="share-report" type="button">Share</button>
-      ${report.fix ? `<button class="simple-action secondary" data-action="hide-fix" type="button">Doesn't look right</button>` : ""}
+      ${shownFix ? `<button class="simple-action secondary" data-action="hide-fix" type="button">Doesn't look right</button>` : ""}
       <button class="simple-action destructive" data-action="delete" type="button">Delete at-bat</button></div>`}`;
   prepareReportVideo(clipId, token);
-  const video = document.getElementById("reportVideo");
-  if (video && Number.isFinite(data.contactTime) && data.contactTime >= 0) {
-    prepareContactMarker(video, data.contactTime);
-    seekTo(video, Math.max(0, data.contactTime - 0.5)).catch(() => {});
-  }
   loadCaptureSummary(clipId).catch(() => {});
   loadCoachAnalysisAction(clipId).catch(() => {});
 }
@@ -812,7 +908,7 @@ async function showProgress() {
         <h2>${state.demo ? "Coach-picked drill" : "Drill for this focus"}</h2>${progress.focusDrill ? drillCard(progress.focusDrill) : `<p>No drill for this yet.</p>`}
         ${state.shared || state.demo ? "" : `<button class="simple-action link" data-action="dismiss-focus" type="button">Doesn't look right</button>`}`
       : `<p>${esc(progressSentence(progress))}</p>`}</section>
-    ${progress.thenVideo && progress.nowVideo ? `<section class="simple-card"><h2>Then vs. now</h2><p>Watch the two videos around the estimated hitting moment. Camera views can differ.</p>
+    ${progress.thenVideo && progress.nowVideo ? `<section class="simple-card"><h2>Then vs. now</h2><p>Watch the two videos side by side. Camera views and timing can differ.</p>
       <div class="simple-compare"><figure><video id="thenVideo" src="${esc(progress.thenVideo.url)}" playsinline preload="metadata"></video><figcaption>${esc(progress.thenLabel ?? "Then")}</figcaption></figure>
       <figure><video id="nowVideo" src="${esc(progress.nowVideo.url)}" playsinline preload="metadata"></video><figcaption>${esc(progress.nowLabel ?? "Now")}</figcaption></figure></div>
       <div class="simple-actions"><button class="simple-action secondary" data-action="play-compare" type="button">Play together</button>
@@ -824,17 +920,6 @@ async function showProgress() {
   const thenVideo = document.getElementById("thenVideo");
   const nowVideo = document.getElementById("nowVideo");
   if (thenVideo && nowVideo) {
-    const thenContact = Number.isFinite(progress.thenVideo.contactTime) ? progress.thenVideo.contactTime : 0;
-    const nowContact = Number.isFinite(progress.nowVideo.contactTime) ? progress.nowVideo.contactTime : 0;
-    const align = (source, destination, sourceContact, destinationContact) => {
-      if (source.paused || destination.paused) return;
-      const wanted = Math.max(0, Math.min(destination.duration || Infinity,
-        source.currentTime - sourceContact + destinationContact));
-      if (Math.abs(destination.currentTime - wanted) <= 0.25) return;
-      destination.currentTime = wanted;
-    };
-    thenVideo.addEventListener("timeupdate", () => align(thenVideo, nowVideo, thenContact, nowContact));
-    nowVideo.addEventListener("timeupdate", () => align(nowVideo, thenVideo, nowContact, thenContact));
     for (const video of [thenVideo, nowVideo]) video.addEventListener("ended", () => {
       thenVideo.pause(); nowVideo.pause();
       const button = root.querySelector('[data-action="play-compare"]');
@@ -890,6 +975,7 @@ async function settingsSheet() {
   sheet.innerHTML = `<h2 id="simpleSheetTitle">Settings</h2><label class="simple-setting"><input id="notifyReports" type="checkbox" ${data?.notify_reports !== false ? "checked" : ""}>
     <span><strong>Report notifications</strong><small>Use device notifications when enabled, otherwise email.</small></span></label>
     <button class="simple-action secondary" data-action="guide" type="button">How to film</button>
+    ${isCoach() ? '<button class="simple-action secondary" data-action="shared-links" type="button">Shared links</button>' : ""}
     ${teamSettingsHtml()}
     <button class="simple-action secondary" data-action="sign-out" type="button">Sign out</button>
     <button class="simple-action link" data-action="close-sheet" type="button">Done</button>`;
@@ -1019,11 +1105,24 @@ root.addEventListener("click", async (event) => {
       // Pause on the event's own source frame so the moment stays on screen.
       const video = document.getElementById("reportVideo");
       const at = seekTarget(state.report?.experimental, target.dataset.seeEvent);
-      if (video && at !== null) { video.pause(); await seekTo(video, at); video.scrollIntoView({ block: "center" }); }
+      if (video && at !== null) {
+        video.pause();
+        try { await seekTo(video, at); }
+        catch { return; } // The existing video error UI owns failed playback.
+        video.scrollIntoView({ block: "center" });
+        video.focus({ preventScroll: true });
+        const label = eventLabel(state.report.experimental.events.find((item) => item.id === target.dataset.seeEvent));
+        // A visually hidden region inside this report: the visible #simpleMessage box would keep the text.
+        const live = document.getElementById("seekAnnouncement");
+        // Clear first so a second tap on the same moment is announced again.
+        if (live) { live.textContent = ""; setTimeout(() => { live.textContent = `Video paused at ${label.charAt(0).toLowerCase()}${label.slice(1)}`; }, 50); }
+      }
       return;
     }
     if (target.dataset.hideIssue) { openHideReason(target.dataset.hideIssue); return; }
     switch (target.dataset.action) {
+      case "edit-player": editPlayerId = state.selected; editPlayerSheet(); break;
+      case "delete-player": await deletePlayer(target); break;
       case "add-player": addPlayerSheet(); break;
       case "import-players": importPlayers(); break;
       case "retry-player": await showPlayer(state.selected); break;
@@ -1035,11 +1134,20 @@ root.addEventListener("click", async (event) => {
       case "back": navigation.back(); break;
       case "home": await navigation.goTab("home"); break;
       case "retry-video": await retryReportVideo?.(); break;
-      case "jump-contact": {
+      case "play-video": {
         const video = document.getElementById("reportVideo");
-        const moment = state.report?.experimental ? seekTarget(state.report.experimental, "impact_estimate") : state.report?.contactTime;
+        if (video) {
+          if (video.ended) video.currentTime = 0;
+          await video.play().catch(() => {});
+        }
+        break;
+      }
+      case "jump-contact": {
+        if (!state.report?.experimental) break;
+        const video = document.getElementById("reportVideo");
+        const moment = seekTarget(state.report.experimental, "impact_estimate");
         if (video && Number.isFinite(moment)) {
-          await seekTo(video, Math.max(0, moment - 0.5));
+          try { await seekTo(video, Math.max(0, moment - 0.5)); } catch { break; }
           // An interrupted play() (e.g. a second tap) is not an app failure.
           await video.play().catch(() => {});
         }
@@ -1054,8 +1162,9 @@ root.addEventListener("click", async (event) => {
         if (!thenVideo.paused || !nowVideo.paused) {
           thenVideo.pause(); nowVideo.pause(); target.textContent = "Play together"; break;
         }
-        const offsets = pair.map((item) => Number.isFinite(item.contactTime) ? item.contactTime : 0);
-        await Promise.all([seekTo(thenVideo, Math.max(0, offsets[0] - 0.5)), seekTo(nowVideo, Math.max(0, offsets[1] - 0.5))]);
+        if (thenVideo.ended || nowVideo.ended) {
+          await Promise.allSettled([seekTo(thenVideo, 0), seekTo(nowVideo, 0)]);
+        }
         await Promise.allSettled([thenVideo.play(), nowVideo.play()]);
         target.textContent = "Pause both";
         break;
@@ -1108,6 +1217,10 @@ sheet.addEventListener("click", async (event) => {
     await navigation.dismissSheets(); say("Camera view correction saved.");
     loadCaptureSummary(state.report.clipId).catch(() => {});
   }
+  if (target.dataset.action === "shared-links") await sharedLinksSheet();
+  if (target.dataset.action === "turn-off-link") await turnOffLink(target);
+  if (target.dataset.action === "save-player-details") await savePlayerDetails(target);
+  if (target.dataset.action === "back") navigation.back();
   if (target.dataset.action === "save-player") await savePlayer(target);
   if (target.dataset.action === "save-team") await saveTeam(target);
   if (target.dataset.action === "close-sheet") await navigation.dismissSheets();
@@ -1195,7 +1308,7 @@ async function start() {
       state.role = "coach"; state.teamId = team.team_id; state.teamSlug = team.teams?.slug ?? null;
       state.teamName = team.teams?.name ?? "Team"; state.level = team.teams?.level_label ?? null;
       state.sport = team.teams?.sport ?? null; state.guideSport = state.sport;
-      const { data: players, error } = await supabase.from("players").select("id, name, jersey_number, slug").eq("team_id", team.team_id).order("name");
+      const { data: players, error } = await supabase.from("players").select("id, name, jersey_number, slug, age_band, bats, throws").eq("team_id", team.team_id).order("name");
       if (error) throw error;
       state.players = players ?? [];
     } else {
@@ -1214,7 +1327,7 @@ async function start() {
     const homeLabel = document.querySelector('.simple-nav [data-tab="home"]');
     if (homeLabel) homeLabel.textContent = isCoach() ? "Team" : "Home";
     if (!state.players.length) {
-      if (isCoach()) await showHome();
+      if (isCoach()) { await showHome(); if (params.get("clip")) await openCoachClip(params.get("clip")); }
       else root.innerHTML = `<h1>No child linked yet</h1><p>Ask your child's coach for an invite link.</p>`;
       return;
     }
@@ -1227,7 +1340,9 @@ async function start() {
     if (isCoach() && params.get("player") === state.selected) await navigation.openPlayer(state.selected);
     if (isCoach() && navigation.view.hl === "player" && params.get("clip")) {
       await showReport(params.get("clip"));
-    } else if (state.role === "coach" && params.get("clip")) {
+    } else if (isCoach() && params.get("clip")) {
+      await openCoachClip(params.get("clip"));
+    } else if (state.demo && state.role === "coach" && params.get("clip")) {
       const clip = state.home?.feed?.find((item) => item.id === params.get("clip"));
       if (clip) await showReport(clip.id);
     }

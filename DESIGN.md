@@ -135,9 +135,15 @@ Progress uses existing `bt-status-chip` classes: Improving and Looks fixed are s
 
 About this video and drill disclosures use native details/summary with a visible shared chevron-down icon. About this video keeps its descriptive summary visible while collapsed. Expanded chevrons rotate 180 degrees; reduced motion disables rotation and transition. Summary targets are at least 48px high. How to film puts the warning-bordered, warning-subtle safety note first, immediately after its title.
 
+Normal reports show "Play video" with no event marker until source-frame timing exists.
+
+Limited report analysis uses `.simple-status-line`: a shared info icon, explicit status text in `--text-1`, a `--warning` left border, and existing spacing tokens. It has `role="note"` and appears under the experimental banner when present.
+
 ### Coach Team and Player screens (UI-PR4)
 
 Coaches use Team / Record / Progress; parents retain Home / Record / Progress. Team roster rows use the existing small jersey badge, player name, latest at-bat summary line, shared chevron and a separate overflow button. Latest-at-bat status uses the existing neutral or warning chips; focus remains server-owned in Progress. Team has no counts, filters, averages or review badges. Player uses the consumer app bar and shared Home feed, followed by a Parents card with linked guardians, pending invites, and existing secondary/destructive actions. Legacy coach tools are available only through the explicit Settings compatibility link.
+
+Settings includes a coach-only Shared links sheet listing creator-only links without tokens, grouped into Active / Expired or turned off. A Player details card follows Parents, with a muted context summary, secondary Edit details, and destructive Delete player actions.
 
 ## Existing conflicts requiring a product decision
 

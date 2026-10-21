@@ -1,3 +1,4 @@
+import { experimentalPresentation } from "../../dist/services/development/reportPresentation.js";
 // Experimental v2 report rendering (M5). Synthetic data only.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -15,7 +16,7 @@ const experimental = (extra = {}) => ({ label: EXPERIMENTAL_LABEL, engine: "hitt
     lookForNext: "A closed front shoulder" },
   { kind: "strength", id: null, claimType: "direct_observation", events: ["load_peak_estimate"], phase: "load", text: "Balanced load", evidence: "Weight centered" }],
   ...extra });
-const render = (exp, extra = {}) => experimentalReportHtml({ playerName: "Synthetic Player", status: "ready", videoUrl: "http://127.0.0.1/v.mp4", experimental: exp, ...extra },
+const render = (exp, extra = {}) => experimentalReportHtml({ playerName: "Synthetic Player", status: "ready", videoUrl: "http://127.0.0.1/v.mp4", experimental: exp, presentation: experimentalPresentation({ report: exp }), ...extra },
   { esc, canAct: true, pendingText: "50% complete" });
 
 test("every experimental report carries the not-validated label and never shows provider confidence", () => {
@@ -103,4 +104,43 @@ test("issue headings reflect the displayed issue count and the swing action stay
   const multiple = experimentalReportHtml({ status: "ready", experimental: { ...one, findings: [...one.findings, ...one.findings] } }, { esc });
   assert.match(multiple, /Something to work on/);
   assert.doesNotMatch(multiple, /One thing to work on/);
+});
+
+test("without a presentation block an experimental findings run with no visible issue makes no claim", async () => {
+  const { experimentalReportHtml } = await import("./experimentalReport.js");
+  const html = experimentalReportHtml({ status: "ready", playerName: "Synthetic Player", experimental: { outcome: "findings", suppressedCount: 0,
+    findings: [{ kind: "strength", text: "Balanced load", evidence: "Load frame", claimType: "direct_observation", events: [] }], reasons: [], events: [] } },
+    { esc: (s) => String(s) });
+  assert.match(html, /This swing's experimental result can't be shown\./);
+  assert.doesNotMatch(html, /What the evidence supports|hidden after feedback/);
+  assert.match(html, /Experimental analysis — not yet validated/);
+});
+test("UI-PR7 moment labels and accessible names identify estimates without numeric timestamps", () => {
+  const labels = { stance_set: "Set-up", load_peak_estimate: "Load (estimated)", foot_plant: "Front foot down",
+    impact_estimate: "Estimated hitting moment", extension: "Extension", finish: "Finish", unknown: "Custom moment" };
+  const exp = experimental({ findings: [], events: Object.keys(labels).map(id => ({ id, label: "Custom moment", seekS: 1.125 })) });
+  const html = render(exp);
+  for (const label of Object.values(labels)) {
+    assert.ok(html.includes(`aria-label="See it · ${label}: show this in the video"`)); // WCAG 2.5.3: the name contains the visible text
+    assert.ok(html.includes(`>See it · ${label}</button>`));
+  }
+  assert.doesNotMatch(html.replace(/<[^>]*>/g, ""), /contact|0:01/i);
+  assert.match(render(experimental({ findings: [], events: [{ id: "unknown", seekS: 1 }] })), /See it · Swing moment/);
+});
+
+test("UI-PR7 invalid or missing source timestamps and absent cited events stay muted", () => {
+  for (const seekS of [NaN, Infinity, -Infinity, -1, null, undefined, "1.2"]) {
+    const exp = experimental({ events: [{ id: "load_peak_estimate", timeS: 0.1, seekS }] });
+    assert.equal(seekTarget(exp, "load_peak_estimate"), null);
+    const html = render(exp);
+    assert.doesNotMatch(html, /data-see-event/);
+    assert.match(html, /<span class="simple-muted">Load \(estimated\)<\/span>/);
+  }
+});
+
+test("UI-PR7 nonzero-start refusal with no events renders no moment buttons or section", () => {
+  const html = render(experimental({ outcome: "not_assessable", events: [], findings: [],
+    reasons: [{ code: "SOURCE_START_OFFSET_UNSUPPORTED", text: "This video cannot be analyzed." }] }));
+  assert.doesNotMatch(html, /data-see-event|See it|Swing moments/);
+  assert.doesNotMatch(render(experimental({ events: [] })), /data-see-event|See it|Swing moments/);
 });

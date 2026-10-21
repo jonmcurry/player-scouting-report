@@ -1,3 +1,4 @@
+import type { ReportPresentation } from "./reportPresentation.ts";
 import type { assembleReport } from "./reportAssembly.ts";
 
 type DrillCard = {
@@ -38,4 +39,12 @@ export function sharedReportPayload(report: ReturnType<typeof assembleReport>, r
       evidence: report.fix.evidence, coachingCue: report.fix.coachingCue,
       lookForNext: report.fix.lookForNext } : null,
     drills: report.drills.map(drillCard) };
+}
+
+/** Public presentation projection: no text, identifiers or experimental reason codes. */
+export function sharedPresentation(p: ReportPresentation): ReportPresentation {
+  return { version: p.version, engine: p.engine, engineOutcome: p.engineOutcome,
+    analysisState: p.analysisState, fixState: p.fixState, strengthsState: p.strengthsState,
+    summaryState: p.summaryState, familyReason: p.familyReason, limited: p.limited,
+    reasonCodes: [], momentLabel: p.momentLabel };
 }
