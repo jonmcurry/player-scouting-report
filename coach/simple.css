@@ -14,11 +14,14 @@
 .simple-action.primary { background:var(--brand-fill); color:var(--on-brand); width:100%; }
 .simple-action.secondary { background:var(--surface-2); color:var(--text-1); }
 .simple-action.link { background:transparent; color:var(--text-1); text-decoration:underline; }
+.simple-action + .simple-action { margin-top:8px; }
 .simple-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
 .simple-actions > * { flex:1 1 130px; }
+.simple-actions .simple-action + .simple-action { margin-top:0; }
 .simple-row { width:100%; display:flex; justify-content:space-between; gap:12px; align-items:center; min-height:64px; padding:10px 4px; background:transparent; color:var(--text-1); border:0; border-bottom:1px solid var(--border); text-align:left; cursor:pointer; }
 .simple-row strong { display:block; }
 .simple-row small { display:block; color:var(--text-2); margin-top:4px; }
+.simple-row small.simple-feed-meta { margin:0 0 4px; font-size:.8125rem; font-weight:600; color:var(--text-2); }
 .simple-progress-percent { min-width:4ch; color:var(--text-2); font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
 .simple-roster-row { display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border); }
 .simple-roster-row .simple-row { flex:1; border:0; }
@@ -27,26 +30,32 @@
 .simple-roster-row .simple-row { justify-content:flex-start; }
 .simple-roster-row .simple-row > span:not(.jersey-badge) { flex:1; min-width:0; }
 .simple-roster-row .simple-row .bt-status-chip { margin-top:var(--space-1); }
-.simple-invite-link { width:100%; min-height:48px; margin:12px 0; }
+.simple-invite-link { width:100%; min-height:48px; margin:12px 0; padding:10px 12px; background:var(--surface-2); color:var(--text-1); border:1px solid var(--border-strong); border-radius:12px; font:inherit; }
 .simple-switcher { display:flex; gap:8px; overflow:auto; margin:0 0 20px; }
-.simple-switcher button { flex:0 0 auto; min-height:48px; border-radius:24px; padding:0 18px; }
-.simple-switcher [aria-pressed="true"] { background:var(--brand-fill); color:white; }
-.simple-nav { position:fixed; bottom:0; left:0; right:0; z-index:10; display:flex; justify-content:center; background:var(--surface-1); border-top:1px solid var(--border); padding:8px 8px calc(8px + env(safe-area-inset-bottom)); }
-.simple-nav button { flex:1; max-width:220px; min-height:52px; border:0; border-radius:10px; background:transparent; color:var(--text-2); font-weight:700; }
-.simple-nav button[aria-current="page"] { color:white; background:var(--surface-3); }
+.simple-switcher button { flex:0 0 auto; min-height:48px; border-radius:24px; padding:0 18px; background:var(--surface-2); color:var(--text-1); border:1px solid var(--border); font-weight:600; cursor:pointer; }
+.simple-switcher [aria-pressed="true"] { background:var(--brand-fill); border-color:var(--brand-fill); color:white; }
+.simple-nav { position:fixed; bottom:0; left:0; right:0; z-index:10; display:flex; justify-content:center; gap:8px; background:var(--surface-1); border-top:1px solid var(--border); padding:8px 12px calc(8px + env(safe-area-inset-bottom)); }
+.simple-nav button { flex:1; max-width:210px; min-height:52px; border:1px solid transparent; border-radius:12px; background:transparent; color:var(--text-2); font-weight:700; display:inline-flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; }
+.simple-nav button[aria-current="page"] { color:white; background:var(--surface-3); border-color:var(--border-strong); }
+.simple-nav button[data-tab="record"] { color:var(--brand-text); background:var(--brand-subtle); border-color:color-mix(in srgb, var(--brand-text) 35%, transparent); }
+.simple-nav button[data-tab="record"]::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--brand-fill); flex:none; }
 .simple-dialog { width:min(calc(100vw - 16px),520px); max-height:85vh; margin:auto auto 0; padding:20px; background:var(--surface-1); color:var(--text-1); border:1px solid var(--border-strong); border-radius:20px 20px 0 0; }
 .simple-dialog::backdrop { background:var(--scrim); }
-.simple-dialog label { display:block; margin:12px 0; }
+.simple-dialog h2#simpleSheetTitle { position:sticky; top:-20px; z-index:2; margin:-20px -20px 12px; padding:16px 20px 12px; background:var(--surface-1); border-bottom:1px solid var(--border); border-top-left-radius:inherit; border-top-right-radius:inherit; }
+.simple-dialog label { display:block; margin:12px 0; font-weight:600; color:var(--text-1); }
 /* Section headings inside a sheet use the consumer Section role, below the sheet title. */
 .simple-dialog h3 { font:700 .75rem/1.4 var(--font-body); text-transform:uppercase; letter-spacing:.08em; color:var(--brand-text); margin:var(--space-6) 0 var(--space-2); }
 .simple-dialog .simple-row > .simple-action { flex:none; white-space:nowrap; }
 .simple-dialog select,
-.simple-dialog label > input:not([type="checkbox"]) { display:block; width:100%; min-height:48px; margin-top:5px; }
+.simple-dialog label > input:not([type="checkbox"]) { display:block; width:100%; min-height:48px; margin-top:6px; padding:10px 12px; background:var(--surface-2); color:var(--text-1); border:1px solid var(--border-strong); border-radius:12px; font:400 1rem/1.4 var(--font-body); }
 .simple-chip-row { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
-.simple-chip-row button { min-height:48px; border-radius:24px; padding:0 16px; }
-.simple-chip-row [aria-pressed="true"] { background:var(--brand-fill); color:white; }
+.simple-chip-row button { min-height:48px; border-radius:24px; padding:0 16px; background:var(--surface-2); color:var(--text-1); border:1px solid var(--border); font-weight:600; cursor:pointer; }
+.simple-chip-row [aria-pressed="true"] { background:var(--brand-fill); border-color:var(--brand-fill); color:white; }
 .simple-video { width:100%; max-height:410px; background:black; border-radius:12px; }
 .simple-video-wrap { min-width:0; }
+.simple-video-controls { display:flex; align-items:center; gap:8px; margin-top:8px; }
+.simple-video-controls > .simple-action { flex:1; min-height:48px; margin-top:0; }
+.simple-video-controls > .simple-action.link { background:var(--surface-2); text-decoration:none; }
 .simple-contact-track { position:relative; height:4px; margin:8px 8px 0; background:var(--surface-3); border-radius:4px; }
 .simple-contact-dot { position:absolute; top:50%; width:12px; height:12px; transform:translate(-50%,-50%); background:var(--brand-text); border:2px solid var(--text-1); border-radius:50%; }
 .simple-contact-dot[hidden] { display:none; }

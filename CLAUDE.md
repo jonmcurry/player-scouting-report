@@ -437,28 +437,17 @@ Do not commit, push, deploy, modify cloud data, or publish fixtures unless expli
 the user.
 <!-- END HITTERLOOP MULTI-AGENT MANAGED BLOCK -->
 
-<!-- DESIGN-MD-AUTO:START -->
-## DESIGN.md UI rules
+<!-- JC-PROJECT-CLAUDE:START -->
+## Claude / Gemini workflow
 
-For any UI, frontend, component, CSS, styling, or visual-design work:
+Claude Code is the orchestrator and final decision-maker for this repository.
 
-1. Read `DESIGN.md` in full before making changes.
-2. Treat `DESIGN.md` as the visual source of truth.
-3. Reuse its tokens and the project's existing components before inventing new values or patterns.
-4. Do not introduce conflicting colors, typography, spacing, radii, shadows, or component styles.
-5. After implementation, compare the result against `DESIGN.md` and fix inconsistencies before finishing.
-
-### Orchestrated / delegated UI work
-
-Claude Code is the orchestrator for this repository and owns final design consistency. When delegating frontend or UI work to Codex (implementation), Gemini/AGY (independent review and visual QA), or another sub-agent:
-
-- Include `DESIGN.md` as authoritative project context.
-- Require the delegated agent to follow the existing design tokens, components, and interaction patterns.
-- Do not allow delegated agents to invent conflicting visual conventions or silently replace the established design language.
-- Ask delegated agents to reuse existing components before creating new ones.
-- Review delegated UI output against `DESIGN.md` before accepting, merging, or presenting the work as complete.
-- Resolve design inconsistencies at the orchestrator level; Claude remains responsible for final design consistency.
-- If a delegated agent identifies a genuine conflict in the existing design system, surface it explicitly rather than allowing the worker to choose a new convention on its own.
-
-If `DESIGN.md` conflicts with an explicit user request, follow the explicit user request and update the design system only when appropriate.
-<!-- DESIGN-MD-AUTO:END -->
+- Claude owns planning, delegation, verification, integration, and the final report.
+- Gemini/AGY may implement bounded tasks or perform independent review.
+- Give Gemini/AGY explicit scope, file paths/context, constraints, and acceptance criteria.
+- Require Gemini/AGY to report files inspected/changed, tests run, blockers, residual risks, and uncertainty.
+- Verify material delegated claims before accepting them.
+- Keep changes within the user's requested scope.
+- Do not merge, push, release, or perform destructive operations unless explicitly authorized.
+- Before UI/frontend/styling work, read DESIGN.md when present and follow it as the visual source of truth.
+<!-- JC-PROJECT-CLAUDE:END -->

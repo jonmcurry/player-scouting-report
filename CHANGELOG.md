@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.58.0] - 2026-10-24
+
+Consumer UI/UX overhaul across mobile app, report feed, and login screens.
+
+### Added
+
+- Consolidated video toolbar: "Play video" and "½ speed" presented on a single 48px row beneath the swing video.
+- Leading feed metadata: each feed item leads with formatted date and session kind (`shortDate · Game/Practice`).
+- Bottom navigation live recording indicator: active dot on the Record tab.
+- Form controls overhaul: styled inputs and selects with dark surface, strong border, 12px corner radii, and 48px touch floors across dialogs and sheets.
+- Sticky bottom-sheet titles: `h2#simpleSheetTitle` remains anchored with matching border radii while sheet content scrolls.
+- Login card redesign: dark surface card container, responsive SVG seam icon, full-width inputs and buttons, and resilient flex switching between Sign In and Create Account.
+
+### Changed
+
+- Inline finding feedback: "Doesn't look right" is positioned directly inside the "One thing to work on" card rather than at the bottom of the report.
+- Drill card empty state: wrapped "No drill for this yet" inside `.simple-card`.
+- Confirmation sheet: displays selected filenames in a subtle muted line.
+- Feed startup optimization: consumes initial report payload on start, eliminating duplicate startup queries.
+
 ## [0.57.0] - 2026-10-21
 
 UI-PR5 to UI-PR7.1 of the October UI/UX redesign, recorded together.

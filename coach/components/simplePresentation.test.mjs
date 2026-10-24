@@ -1223,6 +1223,7 @@ test("UI-PR7 invalid, absent and failed seeks never announce, focus or add error
   }
 });
 
+
 test("UI-PR7 See it retains exact seeking and accessibility after the automatic URL refresh", async () => {
   const h = await appHarness();
   const { video, calls } = momentVideo(h);
@@ -1330,4 +1331,36 @@ test("UI-PR7.1 Progress plays from zero, pauses and resumes without baseline ali
     assert.deepEqual(plays.slice(4), [[0, 0], [1, 0]]);
     assert.deepEqual(h.snacks, []);
   }
+});
+
+test("UI/UX enhancements: consolidated video controls, fix action inside card, drill card wrap, feed row meta, and actions wrapping", async () => {
+  const h = await appHarness();
+  vm.runInContext('loadCaptureSummary = async () => {}; loadCoachAnalysisAction = async () => {};', h.sandbox);
+  const payload = readyPayload(true);
+  payload.videoUrl = "https://example.invalid/swing.mp4";
+  h.sandbox.payload = payload;
+  vm.runInContext('state.shared = false;', h.sandbox);
+  await vm.runInContext('showReport("clip", null, payload)', h.sandbox);
+  const reportHtml = h.node("simpleRoot").innerHTML;
+  assert.match(reportHtml, /class="simple-video-controls"[^>]*>[\s\S]*?data-action="play-video"[\s\S]*?data-action="half-speed"/);
+  assert.match(reportHtml, /<h2>One thing to work on<\/h2>[\s\S]*?data-action="hide-fix"[^>]*>Doesn't look right<\/button>[\s\S]*?<\/section>/);
+  assert.match(reportHtml, /<h2>Drills that can help<\/h2><div class="simple-card"><p>No drill for this yet\.<\/p><\/div>/);
+
+  // Feed row metadata leads with .simple-feed-meta before headline
+  h.sandbox.homePayload = {
+    playerName: "Maya Sample",
+    feed: [{ id: "c1", date: "2026-10-14", kind: "game", headline: "Solid contact to center", status: "ready" }],
+    progress: { status: "early_read", history: [] }
+  };
+  await vm.runInContext('state.home = homePayload; state.role = "parent"; showHome();', h.sandbox);
+  const homeHtml = h.node("simpleRoot").innerHTML;
+  assert.match(homeHtml, /class="simple-feed-meta"[^>]*>Oct 14 · Game<\/small><strong>Solid contact to center<\/strong>/);
+
+  // Confirm sheet shows file summary
+  vm.runInContext('confirmSheet([{ name: "game_ab1.mp4" }, { name: "game_ab2.mp4" }])', h.sandbox);
+  assert.match(h.node("captureSheet").innerHTML, /class="simple-muted">game_ab1\.mp4, game_ab2\.mp4<\/p>/);
+
+  // Player details card wraps actions
+  vm.runInContext('state.role = "coach"; state.players = [{ id: "p", name: "Maya", jersey_number: "8" }];', h.sandbox);
+  assert.match(vm.runInContext('playerDetailsCard("p")', h.sandbox), /<div class="simple-actions"><button class="simple-action secondary" data-action="edit-player"[\s\S]*?data-action="delete-player"/);
 });

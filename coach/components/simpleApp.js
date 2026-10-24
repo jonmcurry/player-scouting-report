@@ -242,8 +242,8 @@ async function loadParents(playerId) {
     const rows = guardianRows(guardians.data);
     const first = [...invites].sort((a, b) => a.expires_at.localeCompare(b.expires_at))[0];
     html = `${rows.length ? rows.map((row) => `<div class="simple-row"><span><strong>${esc(row.title)}</strong><small>${esc(row.supporting)}</small></span><button class="simple-action destructive" data-action="remove-guardian" data-invite-player="${esc(playerId)}" data-user-id="${esc(row.userId)}" data-label="${esc(row.title)}" type="button">Remove</button></div>`).join("") : `<p class="simple-muted">No parents linked yet.</p>`}
-      ${first ? `<p class="simple-muted">${invites.length === 1 ? "1 invite not used yet · expires" : `${invites.length} invites not used yet · first expires`} ${esc(formatShortDate(first.expires_at))}</p><button class="simple-action destructive" data-action="cancel-invites" data-invite-player="${esc(playerId)}" type="button">Cancel pending invites</button>` : ""}
-      <button class="simple-action secondary" data-action="invite-parent" data-invite-player="${esc(playerId)}" type="button">Invite parent</button>`;
+      ${first ? `<p class="simple-muted">${invites.length === 1 ? "1 invite not used yet · expires" : `${invites.length} invites not used yet · first expires`} ${esc(formatShortDate(first.expires_at))}</p>` : ""}
+      <div class="simple-actions"><button class="simple-action secondary" data-action="invite-parent" data-invite-player="${esc(playerId)}" type="button">Invite parent</button>${first ? `<button class="simple-action destructive" data-action="cancel-invites" data-invite-player="${esc(playerId)}" type="button">Cancel pending invites</button>` : ""}</div>`;
     loaded = true;
   } catch { html = `<p class="simple-muted">Couldn't load parents.</p>`; }
   // A late read for a player who is no longer showing is dropped, not cached.
@@ -319,7 +319,7 @@ async function openCoachClip(clip) {
 function playerDetailsCard(id) {
   const player = coachPlayer(id);
   if (!player) return "";
-  return `<section class="simple-card" id="playerDetailsCard"><h2>Player details</h2><p class="simple-muted">${esc(playerDetailsSummary(player))}</p><button class="simple-action secondary" data-action="edit-player" type="button">Edit details</button><button class="simple-action destructive" data-action="delete-player" type="button" ${deletePlayerPending ? "disabled" : ""}>${deletePlayerPending ? "Deleting…" : "Delete player"}</button></section>`;
+  return `<section class="simple-card" id="playerDetailsCard"><h2>Player details</h2><p class="simple-muted">${esc(playerDetailsSummary(player))}</p><div class="simple-actions"><button class="simple-action secondary" data-action="edit-player" type="button">Edit details</button><button class="simple-action destructive" data-action="delete-player" type="button" ${deletePlayerPending ? "disabled" : ""}>${deletePlayerPending ? "Deleting…" : "Delete player"}</button></div></section>`;
 }
 function editPlayerSheet() {
   const player = coachPlayer(editPlayerId);
@@ -486,10 +486,10 @@ async function saveTeam(button) {
   finally { button.disabled = false; }
 }
 
-async function loadHome() {
+async function loadHome(preloaded = null) {
   if (isCoach()) return state.tab === "player" ? showPlayer(state.selected) : showHome();
   if (!state.selected) return;
-  state.home = await reportApi(state.selected);
+  state.home = preloaded ?? await reportApi(state.selected);
   await showHome();
 }
 
@@ -532,7 +532,7 @@ async function renderFeed(playerView = false) {
     ${banner}
     ${home.progress?.current ? `<button class="simple-row simple-card" data-action="progress" type="button"><span><strong>Working on ${esc(home.progress.current.title ?? home.progress.current.concept.replaceAll("_", " "))}</strong><small>See progress</small></span><span aria-hidden="true">›</span></button>` : ""}
     <section class="simple-card"><h2>Recent at-bats</h2>${home.feed?.length ? home.feed.map((item) =>
-      `<button class="simple-row" ${item.status === "deletion_pending" ? `data-retry-delete="${esc(item.id)}" data-entry-id="${esc(item.entryId)}"` : `data-clip="${esc(item.id)}"`} type="button"><span><strong>${esc(item.headline ?? statusText(item.status))}</strong><small>${esc(shortDate(item.date))} · ${item.kind === "practice" ? "Practice" : "Game"}${item.experimental ? " · Experimental" : ""}</small></span><span class="simple-progress-percent">${esc(processingProgressText(item))}</span></button>`).join("")
+      `<button class="simple-row" ${item.status === "deletion_pending" ? `data-retry-delete="${esc(item.id)}" data-entry-id="${esc(item.entryId)}"` : `data-clip="${esc(item.id)}"`} type="button"><span><small class="simple-feed-meta">${esc(shortDate(item.date))} · ${item.kind === "practice" ? "Practice" : "Game"}${item.experimental ? " · Experimental" : ""}</small><strong>${esc(item.headline ?? statusText(item.status))}</strong></span><span class="simple-progress-percent">${esc(processingProgressText(item))}</span></button>`).join("")
       : `<p>Film an at-bat to get your first report.</p><button class="simple-action link" data-action="guide" type="button">How to film</button>`}</section>`;
   if (playerView) {
     const cached = parentsCache?.playerId === playerId ? parentsCache.html : null;
@@ -632,8 +632,8 @@ async function showReport(clipId, token = null, preloaded = null) {
       ${data.videoUrl ? `<video id="reportVideo" class="simple-video" src="${esc(data.videoUrl)}" controls playsinline></video>` : ""}
       <div class="simple-card"><p>This at-bat stays in the feed. The result choice did not decide whether a swing happened.</p></div>
       <div id="captureSummaryHost"></div>
-      ${state.shared || state.demo ? "" : `<div class="simple-actions"><button class="simple-action secondary" data-action="share-report" type="button">Share</button>
-      <button class="simple-action destructive" data-action="delete" type="button">Delete at-bat</button></div>`}`;
+      ${state.shared || state.demo ? "" : `<div class="simple-actions"><button class="simple-action secondary" data-action="share-report" type="button">Share</button><button class="simple-action destructive" data-action="delete" type="button">Delete at-bat</button></div>`}`;
+
     prepareReportVideo(clipId, token);
     loadCaptureSummary(clipId).catch(() => {});
     return;
@@ -645,8 +645,8 @@ async function showReport(clipId, token = null, preloaded = null) {
       <div class="simple-card"><p id="processingProgress">${pending ? esc(pendingReportText(data)) : esc(unavailable.reason)}</p>${unavailable?.showFilmingTip ? `<button class="simple-action link" data-action="guide" type="button">How to film next time</button>` : ""}</div>
       <div id="captureSummaryHost"></div>
       ${data.videoUrl ? `<video id="reportVideo" class="simple-video" src="${esc(data.videoUrl)}" controls playsinline></video>` : ""}
-      ${state.shared || state.demo ? "" : `<div class="simple-actions">
-      <button class="simple-action destructive" data-action="delete" type="button">Delete at-bat</button></div>`}`;
+      ${state.shared || state.demo ? "" : `<div class="simple-actions"><button class="simple-action destructive" data-action="delete" type="button">Delete at-bat</button></div>`}`;
+
     prepareReportVideo(clipId, token);
     loadCaptureSummary(clipId).catch(() => {});
     if (pending) scheduleReportRefresh(clipId, token);
@@ -656,20 +656,20 @@ async function showReport(clipId, token = null, preloaded = null) {
   root.innerHTML = `${reportAppBar(data, clipId)}
     ${copy.statusLine ? `<p class="simple-status-line" role="note">${icon("info")}<span>${esc(copy.statusLine)}</span></p>` : ""}
     ${data.videoUrl ? `<div class="simple-video-wrap"><video id="reportVideo" class="simple-video" src="${esc(data.videoUrl)}" controls playsinline preload="metadata"></video>
-      <button class="simple-action link" data-action="play-video" type="button">Play video</button></div>
-      <div class="simple-actions"><button class="simple-action secondary" data-action="half-speed" type="button">½ speed</button></div>` : `<p class="simple-error">Video isn't available yet.</p>`}
+      <div class="simple-video-controls"><button class="simple-action link" data-action="play-video" type="button">Play video</button>
+      <button class="simple-action secondary" data-action="half-speed" type="button">½ speed</button></div></div>` : `<p class="simple-error">Video isn't available yet.</p>`}
     ${presentation.summaryState !== "not_applicable" ? `<section class="simple-card"><h2>How it went</h2><p>${esc(report.summary)}</p></section>` : ""}
     <section class="simple-card"><h2>What looked good</h2>${presentation.strengthsState === "shown" && report.strengths?.length
       ? `<ul class="simple-strength-list">${report.strengths.map((item) => `<li class="simple-strength-item">${icon("check")}<span>${esc(item)}</span></li>`).join("")}</ul>`
       : `<p>${esc(strengthsNoneCopy())}</p>`}</section>
     <section class="simple-card"><h2>One thing to work on</h2>${shownFix
       ? `<h3>${esc(report.fix.issue)}</h3><p>${esc(report.fix.evidence)}</p><p>Say to ${esc(data.playerName.split(" ")[0])}:</p>
-        <p class="simple-cue">“${esc(report.fix.coachingCue)}”</p><p><strong>Next time, watch for:</strong> ${esc(report.fix.lookForNext)}</p>`
+        <p class="simple-cue">“${esc(report.fix.coachingCue)}”</p><p><strong>Next time, watch for:</strong> ${esc(report.fix.lookForNext)}</p>${state.shared || state.demo ? "" : `<div class="simple-actions"><button class="simple-action secondary" data-action="hide-fix" type="button">Doesn't look right</button></div>`}`
       : `<p>${esc(copy.body)}</p>`}</section>
-    ${shownFix ? `<section><h2>Drills that can help</h2>${report.drills.length ? report.drills.map(drillCard).join("") : `<p>No drill for this yet.</p>`}</section>` : ""}
-    ${state.shared || state.demo ? "" : `<div id="captureSummaryHost"></div>${state.role === "coach" ? '<div id="coachAnalysisHost"></div>' : ""}<div class="simple-actions"><button class="simple-action secondary" data-action="share-report" type="button">Share</button>
-      ${shownFix ? `<button class="simple-action secondary" data-action="hide-fix" type="button">Doesn't look right</button>` : ""}
-      <button class="simple-action destructive" data-action="delete" type="button">Delete at-bat</button></div>`}`;
+    ${shownFix ? `<section><h2>Drills that can help</h2>${report.drills.length ? report.drills.map(drillCard).join("") : `<div class="simple-card"><p>No drill for this yet.</p></div>`}</section>` : ""}
+    ${state.shared || state.demo ? "" : `<div id="captureSummaryHost"></div>${state.role === "coach" ? '<div id="coachAnalysisHost"></div>' : ""}<div class="simple-actions"><button class="simple-action secondary" data-action="share-report" type="button">Share</button><button class="simple-action destructive" data-action="delete" type="button">Delete at-bat</button></div>`}`;
+
+
   prepareReportVideo(clipId, token);
   loadCaptureSummary(clipId).catch(() => {});
   loadCoachAnalysisAction(clipId).catch(() => {});
@@ -985,7 +985,9 @@ async function settingsSheet() {
 function confirmSheet(files, preserve = false) {
   state.files = files;
   if (!preserve) { state.kind = "game"; state.result = null; state.captureProfile = "unknown_imported"; state.capturePlayer = state.selected; }
+  const fileNames = files.map((file) => file?.name).filter(Boolean).join(", ");
   sheet.innerHTML = `<h2 id="simpleSheetTitle">Send ${files.length} video${files.length === 1 ? "" : "s"}</h2>
+    ${fileNames ? `<p class="simple-muted">${esc(fileNames)}</p>` : ""}
     <label>Player<select id="capturePlayer" required>${state.players.map((player) =>
       `<option value="${esc(player.id)}" ${player.id === state.capturePlayer ? "selected" : ""}>${esc(player.name)}</option>`).join("")}</select></label>
     <p>Game or practice?</p><div class="simple-chip-row"><button type="button" data-kind="game" aria-pressed="${state.kind === "game"}">Game</button><button type="button" data-kind="practice" aria-pressed="${state.kind === "practice"}">Practice</button></div>
@@ -1332,11 +1334,13 @@ async function start() {
       return;
     }
     state.selected = state.players.some((player) => player.id === params.get("player")) ? params.get("player") : state.players[0].id;
+    let initialHome = null;
     if (state.role === "parent") {
       const summaries = await Promise.all(state.players.map((player) => reportApi(player.id).catch(() => null)));
       state.players.forEach((player, i) => { player.name = summaries[i]?.playerName ?? "Child"; });
+      initialHome = summaries[state.players.findIndex((player) => player.id === state.selected)] ?? null;
     }
-    await loadHome();
+    await loadHome(initialHome);
     if (isCoach() && params.get("player") === state.selected) await navigation.openPlayer(state.selected);
     if (isCoach() && navigation.view.hl === "player" && params.get("clip")) {
       await showReport(params.get("clip"));

@@ -666,28 +666,12 @@ the user.
 
 <!-- END HITTERLOOP MULTI-AGENT MANAGED BLOCK -->
 
-<!-- DESIGN-MD-AUTO:START -->
-## DESIGN.md UI rules
+<!-- JC-PROJECT-AGENTS:START -->
+## Shared agent rules
 
-For any UI, frontend, component, CSS, styling, or visual-design work:
+Claude Code owns orchestration. Gemini/AGY may be used as a delegated implementer or independent reviewer.
 
-1. Read `DESIGN.md` in full before making changes.
-2. Treat `DESIGN.md` as the visual source of truth.
-3. Reuse its tokens and the project's existing components before inventing new values or patterns.
-4. Do not introduce conflicting colors, typography, spacing, radii, shadows, or component styles.
-5. After implementation, compare the result against `DESIGN.md` and fix inconsistencies before finishing.
+All agents must inspect actual code, follow project-specific instructions, stay within scope, run appropriate checks for changed behavior, surface uncertainty rather than guessing, and avoid merge/push/release/destructive actions unless explicitly authorized.
 
-### Orchestrated / delegated UI work
-
-Claude Code is the orchestrator for this repository and owns final design consistency. When delegating frontend or UI work to Codex (implementation), Gemini/AGY (independent review and visual QA), or another sub-agent:
-
-- Include `DESIGN.md` as authoritative project context.
-- Require the delegated agent to follow the existing design tokens, components, and interaction patterns.
-- Do not allow delegated agents to invent conflicting visual conventions or silently replace the established design language.
-- Ask delegated agents to reuse existing components before creating new ones.
-- Review delegated UI output against `DESIGN.md` before accepting, merging, or presenting the work as complete.
-- Resolve design inconsistencies at the orchestrator level; Claude remains responsible for final design consistency.
-- If a delegated agent identifies a genuine conflict in the existing design system, surface it explicitly rather than allowing the worker to choose a new convention on its own.
-
-If `DESIGN.md` conflicts with an explicit user request, follow the explicit user request and update the design system only when appropriate.
-<!-- DESIGN-MD-AUTO:END -->
+For UI/frontend/styling work, read DESIGN.md when present and follow it as the visual source of truth.
+<!-- JC-PROJECT-AGENTS:END -->

@@ -4,15 +4,55 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>HitterLoop — Coach Login</title>
-<link rel="stylesheet" href="./coach.css?v=b54d43259c">
+<link rel="stylesheet" href="./coach.css?v=0feb3f4882">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/icon-192.svg">
 <meta name="theme-color" content="#121418">
+<style>
+  .login-form.card {
+    max-width: 400px;
+    margin: 48px auto;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 24px;
+    box-shadow: var(--shadow-2);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .login-form input,
+  .login-form button {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .create-team-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    margin-top: 20px;
+    box-shadow: var(--shadow-2);
+  }
+  select {
+    min-height: 48px;
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text-1);
+    font: inherit;
+  }
+</style>
 </head>
 <body>
 <div class="wrap">
-  <div id="loginView" class="login-form">
-    <div class="jersey-badge lg" style="margin:0 auto 4px;">⚾</div>
+  <div id="loginView" class="login-form card">
+    <div class="jersey-badge lg" style="margin:0 auto 8px;" aria-hidden="true"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M4 8.5a10 10 0 0 0 8 8"/><path d="M20 15.5a10 10 0 0 0-8-8"/></svg></div>
     <h1 style="text-align:center;">HitterLoop</h1>
     <p class="hint" style="text-align:center;margin-top:-8px;">Coach Sign In</p>
     <input type="email" id="email" placeholder="Email" autocomplete="username">
@@ -22,8 +62,8 @@
     <p class="hint" style="text-align:center;">New coach? <a href="#" id="showSignupLink">Create an account</a></p>
   </div>
 
-  <div id="signupView" class="login-form" style="display:none;">
-    <div class="jersey-badge lg" style="margin:0 auto 4px;">⚾</div>
+  <div id="signupView" class="login-form card" style="display:none;">
+    <div class="jersey-badge lg" style="margin:0 auto 8px;" aria-hidden="true"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M4 8.5a10 10 0 0 0 8 8"/><path d="M20 15.5a10 10 0 0 0-8-8"/></svg></div>
     <h1 style="text-align:center;">Create Account</h1>
     <p class="hint" style="text-align:center;margin-top:-8px;">Sets up your own coach login - your team comes next.</p>
     <input type="text" id="signupName" placeholder="Your name (shown to other coaches)" autocomplete="name">
@@ -40,8 +80,8 @@
     <h1>My Teams</h1>
     <div id="teamsList"></div>
 
-    <div id="createTeamView" style="display:none;">
-      <h1 style="margin-top:24px;">Create Your Team</h1>
+    <div id="createTeamView" class="create-team-card" style="display:none;">
+      <h1 style="margin-top:0;">Create Your Team</h1>
       <p class="hint">You don't have a team yet - set one up to start adding players.</p>
       <input type="text" id="newTeamName" placeholder="Team name (e.g. Riverside Rockets 10U)">
       <input type="text" id="newTeamSlug" placeholder="URL slug (auto-filled from name)">
@@ -144,7 +184,7 @@
         return true;
       }
       teamsList.innerHTML = "";
-      createTeamView.style.display = "block";
+      createTeamView.style.display = "flex";
       return true;
     }
 
@@ -191,12 +231,12 @@
   document.getElementById("showSignupLink").addEventListener("click", (e) => {
     e.preventDefault();
     loginView.style.display = "none";
-    signupView.style.display = "block";
+    signupView.style.display = "flex";
   });
   document.getElementById("showSignInLink").addEventListener("click", (e) => {
     e.preventDefault();
     signupView.style.display = "none";
-    loginView.style.display = "block";
+    loginView.style.display = "flex";
   });
 
   document.getElementById("signUpBtn").addEventListener("click", async () => {

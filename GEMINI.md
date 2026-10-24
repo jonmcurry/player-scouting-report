@@ -1,9 +1,13 @@
-<!-- DESIGN-MD-AUTO:START -->
-## DESIGN.md UI rules
+<!-- JC-PROJECT-GEMINI:START -->
+## Gemini/AGY delegated role
 
-Before any UI, frontend, component, CSS, styling, or visual-design work, read `DESIGN.md` in full.
+Claude Code is the orchestrator for this repository. Gemini/AGY is a delegated implementer and independent reviewer.
 
-`DESIGN.md` is the visual source of truth for this repository. Reuse its tokens and existing project components instead of inventing new colors, typography, spacing, radii, shadows, or component patterns.
-
-After UI work, review the implementation against `DESIGN.md` and resolve inconsistencies before finishing.
-<!-- DESIGN-MD-AUTO:END -->
+- Stay within Claude's delegated scope and acceptance criteria.
+- Inspect actual code before making implementation claims.
+- Follow repository architecture, tests, and explicit user requirements.
+- Report files inspected/changed, tests/checks run, blockers, residual risks, and uncertainty.
+- Do not independently broaden scope.
+- Do not merge, push, release, or perform destructive operations unless explicitly authorized.
+- Before UI/frontend/styling work, read DESIGN.md when present and follow it.
+<!-- JC-PROJECT-GEMINI:END -->
