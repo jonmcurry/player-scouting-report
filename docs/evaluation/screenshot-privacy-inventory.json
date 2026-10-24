@@ -1,0 +1,1591 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "a0dd18f",
+  "date": "2026-10-14",
+  "assets": [
+    {
+      "path": "screenshots/at-bat-report/01-top-video.png",
+      "originalSha256": "19dd04f77b8e0124ffc2d01e8b44ab9be50568227fb22bf54194f3ef8dc17826",
+      "sanitizedSha256": "d461c2aa27c8ad49b181fe3daf85b831b6fdf2a273e12064a65b985d35973844",
+      "trackedInSourceCommit": true,
+      "indexMatchesOriginalAtInventory": true,
+      "dimensions": [
+        1024,
+        2216
+      ],
+      "redactedCategories": [
+        "player/team identity",
+        "clip timing",
+        "individual coaching text",
+        "device status bar"
+      ],
+      "retentionPurpose": "Original report video-panel layout and broken-media placeholder; not playback evidence.",
+      "opaqueBlackRectanglesXYXY": [
+        [
+          0,
+          0,
+          1024,
+          65
+        ],
+        [
+          25,
+          380,
+          500,
+          495
+        ],
+        [
+          65,
+          1080,
+          460,
+          1170
+        ],
+        [
+          65,
+          1520,
+          960,
+          1860
+        ],
+        [
+          7,
+          2,
+          111,
+          64
+        ],
+        [
+          29,
+          286,
+          339,
+          344
+        ],
+        [
+          33,
+          384,
+          296,
+          486
+        ],
+        [
+          69,
+          853,
+          171,
+          915
+        ],
+        [
+          77,
+          1094,
+          417,
+          1160
+        ],
+        [
+          175,
+          1270,
+          370,
+          1341
+        ],
+        [
+          610,
+          1271,
+          900,
+          1336
+        ],
+        [
+          71,
+          1450,
+          347,
+          1508
+        ],
+        [
+          75,
+          1529,
+          830,
+          1591
+        ],
+        [
+          74,
+          1589,
+          902,
+          1658
+        ],
+        [
+          71,
+          1651,
+          897,
+          1720
+        ],
+        [
+          72,
+          1715,
+          882,
+          1784
+        ],
+        [
+          71,
+          1780,
+          931,
+          1845
+        ]
+      ],
+      "metadata": "Only IHDR/IDAT/IEND; RGB, no alpha, no trailing bytes",
+      "reviewStatus": "Sanitized asset visually reviewed by Codex and Gemini/AGY on 2026-10-14; no blocking privacy findings",
+      "reviewReference": "review-20261014-103827-b083c0"
+    },
+    {
+      "path": "screenshots/at-bat-report/02-findings.png",
+      "originalSha256": "26cb7ccb829352f96189bf42843d431b16c06e1986f18c694f52628420f226f6",
+      "sanitizedSha256": "86694dd17c55f779f648f39026fcacfe95170dfd845e075737efd9e410691391",
+      "trackedInSourceCommit": true,
+      "indexMatchesOriginalAtInventory": true,
+      "dimensions": [
+        1024,
+        2216
+      ],
+      "redactedCategories": [
+        "individual coaching text",
+        "selected drill",
+        "device status bar"
+      ],
+      "retentionPurpose": "Report finding-card hierarchy and action placement; player-specific prose removed.",
+      "opaqueBlackRectanglesXYXY": [
+        [
+          0,
+          0,
+          1024,
+          65
+        ],
+        [
+          65,
+          155,
+          960,
+          490
+        ],
+        [
+          160,
+          700,
+          960,
+          1030
+        ],
+        [
+          65,
+          1240,
+          960,
+          1390
+        ],
+        [
+          7,
+          2,
+          111,
+          64
+        ],
+        [
+          71,
+          81,
+          347,
+          142
+        ],
+        [
+          75,
+          162,
+          831,
+          224
+        ],
+        [
+          76,
+          225,
+          900,
+          287
+        ],
+        [
+          71,
+          285,
+          896,
+          354
+        ],
+        [
+          75,
+          349,
+          882,
+          415
+        ],
+        [
+          72,
+          413,
+          931,
+          478
+        ],
+        [
+          74,
+          617,
+          475,
+          675
+        ],
+        [
+          172,
+          716,
+          851,
+          778
+        ],
+        [
+          180,
+          770,
+          830,
+          840
+        ],
+        [
+          177,
+          833,
+          357,
+          900
+        ],
+        [
+          173,
+          889,
+          848,
+          956
+        ],
+        [
+          177,
+          948,
+          894,
+          1017
+        ],
+        [
+          72,
+          1174,
+          424,
+          1233
+        ],
+        [
+          74,
+          1249,
+          918,
+          1322
+        ],
+        [
+          74,
+          1314,
+          928,
+          1380
+        ],
+        [
+          76,
+          1549,
+          400,
+          1615
+        ]
+      ],
+      "metadata": "Only IHDR/IDAT/IEND; RGB, no alpha, no trailing bytes",
+      "reviewStatus": "Sanitized asset visually reviewed by Codex and Gemini/AGY on 2026-10-14; no blocking privacy findings",
+      "reviewReference": "review-20261014-103827-b083c0"
+    },
+    {
+      "path": "screenshots/home/00-load-error-edge-functions-down.png",
+      "originalSha256": "669ac0debba41b47a255796a5685f0b32dc5500fb0a2ce751d2d75eca4f1962a",
+      "sanitizedSha256": "fd7e2313f17883572763509894deab912eed507d3cc4b9987a7ed4cc1428e52d",
+      "trackedInSourceCommit": true,
+      "indexMatchesOriginalAtInventory": true,
+      "dimensions": [
+        1024,
+        2216
+      ],
+      "redactedCategories": [
+        "runtime diagnostic text",
+        "device status bar"
+      ],
+      "retentionPurpose": "Home error-state layout; runtime error details removed.",
+      "opaqueBlackRectanglesXYXY": [
+        [
+          0,
+          0,
+          1024,
+          65
+        ],
+        [
+          25,
+          580,
+          1000,
+          685
+        ],
+        [
+          7,
+          2,
+          110,
+          64
+        ],
+        [
+          33,
+          325,
+          593,
+          428
+        ],
+        [
+          29,
+          592,
+          977,
+          661
+        ]
+      ],
+      "metadata": "Only IHDR/IDAT/IEND; RGB, no alpha, no trailing bytes",
+      "reviewStatus": "Sanitized asset visually reviewed by Codex and Gemini/AGY on 2026-10-14; no blocking privacy findings",
+      "reviewReference": "review-20261014-103827-b083c0"
+    },
+    {
+      "path": "screenshots/home/01-home.png",
+      "originalSha256": "667eb4f5b505c5639863e42d17afbcf2c009ddaabb380dad7e2d5ac25eaba4df",
+      "sanitizedSha256": "2117319519058b682073ca5ee6f897155a752ec71334e86bf0cbee2f0dcdf2ea",
+      "trackedInSourceCommit": true,
+      "indexMatchesOriginalAtInventory": true,
+      "dimensions": [
+        1024,
+        2216
+      ],
+      "redactedCategories": [
+        "player/team identity",
+        "roster attributes",
+        "activity and dates",
+        "device status bar"
+      ],
+      "retentionPurpose": "Home navigation, roster-card layout and record action; identities and activity removed.",
+      "opaqueBlackRectanglesXYXY": [
+        [
+          0,
+          0,
+          1024,
+          65
+        ],
+        [
+          25,
+          380,
+          500,
+          495
+        ],
+        [
+          65,
+          560,
+          600,
+          665
+        ],
+        [
+          65,
+          680,
+          610,
+          825
+        ],
+        [
+          65,
+          1300,
+          975,
+          1500
+        ],
+        [
+          7,
+          1,
+          109,
+          63
+        ],
+        [
+          32,
+          382,
+          297,
+          488
+        ],
+        [
+          71,
+          567,
+          278,
+          649
+        ],
+        [
+          80,
+          684,
+          224,
+          760
+        ],
+        [
+          81,
+          743,
+          357,
+          809
+        ],
+        [
+          75,
+          849,
+          538,
+          919
+        ],
+        [
+          76,
+          1212,
+          468,
+          1288
+        ],
+        [
+          85,
+          1319,
+          625,
+          1386
+        ],
+        [
+          82,
+          1366,
+          798,
+          1432
+        ],
+        [
+          806,
+          1365,
+          960,
+          1439
+        ],
+        [
+          82,
+          1423,
+          323,
+          1484
+        ]
+      ],
+      "metadata": "Only IHDR/IDAT/IEND; RGB, no alpha, no trailing bytes",
+      "reviewStatus": "Sanitized asset visually reviewed by Codex and Gemini/AGY on 2026-10-14; no blocking privacy findings",
+      "reviewReference": "review-20261014-103827-b083c0"
+    },
+    {
+      "path": "screenshots/home/02-invite-parent.png",
+      "originalSha256": "05d7b984fc9a49fb53ba39c1b33e8b21baf337522f3421fb91663db6cc1376a3",
+      "sanitizedSha256": "afba416164e49cfe92c192508bbbf2445a6eeee2c0df546425353a9aadb8b104",
+      "trackedInSourceCommit": true,
+      "indexMatchesOriginalAtInventory": true,
+      "dimensions": [
+        1024,
+        2216
+      ],
+      "redactedCategories": [
+        "player/team identity",
+        "recipient identity",
+        "potentially active invitation URL/token",
+        "background activity",
+        "device status bar"
+      ],
+      "retentionPurpose": "Invitation dialog layout and copy/done controls; recipient and entire URL field removed.",
+      "opaqueBlackRectanglesXYXY": [
+        [
+          0,
+          0,
+          1024,
+          65
+        ],
+        [
+          25,
+          380,
+          500,
+          495
+        ],
+        [
+          65,
+          560,
+          600,
+          665
+        ],
+        [
+          65,
+          680,
+          610,
+          825
+        ],
+        [
+          65,
+          1200,
+          975,
+          1305
+        ],
+        [
+          85,
+          1460,
+          940,
+          1620
+        ],
+        [
+          90,
+          1640,
+          940,
+          1830
+        ],
+        [
+          7,
+          1,
+          110,
+          63
+        ],
+        [
+          32,
+          383,
+          297,
+          488
+        ],
+        [
+          71,
+          567,
+          278,
+          649
+        ],
+        [
+          79,
+          683,
+          225,
+          762
+        ],
+        [
+          81,
+          743,
+          357,
+          809
+        ],
+        [
+          75,
+          850,
+          538,
+          919
+        ],
+        [
+          76,
+          1214,
+          467,
+          1287
+        ],
+        [
+          91,
+          1474,
+          926,
+          1544
+        ],
+        [
+          90,
+          1533,
+          658,
+          1605
+        ],
+        [
+          101,
+          1701,
+          929,
+          1767
+        ]
+      ],
+      "metadata": "Only IHDR/IDAT/IEND; RGB, no alpha, no trailing bytes",
+      "reviewStatus": "Sanitized asset visually reviewed by Codex and Gemini/AGY on 2026-10-14; no blocking privacy findings",
+      "reviewReference": "review-20261014-103827-b083c0"
+    },
+    {
+      "path": "screenshots/home/03-add-import-players.png",
+      "originalSha256": "24b920556d98d43c4d2799d7707779ee124b5ae8118a3cc2ef37121628fc098b",
+      "sanitizedSha256": "bce196aefbf459c72ee1671fc94a23f39cfd6806e65e8b221b312fb3595e5c64",
+      "trackedInSourceCommit": true,
+      "indexMatchesOriginalAtInventory": true,
+      "dimensions": [
+        1024,
+        2216
+      ],
+      "redactedCategories": [
+        "player/team identity",
+        "roster attributes",
+        "device status bar"
+      ],
+      "retentionPurpose": "Legacy roster/import entry point and collapsed activity disclosure; identities removed.",
+      "opaqueBlackRectanglesXYXY": [
+        [
+          0,
+          0,
+          1024,
+          65
+        ],
+        [
+          130,
+          75,
+          600,
+          200
+        ],
+        [
+          25,
+          300,
+          350,
+          400
+        ],
+        [
+          65,
+          425,
+          620,
+          565
+        ],
+        [
+          6,
+          2,
+          110,
+          64
+        ],
+        [
+          146,
+          75,
+          275,
+          163
+        ],
+        [
+          26,
+          308,
+          293,
+          394
+        ],
+        [
+          203,
+          434,
+          339,
+          516
+        ],
+        [
+          90,
+          459,
+          171,
+          535
+        ],
+        [
+          675,
+          459,
+          925,
+          534
+        ],
+        [
+          204,
+          492,
+          468,
+          558
+        ],
+        [
+          69,
+          794,
+          372,
+          869
+        ],
+        [
+          150,
+          2048,
+          228,
+          2101
+        ],
+        [
+          771,
+          2081,
+          912,
+          2144
+        ]
+      ],
+      "metadata": "Only IHDR/IDAT/IEND; RGB, no alpha, no trailing bytes",
+      "reviewStatus": "Sanitized asset visually reviewed by Codex and Gemini/AGY on 2026-10-14; no blocking privacy findings",
+      "reviewReference": "review-20261014-103827-b083c0"
+    },
+    {
+      "path": "screenshots/home/04-team-recent-activity.png",
+      "originalSha256": "d4e4b39162607d3a1e917b1a08a0e6b4b67e77618b472642ac2b139a04fcf2e5",
+      "sanitizedSha256": "49d17e2d8ae9a6aa55875d6c62d459279f191814e2dd94532bd796d3e1c28e1c",
+      "trackedInSourceCommit": true,
+      "indexMatchesOriginalAtInventory": true,
+      "dimensions": [
+        1024,
+        2216
+      ],
+      "redactedCategories": [
+        "player/team identity",
+        "roster attributes",
+        "activity and dates",
+        "device status bar"
+      ],
+      "retentionPurpose": "Legacy expanded activity disclosure; identities and activity values removed.",
+      "opaqueBlackRectanglesXYXY": [
+        [
+          0,
+          0,
+          1024,
+          65
+        ],
+        [
+          130,
+          75,
+          600,
+          200
+        ],
+        [
+          25,
+          300,
+          350,
+          400
+        ],
+        [
+          65,
+          425,
+          620,
+          565
+        ],
+        [
+          65,
+          755,
+          940,
+          890
+        ],
+        [
+          6,
+          2,
+          110,
+          64
+        ],
+        [
+          146,
+          75,
+          275,
+          163
+        ],
+        [
+          26,
+          308,
+          293,
+          394
+        ],
+        [
+          203,
+          434,
+          340,
+          516
+        ],
+        [
+          90,
+          459,
+          171,
+          535
+        ],
+        [
+          676,
+          460,
+          924,
+          533
+        ],
+        [
+          204,
+          492,
+          469,
+          558
+        ],
+        [
+          72,
+          764,
+          496,
+          833
+        ],
+        [
+          71,
+          820,
+          328,
+          878
+        ],
+        [
+          69,
+          983,
+          372,
+          1059
+        ],
+        [
+          149,
+          2048,
+          228,
+          2101
+        ],
+        [
+          771,
+          2081,
+          913,
+          2144
+        ]
+      ],
+      "metadata": "Only IHDR/IDAT/IEND; RGB, no alpha, no trailing bytes",
+      "reviewStatus": "Sanitized asset visually reviewed by Codex and Gemini/AGY on 2026-10-14; no blocking privacy findings",
+      "reviewReference": "review-20261014-103827-b083c0"
+    },
+    {
+      "path": "screenshots/player/01-open-player-from-team.png",
+      "originalSha256": "5b7886ee6c362b91612eaf7aef741330e5c7879e5ae9e81006b8832aebae4cc4",
+      "sanitizedSha256": "f13f9fbd66a061539e1f32ffae71d8dcee5030d094687695af66b4b8e61bac91",
+      "trackedInSourceCommit": true,
+      "indexMatchesOriginalAtInventory": true,
+      "dimensions": [
+        1024,
+        2216
+      ],
+      "redactedCategories": [
+        "player identity and avatar initials",
+        "performance/status",
+        "activity",
+        "device status bar"
+      ],
+      "retentionPurpose": "Legacy player navigation and development-card structure; identity and performance removed.",
+      "opaqueBlackRectanglesXYXY": [
+        [
+          0,
+          0,
+          1024,
+          65
+        ],
+        [
+          140,
+          75,
+          650,
+          260
+        ],
+        [
+          70,
+          500,
+          950,
+          725
+        ],
+        [
+          70,
+          965,
+          950,
+          1185
+        ],
+        [
+          70,
+          1280,
+          950,
+          1680
+        ],
+        [
+          65,
+          1850,
+          950,
+          2000
+        ],
+        [
+          7,
+          2,
+          111,
+          64
+        ],
+        [
+          263,
+          98,
+          415,
+          185
+        ],
+        [
+          178,
+          125,
+          246,
+          189
+        ],
+        [
+          261,
+          187,
+          361,
+          253
+        ],
+        [
+          82,
+          506,
+          699,
+          564
+        ],
+        [
+          80,
+          560,
+          287,
+          674
+        ],
+        [
+          80,
+          654,
+          201,
+          723
+        ],
+        [
+          112,
+          793,
+          477,
+          858
+        ],
+        [
+          614,
+          788,
+          864,
+          851
+        ],
+        [
+          85,
+          970,
+          423,
+          1026
+        ],
+        [
+          85,
+          1032,
+          637,
+          1113
+        ],
+        [
+          82,
+          1113,
+          808,
+          1176
+        ],
+        [
+          84,
+          1289,
+          551,
+          1346
+        ],
+        [
+          84,
+          1350,
+          895,
+          1419
+        ],
+        [
+          86,
+          1429,
+          805,
+          1488
+        ],
+        [
+          82,
+          1475,
+          493,
+          1539
+        ],
+        [
+          125,
+          1582,
+          399,
+          1658
+        ],
+        [
+          74,
+          1866,
+          506,
+          1924
+        ],
+        [
+          75,
+          1921,
+          465,
+          1991
+        ],
+        [
+          772,
+          2083,
+          912,
+          2142
+        ]
+      ],
+      "metadata": "Only IHDR/IDAT/IEND; RGB, no alpha, no trailing bytes",
+      "reviewStatus": "Sanitized asset visually reviewed by Codex and Gemini/AGY on 2026-10-14; no blocking privacy findings",
+      "reviewReference": "review-20261014-103827-b083c0"
+    },
+    {
+      "path": "screenshots/player/02-player-scrolled.png",
+      "originalSha256": "a890569fa95b02ca9344a30f195513ed615335432e0dd9a0a4a99f208f8d9488",
+      "sanitizedSha256": "2bb2a5e9d5c63291c3f8621ff5cf3a28f81c90fc42ec906b4302a2a5b1a23a64",
+      "trackedInSourceCommit": true,
+      "indexMatchesOriginalAtInventory": true,
+      "dimensions": [
+        1024,
+        2216
+      ],
+      "redactedCategories": [
+        "player identity and avatar initials",
+        "performance/status",
+        "activity and dates",
+        "device status bar"
+      ],
+      "retentionPurpose": "Legacy scrolled player layout and recent-activity placement; identity and performance removed.",
+      "opaqueBlackRectanglesXYXY": [
+        [
+          0,
+          0,
+          1024,
+          65
+        ],
+        [
+          140,
+          75,
+          650,
+          260
+        ],
+        [
+          70,
+          280,
+          950,
+          665
+        ],
+        [
+          65,
+          850,
+          950,
+          1150
+        ],
+        [
+          130,
+          1610,
+          950,
+          1755
+        ],
+        [
+          65,
+          1810,
+          950,
+          1905
+        ],
+        [
+          7,
+          2,
+          111,
+          64
+        ],
+        [
+          263,
+          97,
+          415,
+          185
+        ],
+        [
+          176,
+          124,
+          249,
+          190
+        ],
+        [
+          260,
+          186,
+          361,
+          252
+        ],
+        [
+          85,
+          286,
+          551,
+          343
+        ],
+        [
+          84,
+          348,
+          893,
+          416
+        ],
+        [
+          86,
+          428,
+          807,
+          486
+        ],
+        [
+          82,
+          472,
+          493,
+          536
+        ],
+        [
+          125,
+          579,
+          399,
+          655
+        ],
+        [
+          74,
+          863,
+          507,
+          921
+        ],
+        [
+          72,
+          916,
+          467,
+          989
+        ],
+        [
+          72,
+          1011,
+          628,
+          1077
+        ],
+        [
+          75,
+          1077,
+          531,
+          1138
+        ],
+        [
+          214,
+          1176,
+          381,
+          1248
+        ],
+        [
+          146,
+          1623,
+          527,
+          1685
+        ],
+        [
+          145,
+          1676,
+          429,
+          1738
+        ],
+        [
+          71,
+          1824,
+          645,
+          1893
+        ],
+        [
+          772,
+          2083,
+          912,
+          2142
+        ]
+      ],
+      "metadata": "Only IHDR/IDAT/IEND; RGB, no alpha, no trailing bytes",
+      "reviewStatus": "Sanitized asset visually reviewed by Codex and Gemini/AGY on 2026-10-14; no blocking privacy findings",
+      "reviewReference": "review-20261014-103827-b083c0"
+    },
+    {
+      "path": "screenshots/progress/01-progress.png",
+      "originalSha256": "b595697502d08cd780f8b3c9f60512f99ab9a3bf23ddabc0874b05fd10eee95a",
+      "sanitizedSha256": "1da559f87f946a8335d1501cb8c128f9a618eacc6ae14af672f578261e659446",
+      "trackedInSourceCommit": true,
+      "indexMatchesOriginalAtInventory": true,
+      "dimensions": [
+        1024,
+        2216
+      ],
+      "redactedCategories": [
+        "player identity",
+        "progress/status",
+        "device status bar"
+      ],
+      "retentionPurpose": "Progress-page card layout and navigation; player identity and status removed.",
+      "opaqueBlackRectanglesXYXY": [
+        [
+          0,
+          0,
+          1024,
+          65
+        ],
+        [
+          25,
+          380,
+          500,
+          495
+        ],
+        [
+          65,
+          565,
+          950,
+          740
+        ],
+        [
+          65,
+          840,
+          950,
+          1020
+        ],
+        [
+          7,
+          2,
+          111,
+          64
+        ],
+        [
+          32,
+          382,
+          297,
+          488
+        ],
+        [
+          76,
+          569,
+          474,
+          647
+        ],
+        [
+          74,
+          659,
+          680,
+          732
+        ],
+        [
+          72,
+          850,
+          298,
+          932
+        ],
+        [
+          74,
+          944,
+          461,
+          1010
+        ],
+        [
+          76,
+          1139,
+          398,
+          1210
+        ]
+      ],
+      "metadata": "Only IHDR/IDAT/IEND; RGB, no alpha, no trailing bytes",
+      "reviewStatus": "Sanitized asset visually reviewed by Codex and Gemini/AGY on 2026-10-14; no blocking privacy findings",
+      "reviewReference": "review-20261014-103827-b083c0"
+    },
+    {
+      "path": "screenshots/record/01-record-sheet.png",
+      "originalSha256": "34eb5cd0e4842fcf509bf26bf4a52c43ecd623e2af9aec2c4e037a6644723109",
+      "sanitizedSha256": "dbced4f4a53c550c44494ae8381f12a4488f407a6842e3f8cee785329a954853",
+      "trackedInSourceCommit": true,
+      "indexMatchesOriginalAtInventory": true,
+      "dimensions": [
+        1024,
+        2216
+      ],
+      "redactedCategories": [
+        "background individual coaching text",
+        "device status bar"
+      ],
+      "retentionPurpose": "Record-choice bottom sheet; underlying player report removed.",
+      "opaqueBlackRectanglesXYXY": [
+        [
+          0,
+          0,
+          1024,
+          65
+        ],
+        [
+          0,
+          65,
+          1024,
+          1395
+        ],
+        [
+          7,
+          2,
+          111,
+          64
+        ],
+        [
+          71,
+          81,
+          347,
+          142
+        ],
+        [
+          75,
+          162,
+          831,
+          224
+        ],
+        [
+          76,
+          225,
+          900,
+          287
+        ],
+        [
+          71,
+          285,
+          896,
+          354
+        ],
+        [
+          75,
+          349,
+          882,
+          415
+        ],
+        [
+          72,
+          413,
+          931,
+          478
+        ],
+        [
+          74,
+          617,
+          475,
+          675
+        ],
+        [
+          172,
+          716,
+          851,
+          778
+        ],
+        [
+          180,
+          770,
+          830,
+          840
+        ],
+        [
+          176,
+          832,
+          355,
+          899
+        ],
+        [
+          174,
+          891,
+          848,
+          956
+        ],
+        [
+          177,
+          948,
+          894,
+          1017
+        ],
+        [
+          75,
+          1176,
+          423,
+          1231
+        ],
+        [
+          72,
+          1249,
+          918,
+          1322
+        ]
+      ],
+      "metadata": "Only IHDR/IDAT/IEND; RGB, no alpha, no trailing bytes",
+      "reviewStatus": "Sanitized asset visually reviewed by Codex and Gemini/AGY on 2026-10-14; no blocking privacy findings",
+      "reviewReference": "review-20261014-103827-b083c0"
+    },
+    {
+      "path": "screenshots/record/02-how-to-film.png",
+      "originalSha256": "96dab4312b08ab0b6a18be015845ee995b1633999f5f679f4b6f7ca4a018c3c8",
+      "sanitizedSha256": "e1580ae87fc9e85e6340cc447bff92efb89522e1bec4cdc911b9522a3e955586",
+      "trackedInSourceCommit": true,
+      "indexMatchesOriginalAtInventory": true,
+      "dimensions": [
+        1024,
+        2216
+      ],
+      "redactedCategories": [
+        "background individual coaching text",
+        "device status bar"
+      ],
+      "retentionPurpose": "Static filming-guide controls and illustration; underlying player report removed.",
+      "opaqueBlackRectanglesXYXY": [
+        [
+          0,
+          0,
+          1024,
+          65
+        ],
+        [
+          0,
+          65,
+          1024,
+          400
+        ],
+        [
+          7,
+          2,
+          111,
+          64
+        ],
+        [
+          71,
+          82,
+          347,
+          141
+        ],
+        [
+          72,
+          158,
+          832,
+          225
+        ],
+        [
+          75,
+          224,
+          901,
+          290
+        ],
+        [
+          70,
+          285,
+          897,
+          354
+        ]
+      ],
+      "metadata": "Only IHDR/IDAT/IEND; RGB, no alpha, no trailing bytes",
+      "reviewStatus": "Sanitized asset visually reviewed by Codex and Gemini/AGY on 2026-10-14; no blocking privacy findings",
+      "reviewReference": "review-20261014-103827-b083c0"
+    },
+    {
+      "path": "screenshots/record/03-how-to-film-scrolled.png",
+      "originalSha256": "02b1aa9f93ac5f02b8db6b136fec34ef0c7da20fa85615086aa5e80a51539b5b",
+      "sanitizedSha256": "fc2978f664d09ef41dd946ae3e43d1b947e02a061d18a38ddbebd16d5e366f9b",
+      "trackedInSourceCommit": true,
+      "indexMatchesOriginalAtInventory": true,
+      "dimensions": [
+        1024,
+        2216
+      ],
+      "redactedCategories": [
+        "background individual coaching text",
+        "device status bar"
+      ],
+      "retentionPurpose": "Scrolled static filming-guide and safety instructions; underlying player report removed.",
+      "opaqueBlackRectanglesXYXY": [
+        [
+          0,
+          0,
+          1024,
+          65
+        ],
+        [
+          0,
+          65,
+          1024,
+          400
+        ],
+        [
+          6,
+          0,
+          112,
+          65
+        ],
+        [
+          71,
+          82,
+          347,
+          141
+        ],
+        [
+          72,
+          158,
+          832,
+          225
+        ],
+        [
+          75,
+          223,
+          901,
+          290
+        ],
+        [
+          71,
+          285,
+          897,
+          354
+        ]
+      ],
+      "metadata": "Only IHDR/IDAT/IEND; RGB, no alpha, no trailing bytes",
+      "reviewStatus": "Sanitized asset visually reviewed by Codex and Gemini/AGY on 2026-10-14; no blocking privacy findings",
+      "reviewReference": "review-20261014-103827-b083c0"
+    },
+    {
+      "path": "screenshots/settings/01-settings.png",
+      "originalSha256": "5342dda75962f1528cb38da956cca709c049344a3bf439e8b7e79f105e6208d6",
+      "sanitizedSha256": "22484db2eb2c40a9ea29cca3cdfd48c000df030b2944e2b898e7bb41e9a513e4",
+      "trackedInSourceCommit": true,
+      "indexMatchesOriginalAtInventory": true,
+      "dimensions": [
+        1024,
+        2216
+      ],
+      "redactedCategories": [
+        "player identity",
+        "background progress/status",
+        "notification preference",
+        "device status bar"
+      ],
+      "retentionPurpose": "Settings bottom sheet and generic controls; background identity/status and preference removed.",
+      "opaqueBlackRectanglesXYXY": [
+        [
+          0,
+          0,
+          1024,
+          65
+        ],
+        [
+          25,
+          380,
+          500,
+          495
+        ],
+        [
+          65,
+          565,
+          950,
+          740
+        ],
+        [
+          65,
+          840,
+          950,
+          1020
+        ],
+        [
+          120,
+          1450,
+          225,
+          1540
+        ],
+        [
+          7,
+          2,
+          111,
+          64
+        ],
+        [
+          32,
+          383,
+          297,
+          488
+        ],
+        [
+          76,
+          571,
+          474,
+          647
+        ],
+        [
+          74,
+          659,
+          680,
+          732
+        ],
+        [
+          72,
+          850,
+          298,
+          932
+        ],
+        [
+          74,
+          944,
+          461,
+          1010
+        ],
+        [
+          76,
+          1138,
+          398,
+          1210
+        ],
+        [
+          120,
+          1450,
+          225,
+          1580
+        ]
+      ],
+      "metadata": "Only IHDR/IDAT/IEND; RGB, no alpha, no trailing bytes",
+      "reviewStatus": "Sanitized asset visually reviewed by Codex and Gemini/AGY on 2026-10-14; no blocking privacy findings",
+      "reviewReference": "review-20261014-103827-b083c0"
+    }
+  ]
+}
